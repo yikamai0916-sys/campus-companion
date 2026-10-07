@@ -7,7 +7,7 @@ import worker from '../src/worker.js';
 import { hash,b64,random,seal,unseal,makePasswordHash } from '../src/security.js';
 import { deliver } from '../src/jobs.js';
 function database(){
-  const sqlite=new DatabaseSync(':memory:');for(const name of ['0001.sql','0002_accounts.sql','0003_profile.sql','0004_message_localizations.sql','0005_localization_version.sql','0006_outlook_connections.sql','0007_mail_preferences.sql','0008_account_scoped_records.sql','0009_collaboration.sql'])sqlite.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));
+  const sqlite=new DatabaseSync(':memory:');for(const name of ['0001.sql','0002_accounts.sql','0003_profile.sql','0004_message_localizations.sql','0005_localization_version.sql','0006_outlook_connections.sql','0007_mail_preferences.sql','0008_account_scoped_records.sql','0009_collaboration.sql','0010_meeting_planner.sql'])sqlite.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));
   const db={prepare(sql){let args=[];const obj={bind(...a){args=a;return obj;},async first(){return sqlite.prepare(sql).get(...args)||null;},async all(){return {results:sqlite.prepare(sql).all(...args)};},async run(){const r=sqlite.prepare(sql).run(...args);return {meta:{changes:r.changes}};}};return obj;},async batch(stmts){sqlite.exec('BEGIN');try{const r=[];for(const s of stmts)r.push(await s.run());sqlite.exec('COMMIT');return r;}catch(e){sqlite.exec('ROLLBACK');throw e;}}};return db;
 }
 test('authenticated CRUD persists and completing cancels pending reminders',async()=>{
@@ -139,6 +139,23 @@ test('group candidate review and assignee acceptance are separate transitions',a
   assert.equal((await call(ownerToken,`task-candidates/${candidate.id}/review`,'POST',{decision:'confirm'})).status,409);
   assert.equal((await env.DB.prepare('SELECT COUNT(*) n FROM tasks WHERE candidate_id=?').bind(candidate.id).first()).n,1);
   const snapshot=await (await call(memberToken,`groups/${group.id}`)).json();assert.equal(snapshot.members.length,2);assert.equal(snapshot.tasks[0].acceptance_status,'accepted');
+});
+
+test('meeting polls treat missing availability as unknown and confirm only full-group proposals',async()=>{
+  const env={DB:database()},origin='https://campus.example',ownerToken=random(),memberToken=random(),outsiderToken=random(),start=Date.UTC(2026,9,12,8),end=Date.UTC(2026,9,12,12);
+  await env.DB.prepare("INSERT INTO users(id,email,password_hash,created) VALUES('owner','owner@example.com','unused',0),('member','member@example.com','unused',0),('outsider','outsider@example.com','unused',0)").run();
+  await env.DB.prepare("INSERT INTO groups(id,name,owner_user_id,created,updated) VALUES('group','Project','owner',0,0)").run();
+  await env.DB.prepare("INSERT INTO group_members(group_id,user_id,role,joined) VALUES('group','owner','owner',0),('group','member','member',1)").run();
+  await env.DB.prepare('INSERT INTO sessions(id,expires,user_id) VALUES(?,?,?),(?,?,?),(?,?,?)').bind(await hash(ownerToken),Date.now()+3600000,'owner',await hash(memberToken),Date.now()+3600000,'member',await hash(outsiderToken),Date.now()+3600000,'outsider').run();
+  const call=(token,path,method='GET',data)=>worker.fetch(new Request(origin+'/api/'+path,{method,headers:{Cookie:'campus_session='+token,Origin:origin,'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined}),env);
+  const created=await call(ownerToken,'groups/group/meeting-polls','POST',{name:'Progress meeting',rangeStart:start,rangeEnd:end,durationMinutes:60,slotMinutes:30,bufferMinutes:0});assert.equal(created.status,201);const poll=await created.json();
+  assert.equal((await call(outsiderToken,`meeting-polls/${poll.id}`)).status,404);
+  assert.equal((await call(ownerToken,`meeting-polls/${poll.id}/availability`,'PUT',{intervals:[[start,end]]})).status,200);
+  const incomplete=await (await call(ownerToken,`meeting-polls/${poll.id}`)).json();assert.deepEqual(incomplete.result.missingMemberIds,['member']);assert.equal(incomplete.result.hasAllMemberOption,false);
+  assert.equal((await call(memberToken,`meeting-polls/${poll.id}/availability`,'PUT',{intervals:[[start+60*60000,end]],avoidIntervals:[[start+60*60000,start+90*60000]]})).status,200);
+  const complete=await (await call(ownerToken,`meeting-polls/${poll.id}`)).json();const proposal=complete.result.proposals.find(item=>item.allAvailable);assert.ok(proposal);
+  assert.equal((await call(memberToken,`meeting-polls/${poll.id}/confirm`,'POST',{start:proposal.start})).status,403);
+  const confirmed=await call(ownerToken,`meeting-polls/${poll.id}/confirm`,'POST',{start:proposal.start});assert.equal(confirmed.status,200);assert.equal((await confirmed.json()).status,'confirmed');
 });
 
 test('unauthenticated shared view URLs redirect to the public home page',async()=>{

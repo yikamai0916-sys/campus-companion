@@ -3,6 +3,7 @@ import { random,hash,verifyPassword,makePasswordHash,makeAnswerHash,verifyAnswer
 import { getKV,setKV,startOAuth,finishOAuth,syncMail,reprocessMail,ingestForwardedEmail,ingestShortcutEmail,localizeMessages,outlookConnection } from './mail.js';
 import { scheduleTask,repeatTasks,deliver,makeDigest,enqueue } from './jobs.js';
 import { addGroupMember,createGroup,createTaskCandidate,groupSnapshot,listGroups,respondToAssignment,reviewTaskCandidate } from './collaboration.js';
+import { confirmMeetingProposal,createMeetingPoll,meetingPollSnapshot,submitAvailability } from './meetings.js';
 const json=(data,status=200)=>Response.json(data,{status});
 async function body(request){if(Number(request.headers.get('content-length'))>7*1024*1024)throw new Error('请求过大');const text=await request.text();if(text.length>7*1024*1024)throw new Error('请求过大');return JSON.parse(text);}
 const emailOf=value=>String(value||'').trim().toLowerCase();
@@ -112,6 +113,14 @@ async function routes(request,env){
   if(groupMembersId&&method==='POST')return json(await addGroupMember(env,account.user_id,groupMembersId,(await body(request)).email),201);
   const groupCandidatesId=path.match(/^\/api\/groups\/([\w-]+)\/candidates$/)?.[1];
   if(groupCandidatesId&&method==='POST')return json(await createTaskCandidate(env,account.user_id,groupCandidatesId,await body(request)),201);
+  const meetingGroupId=path.match(/^\/api\/groups\/([\w-]+)\/meeting-polls$/)?.[1];
+  if(meetingGroupId&&method==='POST')return json(await createMeetingPoll(env,account.user_id,meetingGroupId,await body(request)),201);
+  const meetingPollId=path.match(/^\/api\/meeting-polls\/([\w-]+)$/)?.[1];
+  if(meetingPollId&&method==='GET')return json(await meetingPollSnapshot(env,account.user_id,meetingPollId));
+  const availabilityPollId=path.match(/^\/api\/meeting-polls\/([\w-]+)\/availability$/)?.[1];
+  if(availabilityPollId&&method==='PUT')return json(await submitAvailability(env,account.user_id,availabilityPollId,await body(request)));
+  const confirmPollId=path.match(/^\/api\/meeting-polls\/([\w-]+)\/confirm$/)?.[1];
+  if(confirmPollId&&method==='POST')return json(await confirmMeetingProposal(env,account.user_id,confirmPollId,(await body(request)).start));
   const candidateId=path.match(/^\/api\/task-candidates\/([\w-]+)\/review$/)?.[1];
   if(candidateId&&method==='POST')return json(await reviewTaskCandidate(env,account.user_id,candidateId,(await body(request)).decision));
   const assignmentTaskId=path.match(/^\/api\/tasks\/([\w-]+)\/assignment$/)?.[1];
