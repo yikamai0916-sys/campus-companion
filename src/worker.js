@@ -33,7 +33,7 @@ async function routes(request,env){
     if(!env.SHORTCUT_INGEST_KEY)return json({error:'iPhone 邮件转交尚未配置'},503);
     const supplied=request.headers.get('Authorization')?.replace(/^Bearer\s+/i,'')||'';
     if(!supplied||await hash(supplied)!==await hash(env.SHORTCUT_INGEST_KEY))return json({error:'邮件转交密钥无效'},401);
-    const owner=await ownerUser(env);return json({ok:true,...await ingestShortcutEmail(env,await body(request),(data,source,id)=>createTask(env,data,source,id,owner?.id),owner?.id)},201);
+    const owner=await ownerUser(env);return json({ok:true,...await ingestShortcutEmail(env,await body(request),owner?.id)},201);
   }
   if(path==='/api/auth/config'&&method==='GET')return json({registration:'simple',passwordMin:12});
   if(path==='/api/register'&&method==='POST'){
@@ -122,7 +122,7 @@ async function routes(request,env){
   const confirmPollId=path.match(/^\/api\/meeting-polls\/([\w-]+)\/confirm$/)?.[1];
   if(confirmPollId&&method==='POST')return json(await confirmMeetingProposal(env,account.user_id,confirmPollId,(await body(request)).start));
   const candidateId=path.match(/^\/api\/task-candidates\/([\w-]+)\/review$/)?.[1];
-  if(candidateId&&method==='POST')return json(await reviewTaskCandidate(env,account.user_id,candidateId,(await body(request)).decision));
+  if(candidateId&&method==='POST')return json(await reviewTaskCandidate(env,account.user_id,candidateId,await body(request)));
   const assignmentTaskId=path.match(/^\/api\/tasks\/([\w-]+)\/assignment$/)?.[1];
   if(assignmentTaskId&&method==='POST')return json(await respondToAssignment(env,account.user_id,assignmentTaskId,(await body(request)).decision));
   if(path==='/api/status'){
@@ -154,7 +154,7 @@ async function routes(request,env){
   }
   const messageId=path.match(/^\/api\/messages\/(.+)$/)?.[1];
   if(messageId&&method==='DELETE'){await env.DB.prepare('DELETE FROM messages WHERE id=? AND user_id=?').bind(decodeURIComponent(messageId),account.user_id).run();return json({ok:true});}
-  if(path==='/api/mail/reprocess'&&method==='POST')return json(await reprocessMail(env,(data,source,id)=>createTask(env,data,source,id,account.user_id),task=>scheduleTask(env,task),2,account.user_id));
+  if(path==='/api/mail/reprocess'&&method==='POST')return json(await reprocessMail(env,account.user_id,2));
   if(path==='/api/digests'){const prefix='digest:'+account.user_id+':%';const rows=(await env.DB.prepare("SELECT value FROM kv WHERE key LIKE ? AND value!='quiet' ORDER BY key DESC LIMIT 30").bind(prefix).all()).results;return json(rows.flatMap(row=>{try{return [JSON.parse(row.value)]}catch{return []}}));}
   if(path==='/api/outlook/start'&&method==='GET'){
     const requestedEmail=emailOf(url.searchParams.get('email'));
@@ -163,11 +163,11 @@ async function routes(request,env){
   }
   if(path==='/api/outlook/callback'&&method==='GET'){
     await finishOAuth(env,url,account);
-    try{await syncMail(env,(data,source,id)=>createTask(env,data,source,id,account.user_id),account.user_id);}catch(error){await env.DB.prepare('UPDATE outlook_connections SET status=? WHERE user_id=?').bind(String(error.message).slice(0,300),account.user_id).run();}
+    try{await syncMail(env,account.user_id);}catch(error){await env.DB.prepare('UPDATE outlook_connections SET status=? WHERE user_id=?').bind(String(error.message).slice(0,300),account.user_id).run();}
     return Response.redirect(url.origin+'/?view=settings');
   }
   if(path==='/api/outlook/sync'&&method==='POST'){
-    const result=await syncMail(env,(data,source,id)=>createTask(env,data,source,id,account.user_id),account.user_id);
+    const result=await syncMail(env,account.user_id);
     return json(result||{imported:0,pages:0,more:false});
   }
   if(path==='/api/outlook'&&method==='DELETE'){
@@ -196,7 +196,7 @@ export default {
   },
   async email(message,env,ctx){
     if(env.MAIL_INGEST_MODE!=='forwarding')return message.setReject('Email ingestion is disabled');
-    const owner=await ownerUser(env);ctx.waitUntil(ingestForwardedEmail(env,message,(data,source,id)=>createTask(env,data,source,id,owner?.id),owner?.id));
+    const owner=await ownerUser(env);ctx.waitUntil(ingestForwardedEmail(env,message,owner?.id));
   },
   async scheduled(controller,env){
     const now=Date.now();
@@ -210,7 +210,7 @@ export default {
         const connections=(await env.DB.prepare('SELECT user_id,cursor,last_attempt FROM outlook_connections WHERE last_attempt IS NULL OR last_attempt<? OR cursor IS NOT NULL').bind(now-240000).all()).results;
         for(const connection of connections){
           await env.DB.prepare('UPDATE outlook_connections SET last_attempt=? WHERE user_id=?').bind(now,connection.user_id).run();
-          try{await syncMail(env,(data,source,id)=>createTask(env,data,source,id,connection.user_id),connection.user_id);}catch(error){await env.DB.prepare('UPDATE outlook_connections SET status=? WHERE user_id=?').bind(String(error.message).slice(0,300),connection.user_id).run();}
+          try{await syncMail(env,connection.user_id);}catch(error){await env.DB.prepare('UPDATE outlook_connections SET status=? WHERE user_id=?').bind(String(error.message).slice(0,300),connection.user_id).run();}
         }
       }
       await makeDigest(env,Date.now());

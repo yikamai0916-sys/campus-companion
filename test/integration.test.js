@@ -60,18 +60,18 @@ test('forwarded email is reduced to structured metadata without storing its raw 
   assert.equal(saved.category,1);assert.match(saved.sender,/finance@example\.edu/);
   assert.equal(JSON.stringify(saved).includes('Content-Type:'),false);
 });
-test('authenticated iPhone mail handoff imports a message and creates only an explicit assignment task',async()=>{
+test('authenticated iPhone mail handoff stores a suggestion without creating a task',async()=>{
   const env={DB:database(),SCHOOL_EMAIL:'student@university.example',SHORTCUT_INGEST_KEY:'test-shortcut-secret',LOGIN_EMAIL:'owner@example.com'};
   await env.DB.prepare("INSERT INTO users(id,email,password_hash,created) VALUES('owner','owner@example.com','unused',0)").run();
   const origin='https://campus.example',payload={subject:'SOC 210 Assignment 2 deadline',sender:'student@university.example',content:'From: Teacher <teacher@ln.edu.hk>\nPlease submit Assignment 2 before the deadline.'};
   const send=key=>worker.fetch(new Request(origin+'/api/mail/shortcut',{method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify(payload)}),env);
   assert.equal((await send('wrong-secret')).status,401);
   const imported=await send('test-shortcut-secret');assert.equal(imported.status,201);
-  assert.deepEqual(await imported.json(),{ok:true,duplicate:false,category:2,task:true});
+  assert.deepEqual(await imported.json(),{ok:true,duplicate:false,category:2,suggestion:true,task:false});
   assert.equal((await env.DB.prepare('SELECT COUNT(*) n FROM messages').first()).n,1);
-  const task=await env.DB.prepare('SELECT * FROM tasks').first();assert.match(task.title,/Assignment 2/);assert.equal(task.due,null);
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) n FROM tasks').first()).n,0);
   const duplicate=await send('test-shortcut-secret');assert.equal((await duplicate.json()).duplicate,true);
-  assert.equal((await env.DB.prepare('SELECT COUNT(*) n FROM tasks').first()).n,1);
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) n FROM tasks').first()).n,0);
 });
 test('registration, account isolation, recovery, and scoped deletion work together',async()=>{
   const env={DB:database(),OWNER_EMAIL:'owner@example.com'},origin='https://campus.example';
@@ -129,8 +129,10 @@ test('group candidate review and assignee acceptance are separate transitions',a
   const candidateResponse=await call(ownerToken,`groups/${group.id}/candidates`,'POST',{title:'Analyse meeting algorithm',proposedAssigneeId:'member',due:Date.now()+5*86400000,evidence:{title:'Member will analyse the meeting algorithm.'}});assert.equal(candidateResponse.status,201);
   const candidate=await candidateResponse.json();
   await env.DB.prepare("INSERT INTO subscriptions(id,data,created,user_id) VALUES('member-endpoint','{}',0,'member')").run();
-  const confirmedResponse=await call(ownerToken,`task-candidates/${candidate.id}/review`,'POST',{decision:'confirm'});assert.equal(confirmedResponse.status,200);
-  const task=await confirmedResponse.json();assert.equal(task.acceptance_status,'pending');assert.equal(task.user_id,'member');
+  const revisedDue=Date.now()+6*86400000;
+  const confirmedResponse=await call(ownerToken,`task-candidates/${candidate.id}/review`,'POST',{decision:'confirm',changes:{title:'Verify meeting algorithm',notes:'Use boundary cases.',due:revisedDue,evidence:{title:'Reviewer clarified the deliverable.'}}});assert.equal(confirmedResponse.status,200);
+  const task=await confirmedResponse.json();assert.equal(task.acceptance_status,'pending');assert.equal(task.user_id,'member');assert.equal(task.title,'Verify meeting algorithm');assert.equal(task.due,revisedDue);
+  const reviewedCandidate=await env.DB.prepare('SELECT * FROM task_candidates WHERE id=?').bind(candidate.id).first();assert.equal(JSON.parse(reviewedCandidate.evidence).title,'Reviewer clarified the deliverable.');
   assert.equal((await env.DB.prepare('SELECT COUNT(*) n FROM jobs WHERE task_id=?').bind(task.id).first()).n,0);
   assert.equal((await call(memberToken,`tasks/${task.id}`,'PATCH',{version:1,completed:true})).status,409);
   assert.equal((await call(ownerToken,`tasks/${task.id}/assignment`,'POST',{decision:'accept'})).status,404);
@@ -139,6 +141,11 @@ test('group candidate review and assignee acceptance are separate transitions',a
   assert.equal((await call(ownerToken,`task-candidates/${candidate.id}/review`,'POST',{decision:'confirm'})).status,409);
   assert.equal((await env.DB.prepare('SELECT COUNT(*) n FROM tasks WHERE candidate_id=?').bind(candidate.id).first()).n,1);
   const snapshot=await (await call(memberToken,`groups/${group.id}`)).json();assert.equal(snapshot.members.length,2);assert.equal(snapshot.tasks[0].acceptance_status,'accepted');
+
+  const selfCandidate=await (await call(ownerToken,`groups/${group.id}/candidates`,'POST',{title:'Prepare opening slides',proposedAssigneeId:'owner',evidence:{title:'Owner volunteered.'}})).json();
+  const selfTask=await (await call(ownerToken,`task-candidates/${selfCandidate.id}/review`,'POST',{decision:'confirm'})).json();
+  assert.equal(selfTask.acceptance_status,'pending');
+  const selfAccepted=await call(ownerToken,`tasks/${selfTask.id}/assignment`,'POST',{decision:'accept'});assert.equal(selfAccepted.status,200);assert.equal((await selfAccepted.json()).acceptance_status,'accepted');
 });
 
 test('meeting polls treat missing availability as unknown and confirm only full-group proposals',async()=>{

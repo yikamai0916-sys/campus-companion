@@ -48,6 +48,7 @@ export async function confirmMeetingProposal(env,actorId,pollId,start){
   const selected=snapshot.result.proposals.find(proposal=>proposal.start===Number(start));
   if(!selected)throw new CollaborationError('该时间不在当前推荐结果中',409);
   if(!selected.allAvailable)throw new CollaborationError('仍有成员未提交或冲突，请明确调整成员范围后再确认',409);
-  await env.DB.prepare("UPDATE meeting_polls SET status='confirmed',confirmed_start=?,confirmed_end=?,updated=? WHERE id=? AND status='open'").bind(selected.start,selected.end,Date.now(),pollId).run();
+  const changed=await env.DB.prepare("UPDATE meeting_polls SET status='confirmed',confirmed_start=?,confirmed_end=?,updated=? WHERE id=? AND status='open' RETURNING id").bind(selected.start,selected.end,Date.now(),pollId).first();
+  if(!changed)throw new CollaborationError('会议时间已经处理',409);
   return {...selected,status:'confirmed'};
 }

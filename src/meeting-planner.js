@@ -77,7 +77,7 @@ export class MeetingPlanner {
           if(avoidedInterval&&avoidedInterval[0]<end&&avoidedInterval[1]>start)preferencePenalty++;
         }
       }
-      if(availableMemberIds.length)candidates.push({start,end,availableMemberIds,unavailableMemberIds:uniqueMembers.filter(id=>!availableMemberIds.includes(id)),availableCount:availableMemberIds.length,memberCount:uniqueMembers.length,submittedCount:calendars.size,preferencePenalty,allAvailable:availableMemberIds.length===uniqueMembers.length&&calendars.size===uniqueMembers.length});
+      if(availableMemberIds.length){const availableSet=new Set(availableMemberIds);candidates.push({start,end,availableMemberIds,unavailableMemberIds:uniqueMembers.filter(id=>!availableSet.has(id)),availableCount:availableMemberIds.length,memberCount:uniqueMembers.length,submittedCount:calendars.size,preferencePenalty,allAvailable:availableMemberIds.length===uniqueMembers.length&&calendars.size===uniqueMembers.length});}
     }
     candidates.sort((a,b)=>b.availableCount-a.availableCount||a.preferencePenalty-b.preferencePenalty||a.start-b.start);
     const proposals=[];

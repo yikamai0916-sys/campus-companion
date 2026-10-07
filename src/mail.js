@@ -1,5 +1,5 @@
 import { hash, random, seal, unseal } from './security.js';
-import { originalSender, classify, assignmentReminders } from './domain.js';
+import { originalSender, classify } from './domain.js';
 export const getKV=async(env,key)=> (await env.DB.prepare('SELECT value FROM kv WHERE key=?').bind(key).first())?.value;
 export const setKV=(env,key,value)=>env.DB.prepare('INSERT INTO kv(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').bind(key,value).run();
 const scope='offline_access User.Read Mail.Read';
@@ -157,7 +157,7 @@ function readableBody(raw,headers) {
   if(!preferred)return content.slice(0,20000);
   return decodePart(preferred.headers,preferred.raw.split(/\r?\n\r?\n/).slice(1).join('\n\n')).replace(/<br\s*\/?>|<\/p>|<\/div>/gi,'\n').replace(/<[^>]*>/g,' ');
 }
-export async function ingestForwardedEmail(env,message,createTask,userId) {
+export async function ingestForwardedEmail(env,message,userId) {
   if(message.rawSize>10*1024*1024)throw new Error('邮件超过 10 MB，未处理附件内容');
   const raw=await new Response(message.raw).text(),headers=headerBlock(raw),body=readableBody(raw,headers).slice(0,30000);
   const received=Date.now(),subject=decodeMimeWord(headers.subject||'无主题').slice(0,300);
@@ -166,14 +166,10 @@ export async function ingestForwardedEmail(env,message,createTask,userId) {
   if(await env.DB.prepare('SELECT id FROM messages WHERE id=? AND user_id=?').bind(sourceId,userId).first())return;
   const mail={subject,receivedDateTime:new Date(received).toISOString(),sender:{emailAddress:{address:message.from}},from:{emailAddress:{address:message.from}}};
   const a=await analyze(env,mail,body);
-  if(a.assignment){
-    const existing=await env.DB.prepare('SELECT id FROM tasks WHERE source_id=? AND user_id=?').bind(sourceId,userId).first();
-    if(!existing)await createTask({title:a.title,notes:`${a.summary}\n\n${a.action}\n原始发件人：${a.sender}\n${a.due?'请核对自动提取的截止日期。':'截止时间需确认；尚未安排截止提醒。'}`,due:a.due,priority:2,reminders:assignmentReminders},'email',sourceId);
-  }
   await env.DB.prepare('INSERT OR IGNORE INTO messages(id,subject,received,sender,origin,category,summary,action,url,quality,user_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)').bind(sourceId,subject,received,a.sender,a.origin,a.category,a.summary,a.action,'',a.quality,userId).run();
   await setKV(env,'mail_status','转发接收正常');await setKV(env,'mail_last',String(received));
 }
-export async function ingestShortcutEmail(env,data,createTask,userId) {
+export async function ingestShortcutEmail(env,data,userId) {
   const body=String(data.content||'').trim().slice(0,30000);
   if(!body)throw new Error('邮件正文为空，未能导入');
   const subject=String(data.subject||'无主题').trim().slice(0,300)||'无主题';
@@ -185,15 +181,11 @@ export async function ingestShortcutEmail(env,data,createTask,userId) {
   if(await env.DB.prepare('SELECT id FROM messages WHERE id=? AND user_id=?').bind(sourceId,userId).first())return {duplicate:true};
   const mail={subject,receivedDateTime:new Date(received).toISOString(),sender:{emailAddress:{address:outer}},from:{emailAddress:{address:outer}}};
   const a=await analyze(env,mail,body);
-  if(a.assignment){
-    const existing=await env.DB.prepare('SELECT id FROM tasks WHERE source_id=? AND user_id=?').bind(sourceId,userId).first();
-    if(!existing)await createTask({title:a.title,notes:`${a.summary}\n\n${a.action}\n原始发件人：${a.sender}\n${a.due?'请核对自动提取的截止日期。':'截止时间需确认；尚未安排截止提醒。'}`,due:a.due,priority:2,reminders:assignmentReminders},'email',sourceId);
-  }
   await env.DB.prepare('INSERT OR IGNORE INTO messages(id,subject,received,sender,origin,category,summary,action,url,quality,user_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)').bind(sourceId,subject,received,a.sender,a.origin,a.category,a.summary,a.action,'',a.quality,userId).run();
   await setKV(env,'mail_status','iPhone 自动转交正常');await setKV(env,'mail_last',String(received));
-  return {duplicate:false,category:a.category,task:a.assignment};
+  return {duplicate:false,category:a.category,suggestion:a.assignment,task:false};
 }
-export async function syncMail(env,createTask,userId) {
+export async function syncMail(env,userId) {
   const connection=await outlookConnection(env,userId);if(!connection)return {imported:0,pages:0,more:false};
   if(!userId)throw new Error('主账号尚未初始化，请先登录网站');
   const now=Date.now();let cursor=connection.cursor,cutoff=connection.cutoff,imported=0,pages=0;
@@ -217,10 +209,6 @@ export async function syncMail(env,createTask,userId) {
       if(outer.toLowerCase()!==env.SCHOOL_EMAIL.toLowerCase()&&!forwardedTo&&!schoolRecipient)continue;
       if(await env.DB.prepare('SELECT id FROM messages WHERE id=? AND user_id=?').bind(m.id,userId).first())continue;
       const a=await analyze(env,m,body);
-      if(a.assignment){
-        const existing=await env.DB.prepare('SELECT id FROM tasks WHERE source_id=? AND user_id=?').bind(m.id,userId).first();
-        if(!existing)await createTask({title:a.title,notes:`${a.summary}\n\n${a.action}\n原始发件人：${a.sender}\n${m.webLink}\n${a.due?'请核对自动提取的截止日期。':'截止时间需确认；尚未安排截止提醒。'}`,due:a.due,priority:2,reminders:assignmentReminders},'email',m.id);
-      }
       await env.DB.prepare('INSERT OR IGNORE INTO messages(id,subject,received,sender,origin,category,summary,action,url,quality,user_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)').bind(m.id,m.subject||'无主题',Date.parse(m.receivedDateTime),a.sender,a.origin,a.category,a.summary,a.action,m.webLink||'',a.quality,userId).run();
       imported++;
     }
@@ -231,7 +219,7 @@ export async function syncMail(env,createTask,userId) {
   return {imported,pages,more:!!cursor};
 }
 
-export async function reprocessMail(env,createTask,rescheduleTask,max=2,userId) {
+export async function reprocessMail(env,userId,max=2) {
   if(!await outlookConnection(env,userId))throw new Error('尚未连接 Outlook');
   const {results}=await env.DB.prepare("SELECT id FROM messages WHERE user_id=? AND id NOT LIKE 'shortcut:%' AND quality NOT LIKE '%v2%' AND quality NOT LIKE '%v3%' ORDER BY received DESC LIMIT ?").bind(userId,max).all();
   let updated=0;
@@ -241,18 +229,6 @@ export async function reprocessMail(env,createTask,rescheduleTask,max=2,userId) 
     const quality=/v[23]/.test(a.quality)?a.quality:a.quality+' v2';
     await env.DB.prepare('UPDATE messages SET subject=?,sender=?,origin=?,category=?,summary=?,action=?,url=?,quality=? WHERE id=? AND user_id=?').bind(m.subject||'无主题',a.sender,a.origin,a.category,a.summary,a.action,m.webLink||'',quality,row.id,userId).run();
     await env.DB.prepare('DELETE FROM message_localizations WHERE message_id=? AND user_id=?').bind(row.id,userId).run();
-    if(a.assignment){
-      const existing=await env.DB.prepare('SELECT * FROM tasks WHERE source=? AND source_id=? AND user_id=?').bind('email',row.id,userId).first();
-      const notes=`${a.summary}\n\n${a.action}\n原始发件人：${a.sender}\n${m.webLink||''}\n${a.due?'请核对自动提取的截止日期。':'截止时间需确认；尚未安排截止提醒。'}`;
-      if(!existing)await createTask({title:a.title,notes,due:a.due,priority:2,reminders:assignmentReminders},'email',row.id);
-      else if(a.due&&existing.due===null&&existing.updated===existing.created){
-        const task=await env.DB.prepare('UPDATE tasks SET due=?,notes=?,version=version+1,updated=? WHERE id=? AND due IS NULL AND updated=created RETURNING *').bind(a.due,notes,Date.now(),existing.id).first();
-        if(task){
-          await env.DB.prepare("UPDATE jobs SET state='cancelled' WHERE task_id=? AND version<? AND state IN ('pending','sending')").bind(task.id,task.version).run();
-          await rescheduleTask({...task,reminders:JSON.parse(task.reminders)});
-        }
-      }
-    }
     updated++;
   }
   if(!results.length){
@@ -261,13 +237,6 @@ export async function reprocessMail(env,createTask,rescheduleTask,max=2,userId) 
       const m=await graph(env,userId,'me/messages/'+encodeURIComponent(row.id)+'?$select=id,sender,from,body');
       const sender=originalSender(plain(m),m.sender?.emailAddress?.address||m.from?.emailAddress?.address||'',env.SCHOOL_EMAIL,[env.LOGIN_EMAIL,env.OWNER_EMAIL]);
       await env.DB.prepare('UPDATE messages SET sender=?,quality=? WHERE id=? AND user_id=?').bind(sender,row.quality.replace('v2','v3'),row.id,userId).run();
-      if(sender!==row.sender){
-        const task=await env.DB.prepare('UPDATE tasks SET notes=REPLACE(notes,?,?),version=version+1,updated=? WHERE source=? AND source_id=? AND user_id=? AND notes LIKE ? RETURNING *').bind('原始发件人：'+row.sender,'原始发件人：'+sender,Date.now(),'email',row.id,userId,'%原始发件人：'+row.sender+'%').first();
-        if(task){
-          await env.DB.prepare("UPDATE jobs SET state='cancelled' WHERE task_id=? AND version<? AND state IN ('pending','sending')").bind(task.id,task.version).run();
-          await rescheduleTask({...task,reminders:JSON.parse(task.reminders)});
-        }
-      }
       updated++;
     }
   }

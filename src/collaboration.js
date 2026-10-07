@@ -99,29 +99,29 @@ export async function createTaskCandidate(env,actorId,groupId,input){
   return row;
 }
 
-export async function reviewTaskCandidate(env,actorId,candidateId,decision){
-  const row=await env.DB.prepare('SELECT c.*,g.owner_user_id FROM task_candidates c JOIN groups g ON g.id=c.group_id WHERE c.id=?').bind(candidateId).first();
+export async function reviewTaskCandidate(env,actorId,candidateId,review){
+  const row=await env.DB.prepare('SELECT c.*,g.owner_user_id FROM task_candidates c JOIN groups g ON g.id=c.group_id WHERE c.id=? AND g.owner_user_id=?').bind(candidateId,actorId).first();
   if(!row)throw new CollaborationError('候选任务不存在',404);
-  if(row.owner_user_id!==actorId)throw new CollaborationError('只有小组创建者可以确认候选任务',403);
-  const candidate=new TaskCandidate({...row,proposedAssigneeId:row.proposed_assignee_id,evidence:JSON.parse(row.evidence)});
+  const changes=review?.changes&&typeof review.changes==='object'?review.changes:{};
+  const candidate=new TaskCandidate({...row,...changes,proposedAssigneeId:changes.proposedAssigneeId===undefined?row.proposed_assignee_id:changes.proposedAssigneeId,evidence:changes.evidence===undefined?JSON.parse(row.evidence):changes.evidence});
   const now=Date.now();
-  if(decision==='reject'){
+  if(review?.decision==='reject'){
     candidate.reject();
-    await env.DB.prepare("UPDATE task_candidates SET status='rejected',updated=? WHERE id=? AND status='pending'").bind(now,candidateId).run();
+    const rejected=await env.DB.prepare("UPDATE task_candidates SET status='rejected',updated=? WHERE id=? AND status='pending' RETURNING id").bind(now,candidateId).first();
+    if(!rejected)throw new CollaborationError('候选任务已经处理',409);
     return {candidateId,status:'rejected'};
   }
-  if(decision!=='confirm')throw new CollaborationError('审核操作无效');
+  if(review?.decision!=='confirm')throw new CollaborationError('审核操作无效');
   candidate.confirm();
   const assigneeId=candidate.proposedAssigneeId||actorId;
   if(!await memberExists(env,row.group_id,assigneeId))throw new CollaborationError('负责人不是小组成员');
-  const acceptanceStatus=assigneeId===actorId?'accepted':'pending';
+  const acceptanceStatus='pending';
   const valid=validateTask({title:candidate.title,notes:candidate.notes,due:candidate.due,priority:2,reminders:assignmentReminders});
   const task={...valid,id:crypto.randomUUID(),version:1,source:'candidate',source_id:candidateId,created:now,updated:now,user_id:assigneeId,group_id:row.group_id,assigned_by:actorId,acceptance_status:acceptanceStatus,candidate_id:candidateId};
-  await env.DB.batch([
-    env.DB.prepare('INSERT INTO tasks(id,title,notes,due,priority,completed,source,source_id,reminders,version,created,updated,user_id,group_id,assigned_by,acceptance_status,candidate_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(task.id,task.title,task.notes,task.due,task.priority,task.completed,task.source,task.source_id,JSON.stringify(task.reminders),task.version,now,now,task.user_id,task.group_id,task.assigned_by,task.acceptance_status,task.candidate_id),
-    env.DB.prepare("UPDATE task_candidates SET status='confirmed',updated=? WHERE id=? AND status='pending'").bind(now,candidateId)
-  ]);
-  if(acceptanceStatus==='accepted')await scheduleTask(env,task);
+  const claimed=await env.DB.prepare("UPDATE task_candidates SET title=?,notes=?,due=?,proposed_assignee_id=?,evidence=?,status='confirmed',updated=? WHERE id=? AND status='pending' RETURNING id").bind(candidate.title,candidate.notes,candidate.due,assigneeId,JSON.stringify(candidate.evidence),now,candidateId).first();
+  if(!claimed)throw new CollaborationError('候选任务已经处理',409);
+  try{await env.DB.prepare('INSERT INTO tasks(id,title,notes,due,priority,completed,source,source_id,reminders,version,created,updated,user_id,group_id,assigned_by,acceptance_status,candidate_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(task.id,task.title,task.notes,task.due,task.priority,task.completed,task.source,task.source_id,JSON.stringify(task.reminders),task.version,now,now,task.user_id,task.group_id,task.assigned_by,task.acceptance_status,task.candidate_id).run();}
+  catch(error){await env.DB.prepare("UPDATE task_candidates SET status='pending',updated=? WHERE id=? AND status='confirmed'").bind(Date.now(),candidateId).run();throw error;}
   return {...task,reminders:task.reminders};
 }
 
@@ -131,8 +131,9 @@ export async function respondToAssignment(env,actorId,taskId,decision){
   if(task.acceptance_status!=='pending')throw new CollaborationError('该分工已经处理',409);
   if(!['accept','reject'].includes(decision))throw new CollaborationError('分工操作无效');
   const next=decision==='accept'?'accepted':'declined',now=Date.now();
-  await env.DB.prepare('UPDATE tasks SET acceptance_status=?,version=version+1,updated=? WHERE id=? AND user_id=? AND acceptance_status=?').bind(next,now,taskId,actorId,'pending').run();
-  const updated={...task,acceptance_status:next,version:task.version+1,updated:now,reminders:JSON.parse(task.reminders)};
+  const changed=await env.DB.prepare('UPDATE tasks SET acceptance_status=?,version=version+1,updated=? WHERE id=? AND user_id=? AND acceptance_status=? RETURNING *').bind(next,now,taskId,actorId,'pending').first();
+  if(!changed)throw new CollaborationError('该分工已经处理',409);
+  const updated={...changed,reminders:JSON.parse(changed.reminders)};
   if(next==='accepted')await scheduleTask(env,updated);
   else await env.DB.prepare("UPDATE jobs SET state='cancelled' WHERE task_id=? AND user_id=? AND state IN ('pending','sending')").bind(taskId,actorId).run();
   return updated;
