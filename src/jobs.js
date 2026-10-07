@@ -39,12 +39,12 @@ export async function deliver(env,now=Date.now()) {
       const payload=JSON.parse(job.payload);
       if(job.channel==='email'){const user=await env.DB.prepare('SELECT email FROM users WHERE id=?').bind(job.user_id).first();if(!user)throw new Error('提醒账号不存在');await sendEmail(env,payload.title,payload.body+'\n\n打开清单：'+env.APP_ORIGIN+(payload.url||'/'),user.email,job.user_id);}
       else {
-        const id=job.channel.slice(5),sub=await env.DB.prepare('SELECT data FROM subscriptions WHERE id=?').bind(id).first();
+        const id=job.channel.slice(5),sub=await env.DB.prepare('SELECT data FROM subscriptions WHERE id=? AND user_id=?').bind(id,job.user_id).first();
         if(!sub){await env.DB.prepare("UPDATE jobs SET state='cancelled' WHERE id=?").bind(job.id).run();continue;}
         if(!env.VAPID_PUBLIC_KEY||!env.VAPID_PRIVATE_KEY)throw new Error('系统通知尚未配置');
         const details=webpush.generateRequestDetails(JSON.parse(sub.data),JSON.stringify({...payload,title:payload.title.slice(0,100),body:payload.body.slice(0,400),tag:job.task_id||job.id}),{TTL:300,vapidDetails:{subject:'mailto:'+env.OWNER_EMAIL,publicKey:env.VAPID_PUBLIC_KEY,privateKey:env.VAPID_PRIVATE_KEY}});
         const res=await fetch(details.endpoint,{method:details.method,headers:details.headers,body:details.body,signal:AbortSignal.timeout(15000)});
-        if(res.status===404||res.status===410){await env.DB.prepare('DELETE FROM subscriptions WHERE id=?').bind(id).run();throw new Error('通知订阅已过期，请在手机重新启用通知');}
+        if(res.status===404||res.status===410){await env.DB.prepare('DELETE FROM subscriptions WHERE id=? AND user_id=?').bind(id,job.user_id).run();throw new Error('通知订阅已过期，请在手机重新启用通知');}
         if(!res.ok)throw new Error('推送服务暂不可用（'+res.status+'）');
       }
       await env.DB.prepare("UPDATE jobs SET state='sent',error=NULL WHERE id=?").bind(job.id).run();

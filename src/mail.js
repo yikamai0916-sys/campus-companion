@@ -2,7 +2,7 @@ import { hash, random, seal, unseal } from './security.js';
 import { originalSender, classify, assignmentReminders } from './domain.js';
 export const getKV=async(env,key)=> (await env.DB.prepare('SELECT value FROM kv WHERE key=?').bind(key).first())?.value;
 export const setKV=(env,key,value)=>env.DB.prepare('INSERT INTO kv(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').bind(key,value).run();
-const scope='offline_access User.Read Mail.Read Mail.Send';
+const scope='offline_access User.Read Mail.Read';
 const connectionFor=(env,userId)=>env.DB.prepare('SELECT * FROM outlook_connections WHERE user_id=?').bind(userId).first();
 async function legacyConnection(env,userId){
   const user=await env.DB.prepare('SELECT email FROM users WHERE id=?').bind(userId).first();
@@ -359,7 +359,7 @@ export async function localizeMessages(env,userId,requestedLocale,messages){
   const missing=messages.filter(m=>!cached.has(m.id));
   if(!missing.length)return messages.map(m=>cached.get(m.id));
   const save=async rows=>{for(const row of rows){
-    await env.DB.prepare('INSERT INTO message_localizations(message_id,user_id,locale,subject,sender,origin,summary,action,quality,cache_version,updated) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(message_id,locale) DO UPDATE SET subject=excluded.subject,sender=excluded.sender,origin=excluded.origin,summary=excluded.summary,action=excluded.action,quality=excluded.quality,cache_version=excluded.cache_version,updated=excluded.updated').bind(row.id,userId,locale,row.subject,row.sender,row.origin,row.summary,row.action,row.quality,localizationCacheVersion,Date.now()).run();cached.set(row.id,row);
+    await env.DB.prepare('INSERT INTO message_localizations(message_id,user_id,locale,subject,sender,origin,summary,action,quality,cache_version,updated) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,message_id,locale) DO UPDATE SET subject=excluded.subject,sender=excluded.sender,origin=excluded.origin,summary=excluded.summary,action=excluded.action,quality=excluded.quality,cache_version=excluded.cache_version,updated=excluded.updated').bind(row.id,userId,locale,row.subject,row.sender,row.origin,row.summary,row.action,row.quality,localizationCacheVersion,Date.now()).run();cached.set(row.id,row);
   }};
   const batches=Array.from({length:Math.ceil(missing.length/5)},(_,i)=>missing.slice(i*5,i*5+5));
   // Run independent small translation batches together. This keeps the first

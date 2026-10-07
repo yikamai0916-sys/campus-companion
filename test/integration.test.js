@@ -7,7 +7,7 @@ import worker from '../src/worker.js';
 import { hash,b64,random,seal,unseal,makePasswordHash } from '../src/security.js';
 import { deliver } from '../src/jobs.js';
 function database(){
-  const sqlite=new DatabaseSync(':memory:');for(const name of ['0001.sql','0002_accounts.sql','0003_profile.sql','0004_message_localizations.sql','0005_localization_version.sql','0006_outlook_connections.sql','0007_mail_preferences.sql'])sqlite.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));
+  const sqlite=new DatabaseSync(':memory:');for(const name of ['0001.sql','0002_accounts.sql','0003_profile.sql','0004_message_localizations.sql','0005_localization_version.sql','0006_outlook_connections.sql','0007_mail_preferences.sql','0008_account_scoped_records.sql'])sqlite.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));
   const db={prepare(sql){let args=[];const obj={bind(...a){args=a;return obj;},async first(){return sqlite.prepare(sql).get(...args)||null;},async all(){return {results:sqlite.prepare(sql).all(...args)};},async run(){const r=sqlite.prepare(sql).run(...args);return {meta:{changes:r.changes}};}};return obj;},async batch(stmts){sqlite.exec('BEGIN');try{const r=[];for(const s of stmts)r.push(await s.run());sqlite.exec('COMMIT');return r;}catch(e){sqlite.exec('ROLLBACK');throw e;}}};return db;
 }
 test('authenticated CRUD persists and completing cancels pending reminders',async()=>{
@@ -93,6 +93,29 @@ test('registration, account isolation, recovery, and scoped deletion work togeth
   assert.equal((await call('login',{email:'one@example.com',password:'replacement-2026'})).status,200);
 });
 
+test('provider identifiers and localization caches are unique within an account',async()=>{
+  const env={DB:database()},reminders='{"offsets":[],"exact":[],"repeat":0,"maxCount":0,"start":"08:00","end":"23:00","days":[0],"push":false,"email":false}';
+  await env.DB.prepare("INSERT INTO users(id,email,password_hash,created) VALUES('one','one@example.com','unused',0),('two','two@example.com','unused',0)").run();
+  await env.DB.prepare("INSERT INTO tasks(id,title,source,source_id,reminders,created,updated,user_id) VALUES('t1','First','email','provider-1',?,0,0,'one'),('t2','Second','email','provider-1',?,0,0,'two')").bind(reminders,reminders).run();
+  await env.DB.prepare("INSERT INTO messages(id,subject,received,sender,origin,category,summary,action,url,quality,user_id) VALUES('provider-1','First',0,'sender','origin',2,'summary','action','','test','one'),('provider-1','Second',0,'sender','origin',2,'summary','action','','test','two')").run();
+  const localization="INSERT INTO message_localizations(message_id,user_id,locale,subject,sender,origin,summary,action,quality,updated) VALUES('provider-1',?,'en',?,'sender','origin','summary','action','test',0)";
+  await env.DB.prepare(localization).bind('one','First').run();
+  await env.DB.prepare(localization).bind('two','Second').run();
+  assert.equal((await env.DB.prepare("SELECT COUNT(*) n FROM tasks WHERE source_id='provider-1'").first()).n,2);
+  assert.equal((await env.DB.prepare("SELECT COUNT(*) n FROM messages WHERE id='provider-1'").first()).n,2);
+  assert.equal((await env.DB.prepare("SELECT subject FROM message_localizations WHERE user_id='one' AND message_id='provider-1'").first()).subject,'First');
+  assert.equal((await env.DB.prepare("SELECT subject FROM message_localizations WHERE user_id='two' AND message_id='provider-1'").first()).subject,'Second');
+});
+
+test('a reassigned push endpoint cannot receive an older account job',async()=>{
+  const env={DB:database()};
+  await env.DB.prepare("INSERT INTO subscriptions(id,data,created,user_id) VALUES('endpoint','{}',0,'new-owner')").run();
+  await env.DB.prepare("INSERT INTO jobs(id,at,channel,payload,state,user_id) VALUES('private-job',0,'push:endpoint','{}','pending','old-owner')").run();
+  await deliver(env,1);
+  assert.equal((await env.DB.prepare("SELECT state FROM jobs WHERE id='private-job'").first()).state,'cancelled');
+  assert.equal((await env.DB.prepare("SELECT user_id FROM subscriptions WHERE id='endpoint'").first()).user_id,'new-owner');
+});
+
 test('unauthenticated shared view URLs redirect to the public home page',async()=>{
   const env={DB:database(),ASSETS:{fetch:async()=>new Response('public app')}};
   const response=await worker.fetch(new Request('https://campus.example/?view=settings',{redirect:'manual'}),env);
@@ -111,6 +134,8 @@ test('each signed-in account can start its own Outlook connection with an email 
   assert.equal(authorization.hostname,'login.microsoftonline.com');
   assert.equal(authorization.searchParams.get('login_hint'),'personal@outlook.com');
   assert.equal(authorization.searchParams.get('prompt'),'select_account');
+  assert.match(authorization.searchParams.get('scope'),/\bMail\.Read\b/);
+  assert.doesNotMatch(authorization.searchParams.get('scope'),/\bMail\.Send\b/);
   const state=authorization.searchParams.get('state');
   assert.equal((await env.DB.prepare('SELECT user_id FROM oauth WHERE state=?').bind(state).first()).user_id,'second');
 });

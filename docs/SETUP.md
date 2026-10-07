@@ -45,7 +45,7 @@ Create a Web app registration in Microsoft Entra. Its redirect URI must exactly 
 https://YOUR_WORKER_HOST/api/outlook/callback
 ```
 
-Add delegated Microsoft Graph permissions `User.Read`, `Mail.Read`, and `Mail.Send`. Store `MS_CLIENT_SECRET` only as a Cloudflare secret. Add the client ID as the non-secret `MS_CLIENT_ID` variable. The website encrypts refresh tokens before saving them in D1, using `TOKEN_KEY`.
+Add delegated Microsoft Graph permissions `User.Read` and `Mail.Read`. The connector is read-only and must not request `Mail.Send`. Store `MS_CLIENT_SECRET` only as a Cloudflare secret. Add the client ID as the non-secret `MS_CLIENT_ID` variable. The website encrypts refresh tokens before saving them in D1, using `TOKEN_KEY`.
 
 ## iPhone Shortcut ingestion
 
