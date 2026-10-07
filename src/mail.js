@@ -64,9 +64,6 @@ export async function graph(env,userId,path,options={}) {
   if(!response.ok)throw new Error('Outlook 请求失败（'+response.status+'），稍后重试或重新连接');
   return response.status===202||response.status===204?null:response.json();
 }
-export async function sendEmail(env,subject,body,recipient,userId) {
-  await graph(env,userId,'me/sendMail',{method:'POST',body:JSON.stringify({message:{subject,body:{contentType:'Text',content:body},toRecipients:[{emailAddress:{address:recipient}}]},saveToSentItems:true})});
-}
 export const plain = m=>{
   const raw=m.body?.content||m.bodyPreview||'';
   if(m.body?.contentType?.toLowerCase()==='text')return raw;

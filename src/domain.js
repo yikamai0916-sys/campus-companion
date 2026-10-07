@@ -1,4 +1,4 @@
-export const defaults = { offsets: [4320,1440,120,30], exact: [], repeat: 1440, maxCount: 0, start:'08:00', end:'23:00', days:[0,1,2,3,4,5,6], push:true, email:true };
+export const defaults = { offsets: [4320,1440,120,30], exact: [], repeat: 1440, maxCount: 0, start:'08:00', end:'23:00', days:[0,1,2,3,4,5,6], push:true, email:false };
 export const assignmentReminders = {...defaults,start:'00:00',end:'00:00'};
 const fail = message => { throw new Error(message); };
 export function validateTask(input, previous = {}) {
@@ -14,6 +14,9 @@ export function validateTask(input, previous = {}) {
   if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(r.start)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(r.end)) fail('提醒时段无效');
   if(!Array.isArray(r.days)||!r.days.length||r.days.some(n=>!Number.isInteger(n)||n<0||n>6)) fail('请选择提醒星期');
   if(typeof r.push!=='boolean'||typeof r.email!=='boolean') fail('提醒渠道无效');
+  // Outlook is a read-only connector. Email delivery stays disabled until a
+  // separate outbound provider is introduced and reviewed.
+  r.email=false;
   const priority=Number(t.priority??2); if(![1,2,3].includes(priority)) fail('重要程度无效');
   return {title:t.title.trim(),notes:String(t.notes??'').slice(0,5000),due,priority,completed:t.completed?1:0,reminders:r};
 }

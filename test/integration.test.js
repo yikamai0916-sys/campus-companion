@@ -7,13 +7,14 @@ import worker from '../src/worker.js';
 import { hash,b64,random,seal,unseal,makePasswordHash } from '../src/security.js';
 import { deliver } from '../src/jobs.js';
 function database(){
-  const sqlite=new DatabaseSync(':memory:');for(const name of ['0001.sql','0002_accounts.sql','0003_profile.sql','0004_message_localizations.sql','0005_localization_version.sql','0006_outlook_connections.sql','0007_mail_preferences.sql','0008_account_scoped_records.sql'])sqlite.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));
+  const sqlite=new DatabaseSync(':memory:');for(const name of ['0001.sql','0002_accounts.sql','0003_profile.sql','0004_message_localizations.sql','0005_localization_version.sql','0006_outlook_connections.sql','0007_mail_preferences.sql','0008_account_scoped_records.sql','0009_collaboration.sql'])sqlite.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));
   const db={prepare(sql){let args=[];const obj={bind(...a){args=a;return obj;},async first(){return sqlite.prepare(sql).get(...args)||null;},async all(){return {results:sqlite.prepare(sql).all(...args)};},async run(){const r=sqlite.prepare(sql).run(...args);return {meta:{changes:r.changes}};}};return obj;},async batch(stmts){sqlite.exec('BEGIN');try{const r=[];for(const s of stmts)r.push(await s.run());sqlite.exec('COMMIT');return r;}catch(e){sqlite.exec('ROLLBACK');throw e;}}};return db;
 }
 test('authenticated CRUD persists and completing cancels pending reminders',async()=>{
   const env={DB:database(),OWNER_EMAIL:'test@example.com'},origin='https://campus.example',token=random();
   await env.DB.prepare("INSERT INTO users(id,email,password_hash,created) VALUES('u1','test@example.com','unused',0)").run();
   await env.DB.prepare('INSERT INTO sessions(id,expires,user_id) VALUES(?,?,?)').bind(await hash(token),Date.now()+3600000,'u1').run();
+  await env.DB.prepare("INSERT INTO subscriptions(id,data,created,user_id) VALUES('u1-endpoint','{}',0,'u1')").run();
   const req=(path,method='GET',data)=>worker.fetch(new Request(origin+'/api/'+path,{method,headers:{Cookie:'campus_session='+token,Origin:origin,'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined}),env);
   assert.equal((await worker.fetch(new Request(origin+'/api/tasks'),env)).status,401);
   const created=await req('tasks','POST',{title:'Test assignment',due:Date.now()+5*86400000});assert.equal(created.status,201);
@@ -114,6 +115,30 @@ test('a reassigned push endpoint cannot receive an older account job',async()=>{
   await deliver(env,1);
   assert.equal((await env.DB.prepare("SELECT state FROM jobs WHERE id='private-job'").first()).state,'cancelled');
   assert.equal((await env.DB.prepare("SELECT user_id FROM subscriptions WHERE id='endpoint'").first()).user_id,'new-owner');
+});
+
+test('group candidate review and assignee acceptance are separate transitions',async()=>{
+  const env={DB:database()},origin='https://campus.example',ownerToken=random(),memberToken=random(),outsiderToken=random();
+  await env.DB.prepare("INSERT INTO users(id,email,password_hash,created) VALUES('owner','owner@example.com','unused',0),('member','member@example.com','unused',0),('outsider','outsider@example.com','unused',0)").run();
+  await env.DB.prepare('INSERT INTO sessions(id,expires,user_id) VALUES(?,?,?),(?,?,?),(?,?,?)').bind(await hash(ownerToken),Date.now()+3600000,'owner',await hash(memberToken),Date.now()+3600000,'member',await hash(outsiderToken),Date.now()+3600000,'outsider').run();
+  const call=(token,path,method='GET',data)=>worker.fetch(new Request(origin+'/api/'+path,{method,headers:{Cookie:'campus_session='+token,Origin:origin,'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined}),env);
+  const groupResponse=await call(ownerToken,'groups','POST',{name:'CDS2003 Group Project'});assert.equal(groupResponse.status,201);
+  const group=await groupResponse.json();
+  assert.equal((await call(ownerToken,`groups/${group.id}/members`,'POST',{email:'member@example.com'})).status,201);
+  assert.equal((await call(outsiderToken,`groups/${group.id}`)).status,404);
+  const candidateResponse=await call(ownerToken,`groups/${group.id}/candidates`,'POST',{title:'Analyse meeting algorithm',proposedAssigneeId:'member',due:Date.now()+5*86400000,evidence:{title:'Member will analyse the meeting algorithm.'}});assert.equal(candidateResponse.status,201);
+  const candidate=await candidateResponse.json();
+  await env.DB.prepare("INSERT INTO subscriptions(id,data,created,user_id) VALUES('member-endpoint','{}',0,'member')").run();
+  const confirmedResponse=await call(ownerToken,`task-candidates/${candidate.id}/review`,'POST',{decision:'confirm'});assert.equal(confirmedResponse.status,200);
+  const task=await confirmedResponse.json();assert.equal(task.acceptance_status,'pending');assert.equal(task.user_id,'member');
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) n FROM jobs WHERE task_id=?').bind(task.id).first()).n,0);
+  assert.equal((await call(memberToken,`tasks/${task.id}`,'PATCH',{version:1,completed:true})).status,409);
+  assert.equal((await call(ownerToken,`tasks/${task.id}/assignment`,'POST',{decision:'accept'})).status,404);
+  const accepted=await call(memberToken,`tasks/${task.id}/assignment`,'POST',{decision:'accept'});assert.equal(accepted.status,200);assert.equal((await accepted.json()).acceptance_status,'accepted');
+  assert.ok((await env.DB.prepare('SELECT COUNT(*) n FROM jobs WHERE task_id=?').bind(task.id).first()).n>0);
+  assert.equal((await call(ownerToken,`task-candidates/${candidate.id}/review`,'POST',{decision:'confirm'})).status,409);
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) n FROM tasks WHERE candidate_id=?').bind(candidate.id).first()).n,1);
+  const snapshot=await (await call(memberToken,`groups/${group.id}`)).json();assert.equal(snapshot.members.length,2);assert.equal(snapshot.tasks[0].acceptance_status,'accepted');
 });
 
 test('unauthenticated shared view URLs redirect to the public home page',async()=>{

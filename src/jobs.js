@@ -1,21 +1,20 @@
 import webpush from 'web-push';
 import { initialTimes,nextAllowed,allowed } from './domain.js';
-import { getKV,setKV,sendEmail,outlookConnection } from './mail.js';
+import { getKV,setKV,outlookConnection } from './mail.js';
 const time=n=>new Date(n).toLocaleString('zh-CN',{timeZone:'Asia/Hong_Kong',hour12:false});
 export async function enqueue(env,key,task,at,payload,reminders,userId=task?.user_id) {
   const channels=[];
-  if(reminders.email)channels.push('email');
   if(reminders.push){const {results}=await env.DB.prepare('SELECT id FROM subscriptions WHERE user_id=?').bind(userId).all();channels.push(...results.map(s=>'push:'+s.id));}
   if(!channels.length)return;
   await env.DB.batch(channels.map(channel=>env.DB.prepare('INSERT OR IGNORE INTO jobs(id,task_id,version,at,channel,payload,user_id) VALUES(?,?,?,?,?,?,?)').bind(key+':'+channel,task?.id??null,task?.version??null,at,channel,JSON.stringify(payload),userId)));
 }
 const taskPayload=t=>({title:'待办提醒：'+t.title,body:(t.due?'截止：'+time(t.due):'自定义提醒')+'。完成后请在清单打勾，后续提醒会停止。',url:'/?task='+encodeURIComponent(t.id)});
 export async function scheduleTask(env,task,now=Date.now()) {
-  if(task.completed)return;
+  if(task.completed||task.acceptance_status&&task.acceptance_status!=='accepted')return;
   for(const at of initialTimes(task,now))await enqueue(env,`task:${task.id}:v${task.version}:${at}`,task,at,taskPayload(task),task.reminders);
 }
 export async function repeatTasks(env,now) {
-  const {results}=await env.DB.prepare('SELECT * FROM tasks WHERE completed=0').all();
+  const {results}=await env.DB.prepare("SELECT * FROM tasks WHERE completed=0 AND acceptance_status='accepted'").all();
   for(const row of results){
     const t={...row,reminders:JSON.parse(row.reminders)},r=t.reminders;
     if(r.maxCount){const sent=await env.DB.prepare("SELECT COUNT(*) AS n FROM jobs WHERE task_id=? AND version=? AND state IN ('sent','pending','sending')").bind(t.id,t.version).first();if(Number(sent?.n||0)>=r.maxCount)continue;}
@@ -37,8 +36,7 @@ export async function deliver(env,now=Date.now()) {
     try {
       if(job.task_id){const t=await env.DB.prepare('SELECT completed,version,reminders FROM tasks WHERE id=? AND user_id=?').bind(job.task_id,job.user_id).first();if(!t||t.completed||t.version!==job.version){await env.DB.prepare("UPDATE jobs SET state='cancelled' WHERE id=?").bind(job.id).run();continue;}const r=JSON.parse(t.reminders);if(!allowed(now,r)){await env.DB.prepare("UPDATE jobs SET state='pending',at=? WHERE id=?").bind(nextAllowed(now,r),job.id).run();continue;}}
       const payload=JSON.parse(job.payload);
-      if(job.channel==='email'){const user=await env.DB.prepare('SELECT email FROM users WHERE id=?').bind(job.user_id).first();if(!user)throw new Error('提醒账号不存在');await sendEmail(env,payload.title,payload.body+'\n\n打开清单：'+env.APP_ORIGIN+(payload.url||'/'),user.email,job.user_id);}
-      else {
+      if(job.channel.startsWith('push:')) {
         const id=job.channel.slice(5),sub=await env.DB.prepare('SELECT data FROM subscriptions WHERE id=? AND user_id=?').bind(id,job.user_id).first();
         if(!sub){await env.DB.prepare("UPDATE jobs SET state='cancelled' WHERE id=?").bind(job.id).run();continue;}
         if(!env.VAPID_PUBLIC_KEY||!env.VAPID_PRIVATE_KEY)throw new Error('系统通知尚未配置');
@@ -46,7 +44,7 @@ export async function deliver(env,now=Date.now()) {
         const res=await fetch(details.endpoint,{method:details.method,headers:details.headers,body:details.body,signal:AbortSignal.timeout(15000)});
         if(res.status===404||res.status===410){await env.DB.prepare('DELETE FROM subscriptions WHERE id=? AND user_id=?').bind(id,job.user_id).run();throw new Error('通知订阅已过期，请在手机重新启用通知');}
         if(!res.ok)throw new Error('推送服务暂不可用（'+res.status+'）');
-      }
+      } else {await env.DB.prepare("UPDATE jobs SET state='cancelled',error='不支持的提醒渠道' WHERE id=?").bind(job.id).run();continue;}
       await env.DB.prepare("UPDATE jobs SET state='sent',error=NULL WHERE id=?").bind(job.id).run();
     } catch(error){
       await env.DB.prepare('UPDATE jobs SET state=?,at=?,error=? WHERE id=?').bind(job.attempts>=6?'failed':'pending',now+Math.min(3600000,60000*2**job.attempts),String(error.message).slice(0,300),job.id).run();

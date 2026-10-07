@@ -2,11 +2,12 @@ import { validateTask } from './domain.js';
 import { random,hash,verifyPassword,makePasswordHash,makeAnswerHash,verifyAnswer } from './security.js';
 import { getKV,setKV,startOAuth,finishOAuth,syncMail,reprocessMail,ingestForwardedEmail,ingestShortcutEmail,localizeMessages,outlookConnection } from './mail.js';
 import { scheduleTask,repeatTasks,deliver,makeDigest,enqueue } from './jobs.js';
+import { addGroupMember,createGroup,createTaskCandidate,groupSnapshot,listGroups,respondToAssignment,reviewTaskCandidate } from './collaboration.js';
 const json=(data,status=200)=>Response.json(data,{status});
 async function body(request){if(Number(request.headers.get('content-length'))>7*1024*1024)throw new Error('请求过大');const text=await request.text();if(text.length>7*1024*1024)throw new Error('请求过大');return JSON.parse(text);}
 const emailOf=value=>String(value||'').trim().toLowerCase();
 const validEmail=value=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)&&value.length<=254;
-const defaultReminder={offsets:[4320,1440,120,30],repeat:1440,maxCount:0,start:'08:00',end:'23:00',days:[1,2,3,4,5,6,0],push:true,email:true};
+const defaultReminder={offsets:[4320,1440,120,30],repeat:1440,maxCount:0,start:'08:00',end:'23:00',days:[1,2,3,4,5,6,0],push:true,email:false};
 const parseReminder=value=>{try{return {...defaultReminder,...JSON.parse(value||'{}')}}catch{return defaultReminder}};
 const defaultMailPreferences={focusTerms:[],daily:{enabled:true,time:'20:00'},late:{enabled:true,time:'00:00'}};
 const validTime=value=>/^([01]\d|2[0-3]):[0-5]\d$/.test(String(value||''));
@@ -103,6 +104,18 @@ async function routes(request,env){
     return json({ok:true,nickname,avatar,linkedEmail,locale,reminders,mailPreferences});
   }
   const isOwner=account.email===emailOf(env.LOGIN_EMAIL);
+  if(path==='/api/groups'&&method==='GET')return json(await listGroups(env,account.user_id));
+  if(path==='/api/groups'&&method==='POST')return json(await createGroup(env,account.user_id,await body(request)),201);
+  const groupId=path.match(/^\/api\/groups\/([\w-]+)$/)?.[1];
+  if(groupId&&method==='GET')return json(await groupSnapshot(env,account.user_id,groupId));
+  const groupMembersId=path.match(/^\/api\/groups\/([\w-]+)\/members$/)?.[1];
+  if(groupMembersId&&method==='POST')return json(await addGroupMember(env,account.user_id,groupMembersId,(await body(request)).email),201);
+  const groupCandidatesId=path.match(/^\/api\/groups\/([\w-]+)\/candidates$/)?.[1];
+  if(groupCandidatesId&&method==='POST')return json(await createTaskCandidate(env,account.user_id,groupCandidatesId,await body(request)),201);
+  const candidateId=path.match(/^\/api\/task-candidates\/([\w-]+)\/review$/)?.[1];
+  if(candidateId&&method==='POST')return json(await reviewTaskCandidate(env,account.user_id,candidateId,(await body(request)).decision));
+  const assignmentTaskId=path.match(/^\/api\/tasks\/([\w-]+)\/assignment$/)?.[1];
+  if(assignmentTaskId&&method==='POST')return json(await respondToAssignment(env,account.user_id,assignmentTaskId,(await body(request)).decision));
   if(path==='/api/status'){
     const profile=await env.DB.prepare('SELECT nickname,avatar,linked_email,locale,reminder_defaults FROM users WHERE id=?').bind(account.user_id).first();
     const outlook=await outlookConnection(env,account.user_id);
@@ -113,6 +126,8 @@ async function routes(request,env){
   const taskId=path.match(/^\/api\/tasks\/([\w-]+)$/)?.[1];
   if(taskId&&method==='PATCH'){
     const old=await env.DB.prepare('SELECT * FROM tasks WHERE id=? AND user_id=?').bind(taskId,account.user_id).first();if(!old)return json({error:'任务不存在'},404);
+    if(old.acceptance_status==='pending')return json({error:'请先接受或拒绝这项分工'},409);
+    if(old.acceptance_status==='declined')return json({error:'已拒绝的分工不能修改'},409);
     const input=await body(request);if(input.version!==old.version)return json({error:'任务已在其他设备更新，请刷新后重试'},409);
     const t={...old,...validateTask(input,mapTask(old)),version:old.version+1,updated:Date.now()};
     const result=await env.DB.batch([env.DB.prepare('UPDATE tasks SET title=?,notes=?,due=?,priority=?,completed=?,reminders=?,version=?,updated=? WHERE id=? AND version=?').bind(t.title,t.notes,t.due,t.priority,t.completed,JSON.stringify(t.reminders),t.version,t.updated,t.id,old.version),env.DB.prepare("UPDATE jobs SET state='cancelled' WHERE task_id=? AND version=? AND state IN ('pending','sending')").bind(t.id,old.version)]);
@@ -165,7 +180,7 @@ async function routes(request,env){
 }
 export default {
   async fetch(request,env){
-    let response;try{response=await routes(request,env);}catch(error){response=json({error:error.message||'暂时无法处理，请重试'},400);}
+    let response;try{response=await routes(request,env);}catch(error){response=json({error:error.message||'暂时无法处理，请重试'},Number(error.status)||400);}
     const h=new Headers(response.headers);h.set('X-Content-Type-Options','nosniff');h.set('Referrer-Policy','same-origin');h.set('X-Frame-Options','DENY');h.set('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     if(new URL(request.url).pathname.startsWith('/api/'))h.set('Cache-Control','no-store');
     return new Response(response.body,{status:response.status,headers:h});
