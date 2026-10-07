@@ -129,6 +129,7 @@ test('group candidate review and assignee acceptance are separate transitions',a
   const candidateResponse=await call(ownerToken,`groups/${group.id}/candidates`,'POST',{title:'Analyse meeting algorithm',proposedAssigneeId:'member',due:Date.now()+5*86400000,evidence:{title:'Member will analyse the meeting algorithm.'}});assert.equal(candidateResponse.status,201);
   const candidate=await candidateResponse.json();
   await env.DB.prepare("INSERT INTO subscriptions(id,data,created,user_id) VALUES('member-endpoint','{}',0,'member')").run();
+  assert.equal((await call(outsiderToken,`task-candidates/${candidate.id}/review`,'POST',{decision:'confirm'})).status,404);
   const revisedDue=Date.now()+6*86400000;
   const confirmedResponse=await call(ownerToken,`task-candidates/${candidate.id}/review`,'POST',{decision:'confirm',changes:{title:'Verify meeting algorithm',notes:'Use boundary cases.',due:revisedDue,evidence:{title:'Reviewer clarified the deliverable.'}}});assert.equal(confirmedResponse.status,200);
   const task=await confirmedResponse.json();assert.equal(task.acceptance_status,'pending');assert.equal(task.user_id,'member');assert.equal(task.title,'Verify meeting algorithm');assert.equal(task.due,revisedDue);
@@ -146,6 +147,21 @@ test('group candidate review and assignee acceptance are separate transitions',a
   const selfTask=await (await call(ownerToken,`task-candidates/${selfCandidate.id}/review`,'POST',{decision:'confirm'})).json();
   assert.equal(selfTask.acceptance_status,'pending');
   const selfAccepted=await call(ownerToken,`tasks/${selfTask.id}/assignment`,'POST',{decision:'accept'});assert.equal(selfAccepted.status,200);assert.equal((await selfAccepted.json()).acceptance_status,'accepted');
+});
+
+test('failed task creation rolls back every candidate review change',async()=>{
+  const env={DB:database()},origin='https://campus.example',ownerToken=random();
+  await env.DB.prepare("INSERT INTO users(id,email,password_hash,created) VALUES('owner','owner@example.com','unused',0)").run();
+  await env.DB.prepare("INSERT INTO groups(id,name,owner_user_id,created,updated) VALUES('group','Project','owner',0,0)").run();
+  await env.DB.prepare("INSERT INTO group_members(group_id,user_id,role,joined) VALUES('group','owner','owner',0)").run();
+  await env.DB.prepare("INSERT INTO task_candidates(id,group_id,creator_user_id,proposed_assignee_id,title,notes,due,evidence,status,created,updated) VALUES('candidate','group','owner','owner','Original','',NULL,'{}','pending',0,0)").run();
+  const reminders='{"offsets":[],"exact":[],"repeat":0,"maxCount":0,"start":"08:00","end":"23:00","days":[0],"push":false,"email":false}';
+  await env.DB.prepare("INSERT INTO tasks(id,title,source,source_id,reminders,created,updated,user_id,group_id,acceptance_status,candidate_id) VALUES('existing','Existing','candidate','candidate',?,0,0,'owner','group','pending','candidate')").bind(reminders).run();
+  await env.DB.prepare('INSERT INTO sessions(id,expires,user_id) VALUES(?,?,?)').bind(await hash(ownerToken),Date.now()+3600000,'owner').run();
+  const response=await worker.fetch(new Request(origin+'/api/task-candidates/candidate/review',{method:'POST',headers:{Cookie:'campus_session='+ownerToken,Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({decision:'confirm',changes:{title:'Must roll back',evidence:{title:'Must also roll back'}}})}),env);
+  assert.equal(response.status,409);
+  const candidate=await env.DB.prepare("SELECT title,evidence,status FROM task_candidates WHERE id='candidate'").first();
+  assert.equal(candidate.title,'Original');assert.equal(candidate.status,'pending');assert.deepEqual(JSON.parse(candidate.evidence),{});
 });
 
 test('meeting polls treat missing availability as unknown and confirm only full-group proposals',async()=>{

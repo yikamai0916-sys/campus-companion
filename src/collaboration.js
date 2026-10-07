@@ -77,7 +77,8 @@ export async function groupSnapshot(env,actorId,groupId){
   const members=(await env.DB.prepare('SELECT gm.user_id,gm.role,gm.joined,u.email,u.nickname FROM group_members gm JOIN users u ON u.id=gm.user_id WHERE gm.group_id=? ORDER BY gm.joined').bind(groupId).all()).results;
   const candidates=(await env.DB.prepare('SELECT * FROM task_candidates WHERE group_id=? ORDER BY status,created DESC').bind(groupId).all()).results.map(row=>({...row,evidence:JSON.parse(row.evidence)}));
   const tasks=(await env.DB.prepare('SELECT id,title,notes,due,priority,completed,user_id,assigned_by,acceptance_status,candidate_id,version,created,updated FROM tasks WHERE group_id=? ORDER BY completed,acceptance_status,due IS NULL,due').bind(groupId).all()).results;
-  return {group:{id:groupId,name:access.name,owner_user_id:access.owner_user_id,role:access.role},members,candidates,tasks};
+  const meetingPolls=(await env.DB.prepare('SELECT id,name,range_start,range_end,duration_minutes,buffer_minutes,status,confirmed_start,confirmed_end,created FROM meeting_polls WHERE group_id=? ORDER BY status,created DESC').bind(groupId).all()).results;
+  return {group:{id:groupId,name:access.name,owner_user_id:access.owner_user_id,role:access.role},members,candidates,tasks,meetingPolls};
 }
 
 export async function addGroupMember(env,actorId,groupId,email){
@@ -118,10 +119,12 @@ export async function reviewTaskCandidate(env,actorId,candidateId,review){
   const acceptanceStatus='pending';
   const valid=validateTask({title:candidate.title,notes:candidate.notes,due:candidate.due,priority:2,reminders:assignmentReminders});
   const task={...valid,id:crypto.randomUUID(),version:1,source:'candidate',source_id:candidateId,created:now,updated:now,user_id:assigneeId,group_id:row.group_id,assigned_by:actorId,acceptance_status:acceptanceStatus,candidate_id:candidateId};
-  const claimed=await env.DB.prepare("UPDATE task_candidates SET title=?,notes=?,due=?,proposed_assignee_id=?,evidence=?,status='confirmed',updated=? WHERE id=? AND status='pending' RETURNING id").bind(candidate.title,candidate.notes,candidate.due,assigneeId,JSON.stringify(candidate.evidence),now,candidateId).first();
-  if(!claimed)throw new CollaborationError('候选任务已经处理',409);
-  try{await env.DB.prepare('INSERT INTO tasks(id,title,notes,due,priority,completed,source,source_id,reminders,version,created,updated,user_id,group_id,assigned_by,acceptance_status,candidate_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(task.id,task.title,task.notes,task.due,task.priority,task.completed,task.source,task.source_id,JSON.stringify(task.reminders),task.version,now,now,task.user_id,task.group_id,task.assigned_by,task.acceptance_status,task.candidate_id).run();}
-  catch(error){await env.DB.prepare("UPDATE task_candidates SET status='pending',updated=? WHERE id=? AND status='confirmed'").bind(Date.now(),candidateId).run();throw error;}
+  let claimed;
+  try{[claimed]=await env.DB.batch([
+    env.DB.prepare("UPDATE task_candidates SET title=?,notes=?,due=?,proposed_assignee_id=?,evidence=?,status='confirmed',updated=? WHERE id=? AND status='pending'").bind(candidate.title,candidate.notes,candidate.due,assigneeId,JSON.stringify(candidate.evidence),now,candidateId),
+    env.DB.prepare('INSERT INTO tasks(id,title,notes,due,priority,completed,source,source_id,reminders,version,created,updated,user_id,group_id,assigned_by,acceptance_status,candidate_id) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE changes()=1').bind(task.id,task.title,task.notes,task.due,task.priority,task.completed,task.source,task.source_id,JSON.stringify(task.reminders),task.version,now,now,task.user_id,task.group_id,task.assigned_by,task.acceptance_status,task.candidate_id)
+  ]);}catch(error){if(/UNIQUE|constraint/i.test(String(error)))throw new CollaborationError('候选任务无法重复创建',409);throw error;}
+  if(!claimed.meta?.changes)throw new CollaborationError('候选任务已经处理',409);
   return {...task,reminders:task.reminders};
 }
 

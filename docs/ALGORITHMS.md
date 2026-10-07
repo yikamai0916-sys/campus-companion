@@ -12,7 +12,7 @@ For `N` submitted intervals, `U` group members, and `C` candidate starts:
 4. Sweep each member's merged intervals with a forward-only cursor while candidates increase: `O(CU + N)` time.
 5. Sort scored candidates, then keep at most three whose start times differ by at least one meeting duration: `O(C log C)` time.
 
-Total time is `O(N log N + CU + C log C)`. Working space is `O(N + U + C)`. A future bounded top-k selection could avoid retaining and sorting every candidate, but the MVP keeps all candidates so the report and implementation stay consistent.
+Total time is `O(N log N + CU + C log C)`. Working space is `O(N + U + CU)` because each candidate retains its available and unavailable member lists for the explanation returned to the client. A future bounded top-k selection could avoid retaining and sorting every candidate, but the MVP keeps all candidates so the report and implementation stay consistent.
 
 Scores are ordered by:
 
