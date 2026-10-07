@@ -21,15 +21,24 @@ Cloudflare Workers, D1, Cron Triggers, Static Assets, optional Workers AI, Micro
 1. Read [the setup guide](docs/SETUP.md).
 2. Read [the team handoff](docs/TEAM_HANDOFF.md) before changing mail, security, or scheduled jobs.
 3. Copy `wrangler.example.jsonc` to `wrangler.jsonc` and add your own D1 database details.
-4. Run `pnpm install`, then `node setup-secrets.mjs` to create a private `.dev.vars` file.
+4. Install dependencies, create the private local secrets file, apply the local database migrations, and start Wrangler.
 
 ```sh
-pnpm install
+pnpm install --frozen-lockfile
+cp wrangler.example.jsonc wrangler.jsonc
 node setup-secrets.mjs
 pnpm db:local
 pnpm dev
-pnpm test
 ```
+
+Before opening a pull request, run both checks:
+
+```sh
+pnpm test
+pnpm exec wrangler deploy --dry-run --config wrangler.example.jsonc
+```
+
+In PowerShell, use `Copy-Item wrangler.example.jsonc wrangler.jsonc` instead of `cp` if the `cp` alias is unavailable.
 
 ## Repository safety
 

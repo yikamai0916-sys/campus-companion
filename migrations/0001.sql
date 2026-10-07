@@ -1,0 +1,10 @@
+CREATE TABLE tasks (id TEXT PRIMARY KEY, title TEXT NOT NULL, notes TEXT NOT NULL DEFAULT '', due INTEGER, priority INTEGER NOT NULL DEFAULT 2, completed INTEGER NOT NULL DEFAULT 0, source TEXT NOT NULL DEFAULT 'manual', source_id TEXT UNIQUE, reminders TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1, created INTEGER NOT NULL, updated INTEGER NOT NULL);
+CREATE TABLE sessions (id TEXT PRIMARY KEY, expires INTEGER NOT NULL);
+CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE oauth (state TEXT PRIMARY KEY, verifier TEXT NOT NULL, session TEXT NOT NULL, expires INTEGER NOT NULL);
+CREATE TABLE messages (id TEXT PRIMARY KEY, subject TEXT NOT NULL, received INTEGER NOT NULL, sender TEXT NOT NULL, origin TEXT NOT NULL, category INTEGER NOT NULL, summary TEXT NOT NULL, action TEXT NOT NULL, url TEXT NOT NULL, quality TEXT NOT NULL);
+CREATE TABLE subscriptions (id TEXT PRIMARY KEY, data TEXT NOT NULL, created INTEGER NOT NULL);
+CREATE TABLE jobs (id TEXT PRIMARY KEY, task_id TEXT, version INTEGER, at INTEGER NOT NULL, channel TEXT NOT NULL, payload TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'pending', lease INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0, error TEXT);
+CREATE INDEX jobs_due ON jobs(state, at);
+CREATE INDEX messages_received ON messages(received);
+CREATE INDEX tasks_due ON tasks(completed, due);

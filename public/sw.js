@@ -1,0 +1,5 @@
+self.addEventListener('install',()=>self.skipWaiting());
+self.addEventListener('activate',event=>event.waitUntil(self.clients.claim()));
+// Do not cache personal responses: every task update goes to the authenticated server.
+self.addEventListener('push',event=>{let p;try{p=event.data.json();}catch{p={title:'校园清单',body:'你有一条新提醒。',url:'/'};}event.waitUntil(self.registration.showNotification(p.title,{body:p.body.length>200?p.body.slice(0,200)+'…':p.body,icon:'/icon-192.png',badge:'/icon-192.png',tag:p.tag,data:{url:p.url||'/'}}));});
+self.addEventListener('notificationclick',event=>{event.notification.close();const url=new URL(event.notification.data?.url||'/',self.location.origin);if(url.origin!==self.location.origin)return;event.waitUntil((async()=>{const windows=await self.clients.matchAll({type:'window',includeUncontrolled:true});for(const c of windows){if(new URL(c.url).origin===url.origin){await c.navigate(url.href);return c.focus();}}return self.clients.openWindow(url.href);})());});
