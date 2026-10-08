@@ -7,7 +7,8 @@ A mobile-friendly campus planner built as a progressive web app. It provides ind
 - Email and password registration, sign-in, sign-out, password recovery, and per-account security questions
 - Private data isolation for tasks, mail summaries, notification settings, sessions, and Outlook connections
 - Tasks with due dates, editing, completed-task deletion, task-specific reminders, calendar export, and notification channels
-- Mail summaries with translated labels, original-mail links, per-user deletion, optional assignment extraction, and configurable focus terms
+- Groups with evidence-backed responsibility review, assignee acceptance, shared progress, availability collection, meeting voting, and announcements
+- Mail summaries with translated labels, original-mail links, per-user deletion, reviewable suggestions, and configurable focus terms
 - Per-user daily digest and late-update preferences, saved digest history, and notification delivery
 - Outlook OAuth connection and a separate iPhone Shortcut mail-ingestion endpoint
 - A PWA interface with iPhone installation and Web Push support
@@ -20,8 +21,9 @@ Cloudflare Workers, D1, Cron Triggers, Static Assets, optional Workers AI, Micro
 
 1. Read [the setup guide](docs/SETUP.md).
 2. Read [the team handoff](docs/TEAM_HANDOFF.md) before changing mail, security, or scheduled jobs.
-3. Copy `wrangler.example.jsonc` to `wrangler.jsonc` and add your own D1 database details.
-4. Install dependencies, create the private local secrets file, apply the local database migrations, and start Wrangler.
+3. Read [the Outlook setup guide](docs/OUTLOOK_SETUP.md) before enabling real mailbox access.
+4. Copy `wrangler.example.jsonc` to `wrangler.jsonc` and add your own D1 database details.
+5. Install dependencies, create the private local secrets file, apply the local database migrations, and start Wrangler.
 
 ```sh
 pnpm install --frozen-lockfile

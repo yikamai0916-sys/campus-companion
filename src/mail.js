@@ -1,8 +1,15 @@
 import { hash, random, seal, unseal } from './security.js';
-import { originalSender, classify, assignmentReminders } from './domain.js';
+import { originalSender, classify } from './domain.js';
 export const getKV=async(env,key)=> (await env.DB.prepare('SELECT value FROM kv WHERE key=?').bind(key).first())?.value;
 export const setKV=(env,key,value)=>env.DB.prepare('INSERT INTO kv(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').bind(key,value).run();
-const scope='offline_access User.Read Mail.Read Mail.Send';
+const scope='offline_access User.Read Mail.Read';
+const placeholder=value=>!String(value||'').trim()||/^(?:REPLACE_WITH_|replace-with-|your[-_]|generated_by_)/i.test(String(value).trim());
+export function outlookConfigProblems(env,requestOrigin=''){
+  const problems=['MS_CLIENT_ID','MS_CLIENT_SECRET','APP_ORIGIN','TOKEN_KEY'].filter(key=>placeholder(env[key]));
+  if(!problems.includes('APP_ORIGIN'))try{const configured=new URL(env.APP_ORIGIN);if(!['http:','https:'].includes(configured.protocol)||configured.origin!==String(env.APP_ORIGIN).replace(/\/$/,'')||(requestOrigin&&configured.origin!==requestOrigin))problems.push('APP_ORIGIN');}catch{problems.push('APP_ORIGIN');}
+  if(!problems.includes('TOKEN_KEY'))try{if(Uint8Array.from(atob(String(env.TOKEN_KEY).replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0)).length!==32)problems.push('TOKEN_KEY');}catch{problems.push('TOKEN_KEY');}
+  return [...new Set(problems)];
+}
 const connectionFor=(env,userId)=>env.DB.prepare('SELECT * FROM outlook_connections WHERE user_id=?').bind(userId).first();
 async function legacyConnection(env,userId){
   const user=await env.DB.prepare('SELECT email FROM users WHERE id=?').bind(userId).first();
@@ -21,8 +28,8 @@ const setConnection=(env,userId,changes)=>{
   if(!fields.length)return Promise.resolve();
   return env.DB.prepare(`UPDATE outlook_connections SET ${fields.map(k=>k+'=?').join(',')} WHERE user_id=?`).bind(...values,userId).run();
 };
-export async function startOAuth(env,session,loginHint='') {
-  if(!env.MS_CLIENT_ID||!env.MS_CLIENT_SECRET||!env.APP_ORIGIN||!env.TOKEN_KEY)throw new Error('请先配置独立 Outlook 应用');
+export async function startOAuth(env,session,loginHint='',requestOrigin='') {
+  if(outlookConfigProblems(env,requestOrigin).length)throw new Error('请先正确配置独立 Outlook 应用');
   const state=random(), verifier=random();
   await env.DB.prepare('INSERT INTO oauth(state,verifier,session,expires,user_id) VALUES(?,?,?,?,?)').bind(state,verifier,session.id,Date.now()+600000,session.user_id).run();
   const url=new URL('https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize');
@@ -63,9 +70,6 @@ export async function graph(env,userId,path,options={}) {
   const response=await fetch(url,{...options,headers:{Authorization:'Bearer '+token.access_token,'Content-Type':'application/json',Prefer:'outlook.body-content-type="text"',...options.headers},signal:AbortSignal.timeout(20000)});
   if(!response.ok)throw new Error('Outlook 请求失败（'+response.status+'），稍后重试或重新连接');
   return response.status===202||response.status===204?null:response.json();
-}
-export async function sendEmail(env,subject,body,recipient,userId) {
-  await graph(env,userId,'me/sendMail',{method:'POST',body:JSON.stringify({message:{subject,body:{contentType:'Text',content:body},toRecipients:[{emailAddress:{address:recipient}}]},saveToSentItems:true})});
 }
 export const plain = m=>{
   const raw=m.body?.content||m.bodyPreview||'';
@@ -160,7 +164,7 @@ function readableBody(raw,headers) {
   if(!preferred)return content.slice(0,20000);
   return decodePart(preferred.headers,preferred.raw.split(/\r?\n\r?\n/).slice(1).join('\n\n')).replace(/<br\s*\/?>|<\/p>|<\/div>/gi,'\n').replace(/<[^>]*>/g,' ');
 }
-export async function ingestForwardedEmail(env,message,createTask,userId) {
+export async function ingestForwardedEmail(env,message,userId) {
   if(message.rawSize>10*1024*1024)throw new Error('邮件超过 10 MB，未处理附件内容');
   const raw=await new Response(message.raw).text(),headers=headerBlock(raw),body=readableBody(raw,headers).slice(0,30000);
   const received=Date.now(),subject=decodeMimeWord(headers.subject||'无主题').slice(0,300);
@@ -169,14 +173,10 @@ export async function ingestForwardedEmail(env,message,createTask,userId) {
   if(await env.DB.prepare('SELECT id FROM messages WHERE id=? AND user_id=?').bind(sourceId,userId).first())return;
   const mail={subject,receivedDateTime:new Date(received).toISOString(),sender:{emailAddress:{address:message.from}},from:{emailAddress:{address:message.from}}};
   const a=await analyze(env,mail,body);
-  if(a.assignment){
-    const existing=await env.DB.prepare('SELECT id FROM tasks WHERE source_id=? AND user_id=?').bind(sourceId,userId).first();
-    if(!existing)await createTask({title:a.title,notes:`${a.summary}\n\n${a.action}\n原始发件人：${a.sender}\n${a.due?'请核对自动提取的截止日期。':'截止时间需确认；尚未安排截止提醒。'}`,due:a.due,priority:2,reminders:assignmentReminders},'email',sourceId);
-  }
   await env.DB.prepare('INSERT OR IGNORE INTO messages(id,subject,received,sender,origin,category,summary,action,url,quality,user_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)').bind(sourceId,subject,received,a.sender,a.origin,a.category,a.summary,a.action,'',a.quality,userId).run();
   await setKV(env,'mail_status','转发接收正常');await setKV(env,'mail_last',String(received));
 }
-export async function ingestShortcutEmail(env,data,createTask,userId) {
+export async function ingestShortcutEmail(env,data,userId) {
   const body=String(data.content||'').trim().slice(0,30000);
   if(!body)throw new Error('邮件正文为空，未能导入');
   const subject=String(data.subject||'无主题').trim().slice(0,300)||'无主题';
@@ -188,15 +188,11 @@ export async function ingestShortcutEmail(env,data,createTask,userId) {
   if(await env.DB.prepare('SELECT id FROM messages WHERE id=? AND user_id=?').bind(sourceId,userId).first())return {duplicate:true};
   const mail={subject,receivedDateTime:new Date(received).toISOString(),sender:{emailAddress:{address:outer}},from:{emailAddress:{address:outer}}};
   const a=await analyze(env,mail,body);
-  if(a.assignment){
-    const existing=await env.DB.prepare('SELECT id FROM tasks WHERE source_id=? AND user_id=?').bind(sourceId,userId).first();
-    if(!existing)await createTask({title:a.title,notes:`${a.summary}\n\n${a.action}\n原始发件人：${a.sender}\n${a.due?'请核对自动提取的截止日期。':'截止时间需确认；尚未安排截止提醒。'}`,due:a.due,priority:2,reminders:assignmentReminders},'email',sourceId);
-  }
   await env.DB.prepare('INSERT OR IGNORE INTO messages(id,subject,received,sender,origin,category,summary,action,url,quality,user_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)').bind(sourceId,subject,received,a.sender,a.origin,a.category,a.summary,a.action,'',a.quality,userId).run();
   await setKV(env,'mail_status','iPhone 自动转交正常');await setKV(env,'mail_last',String(received));
-  return {duplicate:false,category:a.category,task:a.assignment};
+  return {duplicate:false,category:a.category,suggestion:a.assignment,task:false};
 }
-export async function syncMail(env,createTask,userId) {
+export async function syncMail(env,userId) {
   const connection=await outlookConnection(env,userId);if(!connection)return {imported:0,pages:0,more:false};
   if(!userId)throw new Error('主账号尚未初始化，请先登录网站');
   const now=Date.now();let cursor=connection.cursor,cutoff=connection.cutoff,imported=0,pages=0;
@@ -220,10 +216,6 @@ export async function syncMail(env,createTask,userId) {
       if(outer.toLowerCase()!==env.SCHOOL_EMAIL.toLowerCase()&&!forwardedTo&&!schoolRecipient)continue;
       if(await env.DB.prepare('SELECT id FROM messages WHERE id=? AND user_id=?').bind(m.id,userId).first())continue;
       const a=await analyze(env,m,body);
-      if(a.assignment){
-        const existing=await env.DB.prepare('SELECT id FROM tasks WHERE source_id=? AND user_id=?').bind(m.id,userId).first();
-        if(!existing)await createTask({title:a.title,notes:`${a.summary}\n\n${a.action}\n原始发件人：${a.sender}\n${m.webLink}\n${a.due?'请核对自动提取的截止日期。':'截止时间需确认；尚未安排截止提醒。'}`,due:a.due,priority:2,reminders:assignmentReminders},'email',m.id);
-      }
       await env.DB.prepare('INSERT OR IGNORE INTO messages(id,subject,received,sender,origin,category,summary,action,url,quality,user_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)').bind(m.id,m.subject||'无主题',Date.parse(m.receivedDateTime),a.sender,a.origin,a.category,a.summary,a.action,m.webLink||'',a.quality,userId).run();
       imported++;
     }
@@ -234,7 +226,7 @@ export async function syncMail(env,createTask,userId) {
   return {imported,pages,more:!!cursor};
 }
 
-export async function reprocessMail(env,createTask,rescheduleTask,max=2,userId) {
+export async function reprocessMail(env,userId,max=2) {
   if(!await outlookConnection(env,userId))throw new Error('尚未连接 Outlook');
   const {results}=await env.DB.prepare("SELECT id FROM messages WHERE user_id=? AND id NOT LIKE 'shortcut:%' AND quality NOT LIKE '%v2%' AND quality NOT LIKE '%v3%' ORDER BY received DESC LIMIT ?").bind(userId,max).all();
   let updated=0;
@@ -244,18 +236,6 @@ export async function reprocessMail(env,createTask,rescheduleTask,max=2,userId) 
     const quality=/v[23]/.test(a.quality)?a.quality:a.quality+' v2';
     await env.DB.prepare('UPDATE messages SET subject=?,sender=?,origin=?,category=?,summary=?,action=?,url=?,quality=? WHERE id=? AND user_id=?').bind(m.subject||'无主题',a.sender,a.origin,a.category,a.summary,a.action,m.webLink||'',quality,row.id,userId).run();
     await env.DB.prepare('DELETE FROM message_localizations WHERE message_id=? AND user_id=?').bind(row.id,userId).run();
-    if(a.assignment){
-      const existing=await env.DB.prepare('SELECT * FROM tasks WHERE source=? AND source_id=? AND user_id=?').bind('email',row.id,userId).first();
-      const notes=`${a.summary}\n\n${a.action}\n原始发件人：${a.sender}\n${m.webLink||''}\n${a.due?'请核对自动提取的截止日期。':'截止时间需确认；尚未安排截止提醒。'}`;
-      if(!existing)await createTask({title:a.title,notes,due:a.due,priority:2,reminders:assignmentReminders},'email',row.id);
-      else if(a.due&&existing.due===null&&existing.updated===existing.created){
-        const task=await env.DB.prepare('UPDATE tasks SET due=?,notes=?,version=version+1,updated=? WHERE id=? AND due IS NULL AND updated=created RETURNING *').bind(a.due,notes,Date.now(),existing.id).first();
-        if(task){
-          await env.DB.prepare("UPDATE jobs SET state='cancelled' WHERE task_id=? AND version<? AND state IN ('pending','sending')").bind(task.id,task.version).run();
-          await rescheduleTask({...task,reminders:JSON.parse(task.reminders)});
-        }
-      }
-    }
     updated++;
   }
   if(!results.length){
@@ -264,13 +244,6 @@ export async function reprocessMail(env,createTask,rescheduleTask,max=2,userId) 
       const m=await graph(env,userId,'me/messages/'+encodeURIComponent(row.id)+'?$select=id,sender,from,body');
       const sender=originalSender(plain(m),m.sender?.emailAddress?.address||m.from?.emailAddress?.address||'',env.SCHOOL_EMAIL,[env.LOGIN_EMAIL,env.OWNER_EMAIL]);
       await env.DB.prepare('UPDATE messages SET sender=?,quality=? WHERE id=? AND user_id=?').bind(sender,row.quality.replace('v2','v3'),row.id,userId).run();
-      if(sender!==row.sender){
-        const task=await env.DB.prepare('UPDATE tasks SET notes=REPLACE(notes,?,?),version=version+1,updated=? WHERE source=? AND source_id=? AND user_id=? AND notes LIKE ? RETURNING *').bind('原始发件人：'+row.sender,'原始发件人：'+sender,Date.now(),'email',row.id,userId,'%原始发件人：'+row.sender+'%').first();
-        if(task){
-          await env.DB.prepare("UPDATE jobs SET state='cancelled' WHERE task_id=? AND version<? AND state IN ('pending','sending')").bind(task.id,task.version).run();
-          await rescheduleTask({...task,reminders:JSON.parse(task.reminders)});
-        }
-      }
       updated++;
     }
   }
@@ -359,7 +332,7 @@ export async function localizeMessages(env,userId,requestedLocale,messages){
   const missing=messages.filter(m=>!cached.has(m.id));
   if(!missing.length)return messages.map(m=>cached.get(m.id));
   const save=async rows=>{for(const row of rows){
-    await env.DB.prepare('INSERT INTO message_localizations(message_id,user_id,locale,subject,sender,origin,summary,action,quality,cache_version,updated) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(message_id,locale) DO UPDATE SET subject=excluded.subject,sender=excluded.sender,origin=excluded.origin,summary=excluded.summary,action=excluded.action,quality=excluded.quality,cache_version=excluded.cache_version,updated=excluded.updated').bind(row.id,userId,locale,row.subject,row.sender,row.origin,row.summary,row.action,row.quality,localizationCacheVersion,Date.now()).run();cached.set(row.id,row);
+    await env.DB.prepare('INSERT INTO message_localizations(message_id,user_id,locale,subject,sender,origin,summary,action,quality,cache_version,updated) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,message_id,locale) DO UPDATE SET subject=excluded.subject,sender=excluded.sender,origin=excluded.origin,summary=excluded.summary,action=excluded.action,quality=excluded.quality,cache_version=excluded.cache_version,updated=excluded.updated').bind(row.id,userId,locale,row.subject,row.sender,row.origin,row.summary,row.action,row.quality,localizationCacheVersion,Date.now()).run();cached.set(row.id,row);
   }};
   const batches=Array.from({length:Math.ceil(missing.length/5)},(_,i)=>missing.slice(i*5,i*5+5));
   // Run independent small translation batches together. This keeps the first

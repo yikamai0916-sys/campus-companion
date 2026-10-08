@@ -1,12 +1,14 @@
 import { validateTask } from './domain.js';
 import { random,hash,verifyPassword,makePasswordHash,makeAnswerHash,verifyAnswer } from './security.js';
-import { getKV,setKV,startOAuth,finishOAuth,syncMail,reprocessMail,ingestForwardedEmail,ingestShortcutEmail,localizeMessages,outlookConnection } from './mail.js';
+import { getKV,setKV,startOAuth,finishOAuth,syncMail,reprocessMail,ingestForwardedEmail,ingestShortcutEmail,localizeMessages,outlookConnection,outlookConfigProblems } from './mail.js';
 import { scheduleTask,repeatTasks,deliver,makeDigest,enqueue } from './jobs.js';
+import { addGroupMember,createGroup,createTaskCandidate,groupSnapshot,listGroups,respondToAssignment,reviewTaskCandidate } from './collaboration.js';
+import { confirmMeetingProposal,createMeetingPoll,meetingPollSnapshot,openMeetingVote,submitAvailability,voteMeetingProposal } from './meetings.js';
 const json=(data,status=200)=>Response.json(data,{status});
 async function body(request){if(Number(request.headers.get('content-length'))>7*1024*1024)throw new Error('请求过大');const text=await request.text();if(text.length>7*1024*1024)throw new Error('请求过大');return JSON.parse(text);}
 const emailOf=value=>String(value||'').trim().toLowerCase();
 const validEmail=value=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)&&value.length<=254;
-const defaultReminder={offsets:[4320,1440,120,30],repeat:1440,maxCount:0,start:'08:00',end:'23:00',days:[1,2,3,4,5,6,0],push:true,email:true};
+const defaultReminder={offsets:[4320,1440,120,30],repeat:1440,maxCount:0,start:'08:00',end:'23:00',days:[1,2,3,4,5,6,0],push:true,email:false};
 const parseReminder=value=>{try{return {...defaultReminder,...JSON.parse(value||'{}')}}catch{return defaultReminder}};
 const defaultMailPreferences={focusTerms:[],daily:{enabled:true,time:'20:00'},late:{enabled:true,time:'00:00'}};
 const validTime=value=>/^([01]\d|2[0-3]):[0-5]\d$/.test(String(value||''));
@@ -31,7 +33,7 @@ async function routes(request,env){
     if(!env.SHORTCUT_INGEST_KEY)return json({error:'iPhone 邮件转交尚未配置'},503);
     const supplied=request.headers.get('Authorization')?.replace(/^Bearer\s+/i,'')||'';
     if(!supplied||await hash(supplied)!==await hash(env.SHORTCUT_INGEST_KEY))return json({error:'邮件转交密钥无效'},401);
-    const owner=await ownerUser(env);return json({ok:true,...await ingestShortcutEmail(env,await body(request),(data,source,id)=>createTask(env,data,source,id,owner?.id),owner?.id)},201);
+    const owner=await ownerUser(env);return json({ok:true,...await ingestShortcutEmail(env,await body(request),owner?.id)},201);
   }
   if(path==='/api/auth/config'&&method==='GET')return json({registration:'simple',passwordMin:12});
   if(path==='/api/register'&&method==='POST'){
@@ -103,16 +105,43 @@ async function routes(request,env){
     return json({ok:true,nickname,avatar,linkedEmail,locale,reminders,mailPreferences});
   }
   const isOwner=account.email===emailOf(env.LOGIN_EMAIL);
+  if(path==='/api/groups'&&method==='GET')return json(await listGroups(env,account.user_id));
+  if(path==='/api/groups'&&method==='POST')return json(await createGroup(env,account.user_id,await body(request)),201);
+  const groupId=path.match(/^\/api\/groups\/([\w-]+)$/)?.[1];
+  if(groupId&&method==='GET')return json(await groupSnapshot(env,account.user_id,groupId));
+  const groupMembersId=path.match(/^\/api\/groups\/([\w-]+)\/members$/)?.[1];
+  if(groupMembersId&&method==='POST')return json(await addGroupMember(env,account.user_id,groupMembersId,(await body(request)).email),201);
+  const groupCandidatesId=path.match(/^\/api\/groups\/([\w-]+)\/candidates$/)?.[1];
+  if(groupCandidatesId&&method==='POST')return json(await createTaskCandidate(env,account.user_id,groupCandidatesId,await body(request)),201);
+  const meetingGroupId=path.match(/^\/api\/groups\/([\w-]+)\/meeting-polls$/)?.[1];
+  if(meetingGroupId&&method==='POST')return json(await createMeetingPoll(env,account.user_id,meetingGroupId,await body(request)),201);
+  const meetingPollId=path.match(/^\/api\/meeting-polls\/([\w-]+)$/)?.[1];
+  if(meetingPollId&&method==='GET')return json(await meetingPollSnapshot(env,account.user_id,meetingPollId));
+  const availabilityPollId=path.match(/^\/api\/meeting-polls\/([\w-]+)\/availability$/)?.[1];
+  if(availabilityPollId&&method==='PUT')return json(await submitAvailability(env,account.user_id,availabilityPollId,await body(request)));
+  const votingPollId=path.match(/^\/api\/meeting-polls\/([\w-]+)\/voting$/)?.[1];
+  if(votingPollId&&method==='POST')return json(await openMeetingVote(env,account.user_id,votingPollId));
+  const votePollId=path.match(/^\/api\/meeting-polls\/([\w-]+)\/vote$/)?.[1];
+  if(votePollId&&method==='POST')return json(await voteMeetingProposal(env,account.user_id,votePollId,(await body(request)).start));
+  const confirmPollId=path.match(/^\/api\/meeting-polls\/([\w-]+)\/confirm$/)?.[1];
+  if(confirmPollId&&method==='POST')return json(await confirmMeetingProposal(env,account.user_id,confirmPollId,(await body(request)).start));
+  const candidateId=path.match(/^\/api\/task-candidates\/([\w-]+)\/review$/)?.[1];
+  if(candidateId&&method==='POST')return json(await reviewTaskCandidate(env,account.user_id,candidateId,await body(request)));
+  const assignmentTaskId=path.match(/^\/api\/tasks\/([\w-]+)\/assignment$/)?.[1];
+  if(assignmentTaskId&&method==='POST')return json(await respondToAssignment(env,account.user_id,assignmentTaskId,(await body(request)).decision));
   if(path==='/api/status'){
     const profile=await env.DB.prepare('SELECT nickname,avatar,linked_email,locale,reminder_defaults FROM users WHERE id=?').bind(account.user_id).first();
     const outlook=await outlookConnection(env,account.user_id);
-    return json({account:{email:account.email,isOwner,userCode:String(account.user_id).replace(/-/g,'').slice(-4).toUpperCase(),nickname:profile?.nickname||'',avatar:profile?.avatar||'',locale:profile?.locale||'zh-CN'},outlook:!!outlook,outlookEmail:outlook?.email||'',outlookConfigured:!!(env.MS_CLIENT_ID&&env.MS_CLIENT_SECRET),mailStatus:outlook?.status||'尚未连接 Outlook',lastSync:outlook?.last_sync||null,pushReady:!!(env.VAPID_PUBLIC_KEY&&env.VAPID_PRIVATE_KEY),vapid:env.VAPID_PUBLIC_KEY||null,ai:env.ENABLE_AI==='true',appleSync:false,cronLast:await getKV(env,'cron_last'),jobErrors:(await env.DB.prepare("SELECT error,channel,at FROM jobs WHERE user_id=? AND error IS NOT NULL ORDER BY at DESC LIMIT 5").bind(account.user_id).all()).results});
+    const outlookMissingConfig=outlookConfigProblems(env,url.origin);
+    return json({account:{id:account.user_id,email:account.email,isOwner,userCode:String(account.user_id).replace(/-/g,'').slice(-4).toUpperCase(),nickname:profile?.nickname||'',avatar:profile?.avatar||'',locale:profile?.locale||'zh-CN'},outlook:!!outlook,outlookEmail:outlook?.email||'',outlookConfigured:outlookMissingConfig.length===0,outlookMissingConfig,mailStatus:outlook?.status||'尚未连接 Outlook',lastSync:outlook?.last_sync||null,pushReady:!!(env.VAPID_PUBLIC_KEY&&env.VAPID_PRIVATE_KEY),vapid:env.VAPID_PUBLIC_KEY||null,ai:env.ENABLE_AI==='true',appleSync:false,cronLast:await getKV(env,'cron_last'),jobErrors:(await env.DB.prepare("SELECT error,channel,at FROM jobs WHERE user_id=? AND error IS NOT NULL ORDER BY at DESC LIMIT 5").bind(account.user_id).all()).results});
   }
-  if(path==='/api/tasks'&&method==='GET')return json((await env.DB.prepare('SELECT * FROM tasks WHERE user_id=? ORDER BY completed, due IS NULL, due, priority').bind(account.user_id).all()).results.map(mapTask));
+  if(path==='/api/tasks'&&method==='GET')return json((await env.DB.prepare("SELECT * FROM tasks WHERE user_id=? AND (group_id IS NULL OR acceptance_status='accepted') ORDER BY completed, due IS NULL, due, priority").bind(account.user_id).all()).results.map(mapTask));
   if(path==='/api/tasks'&&method==='POST')return json(await createTask(env,await body(request),'manual',null,account.user_id),201);
   const taskId=path.match(/^\/api\/tasks\/([\w-]+)$/)?.[1];
   if(taskId&&method==='PATCH'){
     const old=await env.DB.prepare('SELECT * FROM tasks WHERE id=? AND user_id=?').bind(taskId,account.user_id).first();if(!old)return json({error:'任务不存在'},404);
+    if(old.acceptance_status==='pending')return json({error:'请先接受或拒绝这项分工'},409);
+    if(old.acceptance_status==='declined')return json({error:'已拒绝的分工不能修改'},409);
     const input=await body(request);if(input.version!==old.version)return json({error:'任务已在其他设备更新，请刷新后重试'},409);
     const t={...old,...validateTask(input,mapTask(old)),version:old.version+1,updated:Date.now()};
     const result=await env.DB.batch([env.DB.prepare('UPDATE tasks SET title=?,notes=?,due=?,priority=?,completed=?,reminders=?,version=?,updated=? WHERE id=? AND version=?').bind(t.title,t.notes,t.due,t.priority,t.completed,JSON.stringify(t.reminders),t.version,t.updated,t.id,old.version),env.DB.prepare("UPDATE jobs SET state='cancelled' WHERE task_id=? AND version=? AND state IN ('pending','sending')").bind(t.id,old.version)]);
@@ -130,20 +159,20 @@ async function routes(request,env){
   }
   const messageId=path.match(/^\/api\/messages\/(.+)$/)?.[1];
   if(messageId&&method==='DELETE'){await env.DB.prepare('DELETE FROM messages WHERE id=? AND user_id=?').bind(decodeURIComponent(messageId),account.user_id).run();return json({ok:true});}
-  if(path==='/api/mail/reprocess'&&method==='POST')return json(await reprocessMail(env,(data,source,id)=>createTask(env,data,source,id,account.user_id),task=>scheduleTask(env,task),2,account.user_id));
+  if(path==='/api/mail/reprocess'&&method==='POST')return json(await reprocessMail(env,account.user_id,2));
   if(path==='/api/digests'){const prefix='digest:'+account.user_id+':%';const rows=(await env.DB.prepare("SELECT value FROM kv WHERE key LIKE ? AND value!='quiet' ORDER BY key DESC LIMIT 30").bind(prefix).all()).results;return json(rows.flatMap(row=>{try{return [JSON.parse(row.value)]}catch{return []}}));}
   if(path==='/api/outlook/start'&&method==='GET'){
     const requestedEmail=emailOf(url.searchParams.get('email'));
     if(requestedEmail&&!validEmail(requestedEmail))return json({error:'请输入有效的 Outlook 邮箱'},400);
-    return Response.redirect(await startOAuth(env,account,requestedEmail));
+    return Response.redirect(await startOAuth(env,account,requestedEmail,url.origin));
   }
   if(path==='/api/outlook/callback'&&method==='GET'){
     await finishOAuth(env,url,account);
-    try{await syncMail(env,(data,source,id)=>createTask(env,data,source,id,account.user_id),account.user_id);}catch(error){await env.DB.prepare('UPDATE outlook_connections SET status=? WHERE user_id=?').bind(String(error.message).slice(0,300),account.user_id).run();}
+    try{await syncMail(env,account.user_id);}catch(error){await env.DB.prepare('UPDATE outlook_connections SET status=? WHERE user_id=?').bind(String(error.message).slice(0,300),account.user_id).run();}
     return Response.redirect(url.origin+'/?view=settings');
   }
   if(path==='/api/outlook/sync'&&method==='POST'){
-    const result=await syncMail(env,(data,source,id)=>createTask(env,data,source,id,account.user_id),account.user_id);
+    const result=await syncMail(env,account.user_id);
     return json(result||{imported:0,pages:0,more:false});
   }
   if(path==='/api/outlook'&&method==='DELETE'){
@@ -165,14 +194,14 @@ async function routes(request,env){
 }
 export default {
   async fetch(request,env){
-    let response;try{response=await routes(request,env);}catch(error){response=json({error:error.message||'暂时无法处理，请重试'},400);}
+    let response;try{response=await routes(request,env);}catch(error){response=json({error:error.message||'暂时无法处理，请重试'},Number(error.status)||400);}
     const h=new Headers(response.headers);h.set('X-Content-Type-Options','nosniff');h.set('Referrer-Policy','same-origin');h.set('X-Frame-Options','DENY');h.set('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     if(new URL(request.url).pathname.startsWith('/api/'))h.set('Cache-Control','no-store');
     return new Response(response.body,{status:response.status,headers:h});
   },
   async email(message,env,ctx){
     if(env.MAIL_INGEST_MODE!=='forwarding')return message.setReject('Email ingestion is disabled');
-    const owner=await ownerUser(env);ctx.waitUntil(ingestForwardedEmail(env,message,(data,source,id)=>createTask(env,data,source,id,owner?.id),owner?.id));
+    const owner=await ownerUser(env);ctx.waitUntil(ingestForwardedEmail(env,message,owner?.id));
   },
   async scheduled(controller,env){
     const now=Date.now();
@@ -186,7 +215,7 @@ export default {
         const connections=(await env.DB.prepare('SELECT user_id,cursor,last_attempt FROM outlook_connections WHERE last_attempt IS NULL OR last_attempt<? OR cursor IS NOT NULL').bind(now-240000).all()).results;
         for(const connection of connections){
           await env.DB.prepare('UPDATE outlook_connections SET last_attempt=? WHERE user_id=?').bind(now,connection.user_id).run();
-          try{await syncMail(env,(data,source,id)=>createTask(env,data,source,id,connection.user_id),connection.user_id);}catch(error){await env.DB.prepare('UPDATE outlook_connections SET status=? WHERE user_id=?').bind(String(error.message).slice(0,300),connection.user_id).run();}
+          try{await syncMail(env,connection.user_id);}catch(error){await env.DB.prepare('UPDATE outlook_connections SET status=? WHERE user_id=?').bind(String(error.message).slice(0,300),connection.user_id).run();}
         }
       }
       await makeDigest(env,Date.now());
