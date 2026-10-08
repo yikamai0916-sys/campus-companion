@@ -3,6 +3,13 @@ import { originalSender, classify } from './domain.js';
 export const getKV=async(env,key)=> (await env.DB.prepare('SELECT value FROM kv WHERE key=?').bind(key).first())?.value;
 export const setKV=(env,key,value)=>env.DB.prepare('INSERT INTO kv(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').bind(key,value).run();
 const scope='offline_access User.Read Mail.Read';
+const placeholder=value=>!String(value||'').trim()||/^(?:REPLACE_WITH_|replace-with-|your[-_]|generated_by_)/i.test(String(value).trim());
+export function outlookConfigProblems(env,requestOrigin=''){
+  const problems=['MS_CLIENT_ID','MS_CLIENT_SECRET','APP_ORIGIN','TOKEN_KEY'].filter(key=>placeholder(env[key]));
+  if(!problems.includes('APP_ORIGIN'))try{const configured=new URL(env.APP_ORIGIN);if(!['http:','https:'].includes(configured.protocol)||configured.origin!==String(env.APP_ORIGIN).replace(/\/$/,'')||(requestOrigin&&configured.origin!==requestOrigin))problems.push('APP_ORIGIN');}catch{problems.push('APP_ORIGIN');}
+  if(!problems.includes('TOKEN_KEY'))try{if(Uint8Array.from(atob(String(env.TOKEN_KEY).replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0)).length!==32)problems.push('TOKEN_KEY');}catch{problems.push('TOKEN_KEY');}
+  return [...new Set(problems)];
+}
 const connectionFor=(env,userId)=>env.DB.prepare('SELECT * FROM outlook_connections WHERE user_id=?').bind(userId).first();
 async function legacyConnection(env,userId){
   const user=await env.DB.prepare('SELECT email FROM users WHERE id=?').bind(userId).first();
@@ -21,8 +28,8 @@ const setConnection=(env,userId,changes)=>{
   if(!fields.length)return Promise.resolve();
   return env.DB.prepare(`UPDATE outlook_connections SET ${fields.map(k=>k+'=?').join(',')} WHERE user_id=?`).bind(...values,userId).run();
 };
-export async function startOAuth(env,session,loginHint='') {
-  if(!env.MS_CLIENT_ID||!env.MS_CLIENT_SECRET||!env.APP_ORIGIN||!env.TOKEN_KEY)throw new Error('请先配置独立 Outlook 应用');
+export async function startOAuth(env,session,loginHint='',requestOrigin='') {
+  if(outlookConfigProblems(env,requestOrigin).length)throw new Error('请先正确配置独立 Outlook 应用');
   const state=random(), verifier=random();
   await env.DB.prepare('INSERT INTO oauth(state,verifier,session,expires,user_id) VALUES(?,?,?,?,?)').bind(state,verifier,session.id,Date.now()+600000,session.user_id).run();
   const url=new URL('https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize');

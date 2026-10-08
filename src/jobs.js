@@ -9,9 +9,14 @@ export async function enqueue(env,key,task,at,payload,reminders,userId=task?.use
   await env.DB.batch(channels.map(channel=>env.DB.prepare('INSERT OR IGNORE INTO jobs(id,task_id,version,at,channel,payload,user_id) VALUES(?,?,?,?,?,?,?)').bind(key+':'+channel,task?.id??null,task?.version??null,at,channel,JSON.stringify(payload),userId)));
 }
 const taskPayload=t=>({title:'待办提醒：'+t.title,body:(t.due?'截止：'+time(t.due):'自定义提醒')+'。完成后请在清单打勾，后续提醒会停止。',url:'/?task='+encodeURIComponent(t.id)});
+export async function taskJobRows(env,task,now=Date.now()) {
+  if(task.completed||task.acceptance_status&&task.acceptance_status!=='accepted'||!task.reminders?.push)return [];
+  const {results}=await env.DB.prepare('SELECT id FROM subscriptions WHERE user_id=?').bind(task.user_id).all(),payload=JSON.stringify(taskPayload(task));
+  return initialTimes(task,now).flatMap(at=>results.map(subscription=>({id:`task:${task.id}:v${task.version}:${at}:push:${subscription.id}`,taskId:task.id,version:task.version,at,channel:'push:'+subscription.id,payload,userId:task.user_id})));
+}
 export async function scheduleTask(env,task,now=Date.now()) {
-  if(task.completed||task.acceptance_status&&task.acceptance_status!=='accepted')return;
-  for(const at of initialTimes(task,now))await enqueue(env,`task:${task.id}:v${task.version}:${at}`,task,at,taskPayload(task),task.reminders);
+  const rows=await taskJobRows(env,task,now);if(!rows.length)return;
+  await env.DB.batch(rows.map(row=>env.DB.prepare('INSERT OR IGNORE INTO jobs(id,task_id,version,at,channel,payload,user_id) VALUES(?,?,?,?,?,?,?)').bind(row.id,row.taskId,row.version,row.at,row.channel,row.payload,row.userId)));
 }
 export async function repeatTasks(env,now) {
   const {results}=await env.DB.prepare("SELECT * FROM tasks WHERE completed=0 AND acceptance_status='accepted'").all();

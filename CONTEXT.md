@@ -30,11 +30,15 @@ A half-open time range `[start, end)` submitted by one member for one Meeting Po
 
 ## Meeting Poll
 
-A request inside a Group that collects member availability for a date range and meeting duration.
+A request inside a Group that moves through availability collection, voting, and confirmation. Every member submits under their authenticated account and has one replaceable vote.
 
 ## Meeting Proposal
 
-One explainable time suggested by the scheduling algorithm. A proposal reports submitted members, available members, preference penalties, and conflicts. It is not a booked meeting until confirmed.
+One explainable time suggested by the scheduling algorithm. A proposal reports submitted members, available members, preference penalties, and conflicts. It becomes a voting option only after every member submits availability.
+
+## Group Announcement
+
+A durable group-visible decision record. Confirming a meeting creates an announcement now; a future chat module may render the same record as a pinned message.
 
 ## Evidence
 

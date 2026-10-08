@@ -1,9 +1,9 @@
 import { validateTask } from './domain.js';
 import { random,hash,verifyPassword,makePasswordHash,makeAnswerHash,verifyAnswer } from './security.js';
-import { getKV,setKV,startOAuth,finishOAuth,syncMail,reprocessMail,ingestForwardedEmail,ingestShortcutEmail,localizeMessages,outlookConnection } from './mail.js';
+import { getKV,setKV,startOAuth,finishOAuth,syncMail,reprocessMail,ingestForwardedEmail,ingestShortcutEmail,localizeMessages,outlookConnection,outlookConfigProblems } from './mail.js';
 import { scheduleTask,repeatTasks,deliver,makeDigest,enqueue } from './jobs.js';
 import { addGroupMember,createGroup,createTaskCandidate,groupSnapshot,listGroups,respondToAssignment,reviewTaskCandidate } from './collaboration.js';
-import { confirmMeetingProposal,createMeetingPoll,meetingPollSnapshot,submitAvailability } from './meetings.js';
+import { confirmMeetingProposal,createMeetingPoll,meetingPollSnapshot,openMeetingVote,submitAvailability,voteMeetingProposal } from './meetings.js';
 const json=(data,status=200)=>Response.json(data,{status});
 async function body(request){if(Number(request.headers.get('content-length'))>7*1024*1024)throw new Error('请求过大');const text=await request.text();if(text.length>7*1024*1024)throw new Error('请求过大');return JSON.parse(text);}
 const emailOf=value=>String(value||'').trim().toLowerCase();
@@ -119,6 +119,10 @@ async function routes(request,env){
   if(meetingPollId&&method==='GET')return json(await meetingPollSnapshot(env,account.user_id,meetingPollId));
   const availabilityPollId=path.match(/^\/api\/meeting-polls\/([\w-]+)\/availability$/)?.[1];
   if(availabilityPollId&&method==='PUT')return json(await submitAvailability(env,account.user_id,availabilityPollId,await body(request)));
+  const votingPollId=path.match(/^\/api\/meeting-polls\/([\w-]+)\/voting$/)?.[1];
+  if(votingPollId&&method==='POST')return json(await openMeetingVote(env,account.user_id,votingPollId));
+  const votePollId=path.match(/^\/api\/meeting-polls\/([\w-]+)\/vote$/)?.[1];
+  if(votePollId&&method==='POST')return json(await voteMeetingProposal(env,account.user_id,votePollId,(await body(request)).start));
   const confirmPollId=path.match(/^\/api\/meeting-polls\/([\w-]+)\/confirm$/)?.[1];
   if(confirmPollId&&method==='POST')return json(await confirmMeetingProposal(env,account.user_id,confirmPollId,(await body(request)).start));
   const candidateId=path.match(/^\/api\/task-candidates\/([\w-]+)\/review$/)?.[1];
@@ -128,9 +132,10 @@ async function routes(request,env){
   if(path==='/api/status'){
     const profile=await env.DB.prepare('SELECT nickname,avatar,linked_email,locale,reminder_defaults FROM users WHERE id=?').bind(account.user_id).first();
     const outlook=await outlookConnection(env,account.user_id);
-    return json({account:{id:account.user_id,email:account.email,isOwner,userCode:String(account.user_id).replace(/-/g,'').slice(-4).toUpperCase(),nickname:profile?.nickname||'',avatar:profile?.avatar||'',locale:profile?.locale||'zh-CN'},outlook:!!outlook,outlookEmail:outlook?.email||'',outlookConfigured:!!(env.MS_CLIENT_ID&&env.MS_CLIENT_SECRET),mailStatus:outlook?.status||'尚未连接 Outlook',lastSync:outlook?.last_sync||null,pushReady:!!(env.VAPID_PUBLIC_KEY&&env.VAPID_PRIVATE_KEY),vapid:env.VAPID_PUBLIC_KEY||null,ai:env.ENABLE_AI==='true',appleSync:false,cronLast:await getKV(env,'cron_last'),jobErrors:(await env.DB.prepare("SELECT error,channel,at FROM jobs WHERE user_id=? AND error IS NOT NULL ORDER BY at DESC LIMIT 5").bind(account.user_id).all()).results});
+    const outlookMissingConfig=outlookConfigProblems(env,url.origin);
+    return json({account:{id:account.user_id,email:account.email,isOwner,userCode:String(account.user_id).replace(/-/g,'').slice(-4).toUpperCase(),nickname:profile?.nickname||'',avatar:profile?.avatar||'',locale:profile?.locale||'zh-CN'},outlook:!!outlook,outlookEmail:outlook?.email||'',outlookConfigured:outlookMissingConfig.length===0,outlookMissingConfig,mailStatus:outlook?.status||'尚未连接 Outlook',lastSync:outlook?.last_sync||null,pushReady:!!(env.VAPID_PUBLIC_KEY&&env.VAPID_PRIVATE_KEY),vapid:env.VAPID_PUBLIC_KEY||null,ai:env.ENABLE_AI==='true',appleSync:false,cronLast:await getKV(env,'cron_last'),jobErrors:(await env.DB.prepare("SELECT error,channel,at FROM jobs WHERE user_id=? AND error IS NOT NULL ORDER BY at DESC LIMIT 5").bind(account.user_id).all()).results});
   }
-  if(path==='/api/tasks'&&method==='GET')return json((await env.DB.prepare('SELECT * FROM tasks WHERE user_id=? ORDER BY completed, due IS NULL, due, priority').bind(account.user_id).all()).results.map(mapTask));
+  if(path==='/api/tasks'&&method==='GET')return json((await env.DB.prepare("SELECT * FROM tasks WHERE user_id=? AND (group_id IS NULL OR acceptance_status='accepted') ORDER BY completed, due IS NULL, due, priority").bind(account.user_id).all()).results.map(mapTask));
   if(path==='/api/tasks'&&method==='POST')return json(await createTask(env,await body(request),'manual',null,account.user_id),201);
   const taskId=path.match(/^\/api\/tasks\/([\w-]+)$/)?.[1];
   if(taskId&&method==='PATCH'){
@@ -159,7 +164,7 @@ async function routes(request,env){
   if(path==='/api/outlook/start'&&method==='GET'){
     const requestedEmail=emailOf(url.searchParams.get('email'));
     if(requestedEmail&&!validEmail(requestedEmail))return json({error:'请输入有效的 Outlook 邮箱'},400);
-    return Response.redirect(await startOAuth(env,account,requestedEmail));
+    return Response.redirect(await startOAuth(env,account,requestedEmail,url.origin));
   }
   if(path==='/api/outlook/callback'&&method==='GET'){
     await finishOAuth(env,url,account);

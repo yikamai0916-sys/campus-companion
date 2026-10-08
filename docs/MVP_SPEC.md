@@ -12,7 +12,9 @@ Campus Companion helps a student group confirm who does what, see the real deadl
 4. Proposed assignees accept or reject their responsibilities.
 5. Members submit availability to a Meeting Poll.
 6. The scheduler returns up to three meaningfully different Meeting Proposals with explanations.
-7. The group confirms a proposal and tracks accepted Tasks in My Tasks.
+7. Every member votes once among the locked proposals and may change that vote before confirmation.
+8. The group owner confirms a highest-vote option after everyone votes.
+9. The confirmed meeting appears in every member's My Tasks and in the Group announcements.
 
 ## Navigation
 
@@ -25,6 +27,7 @@ The primary navigation contains only **My Tasks** and **My Groups**. Settings co
 - Task Candidate review with evidence and explicit confirmation.
 - Assignee acceptance or rejection.
 - Availability collection and explainable meeting recommendations.
+- One-member-one-vote meeting decisions and durable meeting announcements.
 - Lightweight task comments and decision records.
 - On-demand translation.
 - In-app due information and opt-in push reminders.
@@ -45,6 +48,7 @@ The primary navigation contains only **My Tasks** and **My Groups**. Settings co
 - Confirmation is required before reminders or assignments have effects.
 - An assignee accepts their own responsibility.
 - Missing availability is unknown, never available.
+- Voting cannot begin until every member submits availability; confirmation cannot occur until every member votes.
 - Every private query is scoped by the authenticated User or an authorized Group Membership.
 - Mail connectors use delegated, least-privilege read access and never send mail.
 - Raw mail bodies are not retained after structured extraction.
