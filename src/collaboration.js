@@ -93,8 +93,10 @@ export async function addGroupMember(env,actorId,groupId,email){
   const normalized=String(email??'').trim().toLowerCase();
   const user=await env.DB.prepare('SELECT id,email,nickname FROM users WHERE email=?').bind(normalized).first();
   if(!user)throw new CollaborationError('该同学需要先注册 Campus Companion',404);
-  await env.DB.prepare("INSERT OR IGNORE INTO group_members(group_id,user_id,role,joined) VALUES(?,?,'member',?)").bind(groupId,user.id,Date.now()).run();
-  return user;
+  if(await memberExists(env,groupId,user.id))throw new CollaborationError('该用户已经是成员',409);
+  const invitation={id:crypto.randomUUID(),group_id:groupId,user_id:user.id,invited_by:actorId,created:Date.now()};
+  await env.DB.prepare("INSERT INTO group_invitations(id,group_id,user_id,invited_by,created) VALUES(?,?,?,?,?) ON CONFLICT(group_id,user_id) DO UPDATE SET status='pending',invited_by=excluded.invited_by,created=excluded.created").bind(invitation.id,groupId,user.id,actorId,invitation.created).run();
+  return {ok:true,status:'pending'};
 }
 
 export async function createTaskCandidate(env,actorId,groupId,input){
@@ -146,4 +148,40 @@ export async function respondToAssignment(env,actorId,taskId,decision){
   if(next==='accepted')await scheduleTask(env,updated);
   else await env.DB.prepare("UPDATE jobs SET state='cancelled' WHERE task_id=? AND user_id=? AND state IN ('pending','sending')").bind(taskId,actorId).run();
   return updated;
+}
+
+export async function listInvitations(env,actorId){
+ return (await env.DB.prepare("SELECT i.id,i.group_id,g.name FROM group_invitations i JOIN groups g ON g.id=i.group_id WHERE i.user_id=? AND i.status='pending'").bind(actorId).all()).results;
+}
+export async function respondInvitation(env,actorId,id,decision){
+ if(!['accept','reject'].includes(decision))throw new CollaborationError('操作无效');
+ const invitation=await env.DB.prepare("SELECT * FROM group_invitations WHERE id=? AND user_id=? AND status='pending'").bind(id,actorId).first();
+ if(!invitation)throw new CollaborationError('邀请不存在或已经处理',404);
+ const statements=[env.DB.prepare("UPDATE group_invitations SET status=? WHERE id=? AND user_id=? AND status='pending'").bind(decision==='accept'?'accepted':'declined',id,actorId)];
+ if(decision==='accept')statements.push(env.DB.prepare("INSERT OR IGNORE INTO group_members(group_id,user_id,role,joined) SELECT ?,?,'member',? WHERE changes()=1").bind(invitation.group_id,actorId,Date.now()));
+ const result=await env.DB.batch(statements);if(!result[0].meta.changes)throw new CollaborationError('邀请已经处理',409);
+ return {ok:true};
+}
+export async function manageMember(env,actorId,groupId,input){
+ const access=await membership(env,groupId,actorId),target=String(input.userId||actorId);
+ if(input.action==='transfer'){
+  if(access.role!=='owner'||target===actorId||!await memberExists(env,groupId,target))throw new CollaborationError('请选择另一位成员接任组长',403);
+  await env.DB.batch([
+   env.DB.prepare("UPDATE group_members SET role='member' WHERE group_id=? AND user_id=?").bind(groupId,actorId),
+   env.DB.prepare("UPDATE group_members SET role='owner' WHERE group_id=? AND user_id=?").bind(groupId,target),
+   env.DB.prepare('UPDATE groups SET owner_user_id=?,updated=? WHERE id=?').bind(target,Date.now(),groupId)
+  ]);return {ok:true};
+ }
+ if(input.action!=='remove')throw new CollaborationError('操作无效');
+ if(target!==actorId&&access.role!=='owner')throw new CollaborationError('只有组长可以移除成员',403);
+ if(target===access.owner_user_id)throw new CollaborationError('请先转让组长，再退出小组',409);
+ // Keep frozen electorates and confirmed meetings consistent. Close them first.
+ const active=await env.DB.prepare("SELECT 1 FROM meeting_polls WHERE group_id=? AND status IN ('open','confirmed') LIMIT 1").bind(groupId).first();
+ if(active)throw new CollaborationError('请先让组长取消小组会议，再变更成员',409);
+ const assigned=await env.DB.prepare("SELECT 1 FROM tasks WHERE group_id=? AND user_id=? AND completed=0 AND acceptance_status IN ('pending','accepted') LIMIT 1").bind(groupId,target).first();
+ if(assigned)throw new CollaborationError('请先完成或拒绝该成员的未完成分工',409);
+ await env.DB.batch([
+  env.DB.prepare('DELETE FROM group_members WHERE group_id=? AND user_id=?').bind(groupId,target),
+  env.DB.prepare('DELETE FROM group_invitations WHERE group_id=? AND user_id=?').bind(groupId,target)
+ ]);return {ok:true};
 }

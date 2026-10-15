@@ -1,9 +1,11 @@
+import { meetingTask,wording } from './display.js';
+import { listMailSuggestions,reviewMailSuggestion } from './suggestions.js';
 import { validateTask } from './domain.js';
 import { random,hash,verifyPassword,makePasswordHash,makeAnswerHash,verifyAnswer } from './security.js';
 import { getKV,setKV,startOAuth,finishOAuth,syncMail,reprocessMail,ingestForwardedEmail,ingestShortcutEmail,localizeMessages,outlookConnection,outlookConfigProblems } from './mail.js';
 import { scheduleTask,repeatTasks,deliver,makeDigest,enqueue } from './jobs.js';
-import { addGroupMember,createGroup,createTaskCandidate,groupSnapshot,listGroups,respondToAssignment,reviewTaskCandidate } from './collaboration.js';
-import { confirmMeetingProposal,createMeetingPoll,meetingPollSnapshot,openMeetingVote,submitAvailability,voteMeetingProposal } from './meetings.js';
+import { listInvitations,respondInvitation,manageMember,addGroupMember,createGroup,createTaskCandidate,groupSnapshot,listGroups,respondToAssignment,reviewTaskCandidate } from './collaboration.js';
+import { changeMeeting,confirmMeetingProposal,createMeetingPoll,meetingPollSnapshot,openMeetingVote,submitAvailability,voteMeetingProposal } from './meetings.js';
 const json=(data,status=200)=>Response.json(data,{status});
 async function body(request){if(Number(request.headers.get('content-length'))>7*1024*1024)throw new Error('请求过大');const text=await request.text();if(text.length>7*1024*1024)throw new Error('请求过大');return JSON.parse(text);}
 const emailOf=value=>String(value||'').trim().toLowerCase();
@@ -13,7 +15,7 @@ const parseReminder=value=>{try{return {...defaultReminder,...JSON.parse(value||
 const defaultMailPreferences={focusTerms:[],daily:{enabled:true,time:'20:00'},late:{enabled:true,time:'00:00'}};
 const validTime=value=>/^([01]\d|2[0-3]):[0-5]\d$/.test(String(value||''));
 const parseMailPreferences=value=>{try{const raw=typeof value==='string'?JSON.parse(value||'{}'):(value||{}),focusTerms=(Array.isArray(raw.focusTerms)?raw.focusTerms:[]).map(x=>String(x).trim()).filter(x=>x.length>0&&x.length<=80).filter((x,index,list)=>list.findIndex(other=>other.toLowerCase()===x.toLowerCase())===index).slice(0,30);return {focusTerms,daily:{enabled:raw.daily?.enabled!==false,time:validTime(raw.daily?.time)?raw.daily.time:'20:00'},late:{enabled:raw.late?.enabled!==false,time:validTime(raw.late?.time)?raw.late.time:'00:00'}};}catch{return structuredClone(defaultMailPreferences)}};
-async function session(request,env){const cookie=request.headers.get('Cookie')?.match(/(?:^|; )campus_session=([^;]+)/)?.[1];if(!cookie)return null;return env.DB.prepare('SELECT s.id,s.user_id,u.email FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.expires>?').bind(await hash(cookie),Date.now()).first();}
+async function session(request,env){const cookie=request.headers.get('Cookie')?.match(/(?:^|; )campus_session=([^;]+)/)?.[1];if(!cookie)return null;return env.DB.prepare('SELECT s.id,s.user_id,u.email,u.locale FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.expires>?').bind(await hash(cookie),Date.now()).first();}
 async function startSession(env,user,url){const token=random(),expires=Date.now()+30*86400000;await env.DB.prepare('INSERT INTO sessions(id,expires,user_id) VALUES(?,?,?)').bind(await hash(token),expires,user.id).run();return new Response('{}',{headers:{'Content-Type':'application/json','Set-Cookie':`campus_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000${url.protocol==='https:'?'; Secure':''}`}});}
 async function ownerUser(env){return env.DB.prepare('SELECT id,email FROM users WHERE email=?').bind(emailOf(env.LOGIN_EMAIL)).first();}
 async function claimLegacy(env,userId){await env.DB.batch(['tasks','messages','subscriptions','jobs'].map(table=>env.DB.prepare(`UPDATE ${table} SET user_id=? WHERE user_id IS NULL`).bind(userId)));}
@@ -21,6 +23,7 @@ async function legacyOwner(env,email,password){if(email!==emailOf(env.LOGIN_EMAI
 const mapTask=t=>({...t,completed:!!t.completed,reminders:JSON.parse(t.reminders)});
 async function createTask(env,data,source='manual',sourceId=null,userId=null){
   if(!userId)throw new Error('无法确认任务所属账号');
+  if(data.reminders?.email)throw new Error('邮件提醒暂不可用，请选择手机通知');
   const t={...validateTask(data),id:crypto.randomUUID(),version:1,source,source_id:sourceId,created:Date.now(),updated:Date.now(),user_id:userId};
   await env.DB.prepare('INSERT INTO tasks(id,title,notes,due,priority,completed,source,source_id,reminders,version,created,updated,user_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(t.id,t.title,t.notes,t.due,t.priority,t.completed,t.source,t.source_id,JSON.stringify(t.reminders),t.version,t.created,t.updated,t.user_id).run();
   await scheduleTask(env,t);return t;
@@ -105,6 +108,17 @@ async function routes(request,env){
     return json({ok:true,nickname,avatar,linkedEmail,locale,reminders,mailPreferences});
   }
   const isOwner=account.email===emailOf(env.LOGIN_EMAIL);
+  if(path==='/api/invitations'&&method==='GET')return json(await listInvitations(env,account.user_id));
+  const invitationId=path.match(/^\/api\/invitations\/([\w-]+)$/)?.[1];
+  if(invitationId&&method==='POST')return json(await respondInvitation(env,account.user_id,invitationId,(await body(request)).decision));
+  const manageGroupId=path.match(/^\/api\/groups\/([\w-]+)\/membership$/)?.[1];
+  if(manageGroupId&&method==='POST')return json(await manageMember(env,account.user_id,manageGroupId,await body(request)));
+  const changePollId=path.match(/^\/api\/meeting-polls\/([\w-]+)\/lifecycle$/)?.[1];
+  if(changePollId&&method==='POST')return json(await changeMeeting(env,account.user_id,changePollId,await body(request)));
+  if(path==='/api/mail-suggestions'&&method==='GET')return json(await listMailSuggestions(env,account.user_id));
+  const suggestionId=path.match(/^\/api\/mail-suggestions\/([\w-]+)$/)?.[1];
+  if(suggestionId&&method==='POST')return json(await reviewMailSuggestion(env,account.user_id,suggestionId,await body(request)));
+
   if(path==='/api/groups'&&method==='GET')return json(await listGroups(env,account.user_id));
   if(path==='/api/groups'&&method==='POST')return json(await createGroup(env,account.user_id,await body(request)),201);
   const groupId=path.match(/^\/api\/groups\/([\w-]+)$/)?.[1];
@@ -133,16 +147,19 @@ async function routes(request,env){
     const profile=await env.DB.prepare('SELECT nickname,avatar,linked_email,locale,reminder_defaults FROM users WHERE id=?').bind(account.user_id).first();
     const outlook=await outlookConnection(env,account.user_id);
     const outlookMissingConfig=outlookConfigProblems(env,url.origin);
-    return json({account:{id:account.user_id,email:account.email,isOwner,userCode:String(account.user_id).replace(/-/g,'').slice(-4).toUpperCase(),nickname:profile?.nickname||'',avatar:profile?.avatar||'',locale:profile?.locale||'zh-CN'},outlook:!!outlook,outlookEmail:outlook?.email||'',outlookConfigured:outlookMissingConfig.length===0,outlookMissingConfig,mailStatus:outlook?.status||'尚未连接 Outlook',lastSync:outlook?.last_sync||null,pushReady:!!(env.VAPID_PUBLIC_KEY&&env.VAPID_PRIVATE_KEY),vapid:env.VAPID_PUBLIC_KEY||null,ai:env.ENABLE_AI==='true',appleSync:false,cronLast:await getKV(env,'cron_last'),jobErrors:(await env.DB.prepare("SELECT error,channel,at FROM jobs WHERE user_id=? AND error IS NOT NULL ORDER BY at DESC LIMIT 5").bind(account.user_id).all()).results});
+    return json({account:{id:account.user_id,email:account.email,isOwner,userCode:String(account.user_id).replace(/-/g,'').slice(-4).toUpperCase(),nickname:profile?.nickname||'',avatar:profile?.avatar||'',locale:profile?.locale||'zh-CN'},outlook:!!outlook,outlookEmail:outlook?.email||'',outlookConfigured:outlookMissingConfig.length===0,outlookMissingConfig,mailStatus:outlook?.status||'尚未连接 Outlook',lastSync:outlook?.last_sync||null,emailReady:false,pushReady:!!(env.VAPID_PUBLIC_KEY&&env.VAPID_PRIVATE_KEY),vapid:env.VAPID_PUBLIC_KEY||null,ai:env.ENABLE_AI==='true',appleSync:false,cronLast:await getKV(env,'cron_last'),jobErrors:(await env.DB.prepare("SELECT error,channel,at FROM jobs WHERE user_id=? AND error IS NOT NULL ORDER BY at DESC LIMIT 5").bind(account.user_id).all()).results});
   }
-  if(path==='/api/tasks'&&method==='GET')return json((await env.DB.prepare("SELECT * FROM tasks WHERE user_id=? AND (group_id IS NULL OR acceptance_status='accepted') ORDER BY completed, due IS NULL, due, priority").bind(account.user_id).all()).results.map(mapTask));
+  if(path==='/api/tasks'&&method==='GET'){
+ const rows=(await env.DB.prepare("SELECT * FROM tasks WHERE user_id=? AND (group_id IS NULL OR acceptance_status='accepted') ORDER BY completed, due IS NULL, due, priority").bind(account.user_id).all()).results;
+ return json(await Promise.all(rows.map(async row=>{const task=mapTask(row);return task.source==='meeting'?meetingTask(task,await env.DB.prepare('SELECT name FROM meeting_polls WHERE id=?').bind(task.source_id).first(),account.locale):task;})));
+ }
   if(path==='/api/tasks'&&method==='POST')return json(await createTask(env,await body(request),'manual',null,account.user_id),201);
   const taskId=path.match(/^\/api\/tasks\/([\w-]+)$/)?.[1];
   if(taskId&&method==='PATCH'){
     const old=await env.DB.prepare('SELECT * FROM tasks WHERE id=? AND user_id=?').bind(taskId,account.user_id).first();if(!old)return json({error:'任务不存在'},404);
     if(old.acceptance_status==='pending')return json({error:'请先接受或拒绝这项分工'},409);
     if(old.acceptance_status==='declined')return json({error:'已拒绝的分工不能修改'},409);
-    const input=await body(request);if(input.version!==old.version)return json({error:'任务已在其他设备更新，请刷新后重试'},409);
+    const input=await body(request);if(input.reminders?.email)throw new Error('邮件提醒暂不可用，请选择手机通知');if(input.version!==old.version)return json({error:'任务已在其他设备更新，请刷新后重试'},409);
     const t={...old,...validateTask(input,mapTask(old)),version:old.version+1,updated:Date.now()};
     const result=await env.DB.batch([env.DB.prepare('UPDATE tasks SET title=?,notes=?,due=?,priority=?,completed=?,reminders=?,version=?,updated=? WHERE id=? AND version=?').bind(t.title,t.notes,t.due,t.priority,t.completed,JSON.stringify(t.reminders),t.version,t.updated,t.id,old.version),env.DB.prepare("UPDATE jobs SET state='cancelled' WHERE task_id=? AND version=? AND state IN ('pending','sending')").bind(t.id,old.version)]);
     if(!result[0].meta.changes)return json({error:'任务已更新，请刷新'},409);
@@ -158,7 +175,7 @@ async function routes(request,env){
     return json(await localizeMessages(env,account.user_id,profile?.locale||'zh-CN',messages));
   }
   const messageId=path.match(/^\/api\/messages\/(.+)$/)?.[1];
-  if(messageId&&method==='DELETE'){await env.DB.prepare('DELETE FROM messages WHERE id=? AND user_id=?').bind(decodeURIComponent(messageId),account.user_id).run();return json({ok:true});}
+  if(messageId&&method==='DELETE'){await env.DB.batch([env.DB.prepare('DELETE FROM messages WHERE id=? AND user_id=?').bind(decodeURIComponent(messageId),account.user_id),env.DB.prepare('DELETE FROM mail_suggestions WHERE message_id=? AND user_id=?').bind(decodeURIComponent(messageId),account.user_id)]);return json({ok:true});}
   if(path==='/api/mail/reprocess'&&method==='POST')return json(await reprocessMail(env,account.user_id,2));
   if(path==='/api/digests'){const prefix='digest:'+account.user_id+':%';const rows=(await env.DB.prepare("SELECT value FROM kv WHERE key LIKE ? AND value!='quiet' ORDER BY key DESC LIMIT 30").bind(prefix).all()).results;return json(rows.flatMap(row=>{try{return [JSON.parse(row.value)]}catch{return []}}));}
   if(path==='/api/outlook/start'&&method==='GET'){
@@ -189,7 +206,11 @@ async function routes(request,env){
     const {results}=await env.DB.prepare('SELECT * FROM tasks WHERE user_id=? AND completed=0').bind(account.user_id).all();for(const t of results)await scheduleTask(env,mapTask(t));
     return json({ok:true});
   }
-  if(path==='/api/test-notification'&&method==='POST'){await enqueue(env,'test:'+crypto.randomUUID(),null,Date.now(),{title:'校园清单 · 测试提醒',body:'收到这条消息表示该提醒渠道已接通。',url:'/'},{push:true,email:true},account.user_id);await deliver(env);return json({ok:true});}
+  if(path==='/api/test-notification'&&method==='POST'){
+ if(!env.VAPID_PUBLIC_KEY||!env.VAPID_PRIVATE_KEY)return json({error:wording(account.locale,'系统通知尚未配置','系統通知尚未設定','Push notifications are not configured.')},400);
+ if(!await env.DB.prepare('SELECT id FROM subscriptions WHERE user_id=? LIMIT 1').bind(account.user_id).first())return json({error:wording(account.locale,'请先在此设备启用通知','請先在此裝置啟用通知','Enable notifications on this device first.')},400);
+ await enqueue(env,'test:'+crypto.randomUUID(),null,Date.now(),{title:wording(account.locale,'校园清单 · 测试提醒','校園清單 · 測試提醒','Campus Companion · Test'),body:wording(account.locale,'收到这条消息表示推送已接通。','收到此訊息表示推送已接通。','Receiving this confirms that push works.'),url:'/'},{push:true,email:false},account.user_id);await deliver(env);return json({ok:true});
+ }
   return json({error:'页面不存在'},404);
 }
 export default {
