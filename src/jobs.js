@@ -1,3 +1,4 @@
+import { reminderPayload,meetingTask,wording } from './display.js';
 import webpush from 'web-push';
 import { initialTimes,nextAllowed,allowed } from './domain.js';
 import { getKV,setKV,outlookConnection } from './mail.js';
@@ -40,7 +41,8 @@ export async function deliver(env,now=Date.now()) {
     if(!job)continue;
     try {
       if(job.task_id){const t=await env.DB.prepare('SELECT completed,version,reminders FROM tasks WHERE id=? AND user_id=?').bind(job.task_id,job.user_id).first();if(!t||t.completed||t.version!==job.version){await env.DB.prepare("UPDATE jobs SET state='cancelled' WHERE id=?").bind(job.id).run();continue;}const r=JSON.parse(t.reminders);if(!allowed(now,r)){await env.DB.prepare("UPDATE jobs SET state='pending',at=? WHERE id=?").bind(nextAllowed(now,r),job.id).run();continue;}}
-      const payload=JSON.parse(job.payload);
+      let payload=JSON.parse(job.payload);
+      if(job.task_id){const task=await env.DB.prepare('SELECT * FROM tasks WHERE id=? AND user_id=?').bind(job.task_id,job.user_id).first();if(!task)continue;const user=await env.DB.prepare('SELECT locale FROM users WHERE id=?').bind(job.user_id).first();const poll=task.source==='meeting'?await env.DB.prepare('SELECT name FROM meeting_polls WHERE id=?').bind(task.source_id).first():null;payload=reminderPayload(meetingTask(task,poll,user?.locale),user?.locale);}
       if(job.channel.startsWith('push:')) {
         const id=job.channel.slice(5),sub=await env.DB.prepare('SELECT data FROM subscriptions WHERE id=? AND user_id=?').bind(id,job.user_id).first();
         if(!sub){await env.DB.prepare("UPDATE jobs SET state='cancelled' WHERE id=?").bind(job.id).run();continue;}

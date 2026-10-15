@@ -7,7 +7,7 @@ import worker from '../src/worker.js';
 import { hash,b64,random,seal,unseal,makePasswordHash } from '../src/security.js';
 import { deliver } from '../src/jobs.js';
 function database(){
-  const sqlite=new DatabaseSync(':memory:');for(const name of ['0001.sql','0002_accounts.sql','0003_profile.sql','0004_message_localizations.sql','0005_localization_version.sql','0006_outlook_connections.sql','0007_mail_preferences.sql','0008_account_scoped_records.sql','0009_collaboration.sql','0010_meeting_planner.sql','0011_meeting_votes_and_announcements.sql'])sqlite.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));
+  const sqlite=new DatabaseSync(':memory:');for(const name of ['0001.sql','0002_accounts.sql','0003_profile.sql','0004_message_localizations.sql','0005_localization_version.sql','0006_outlook_connections.sql','0007_mail_preferences.sql','0008_account_scoped_records.sql','0009_collaboration.sql','0010_meeting_planner.sql','0011_meeting_votes_and_announcements.sql','0012_review_and_membership.sql'])sqlite.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));
   const db={prepare(sql){let args=[];const obj={bind(...a){args=a;return obj;},async first(){return sqlite.prepare(sql).get(...args)||null;},async all(){return {results:sqlite.prepare(sql).all(...args)};},async run(){const r=sqlite.prepare(sql).run(...args);return {meta:{changes:r.changes}};}};return obj;},async batch(stmts){sqlite.exec('BEGIN');try{const r=[];for(const s of stmts)r.push(await s.run());sqlite.exec('COMMIT');return r;}catch(e){sqlite.exec('ROLLBACK');throw e;}}};return db;
 }
 test('meeting workflow migration preserves historical confirmed state',()=>{
@@ -132,6 +132,12 @@ test('group candidate review and assignee acceptance are separate transitions',a
   const groupResponse=await call(ownerToken,'groups','POST',{name:'CDS2003 Group Project'});assert.equal(groupResponse.status,201);
   const group=await groupResponse.json();
   assert.equal((await call(ownerToken,`groups/${group.id}/members`,'POST',{email:'member@example.com'})).status,201);
+  assert.equal((await call(memberToken,`groups/${group.id}`)).status,404);
+  const invites=await (await call(memberToken,'invitations')).json();
+  assert.equal(invites.length,1);
+  assert.equal((await call(outsiderToken,`invitations/${invites[0].id}`,'POST',{decision:'accept'})).status,404);
+  assert.equal((await call(memberToken,`invitations/${invites[0].id}`,'POST',{decision:'accept'})).status,200);
+  assert.equal((await call(memberToken,`invitations/${invites[0].id}`,'POST',{decision:'accept'})).status,404);
   assert.equal((await call(outsiderToken,`groups/${group.id}`)).status,404);
   const candidateResponse=await call(ownerToken,`groups/${group.id}/candidates`,'POST',{title:'Analyse meeting algorithm',proposedAssigneeId:'member',due:Date.now()+5*86400000,evidence:{title:'Member will analyse the meeting algorithm.'}});assert.equal(candidateResponse.status,201);
   const candidate=await candidateResponse.json();
@@ -210,6 +216,16 @@ test('meeting polls treat missing availability as unknown and confirm only full-
   assert.equal((await (await call(ownerToken,'tasks')).json()).some(task=>task.source==='meeting'),true);
   assert.equal((await (await call(memberToken,'tasks')).json()).some(task=>task.source==='meeting'),true);
   assert.equal((await (await call(lateToken,'tasks')).json()).some(task=>task.source==='meeting'),false);
+  const before=await (await call(ownerToken,`meeting-polls/${poll.id}`)).json();
+  assert.equal((await call(memberToken,`meeting-polls/${poll.id}/lifecycle`,'POST',{action:'cancel',revision:before.poll.revision})).status,403);
+  assert.equal((await call(ownerToken,`meeting-polls/${poll.id}/lifecycle`,'POST',{action:'cancel',revision:before.poll.revision})).status,200);
+  assert.equal((await env.DB.prepare("SELECT COUNT(*) n FROM tasks WHERE source='meeting'").first()).n,0);
+  assert.equal((await env.DB.prepare("SELECT COUNT(*) n FROM jobs WHERE state='pending'").first()).n,0);
+  assert.equal((await call(ownerToken,`meeting-polls/${poll.id}/lifecycle`,'POST',{action:'reopen',revision:before.poll.revision,rangeStart:start,rangeEnd:end})).status,409);
+  const closed=await (await call(ownerToken,`meeting-polls/${poll.id}`)).json();assert.equal(closed.poll.status,'closed');
+  assert.equal((await call(ownerToken,`meeting-polls/${poll.id}/lifecycle`,'POST',{action:'reopen',revision:closed.poll.revision,rangeStart:start+86400000,rangeEnd:end+86400000})).status,200);
+  const reopened=await (await call(ownerToken,`meeting-polls/${poll.id}`)).json();assert.equal(reopened.poll.phase,'collecting');assert.equal(reopened.submissions.length,0);assert.equal(reopened.ownVote,null);
+
 });
 
 test('unauthenticated shared view URLs redirect to the public home page',async()=>{
@@ -280,4 +296,30 @@ test('digest history is visible only to the account that received it',async()=>{
   const first=await (await get(firstToken)).json(),second=await (await get(secondToken)).json();
   assert.equal(first.length,1);assert.equal(first[0].title,'First digest');
   assert.equal(second.length,1);assert.equal(second[0].title,'Second digest');
+});
+
+test('mail suggestions are private, deduplicated and require explicit confirmation',async()=>{
+ const {saveMailSuggestion,listMailSuggestions,reviewMailSuggestion}=await import('../src/suggestions.js');
+ const env={DB:database()},a={assignment:true,title:'Assignment',action:'Submit report',due:Date.now()+86400000,evidence:{deadline:'tomorrow'}};
+ await saveMailSuggestion(env,'one','message',a);await saveMailSuggestion(env,'one','message',a);
+ assert.equal((await listMailSuggestions(env,'two')).length,0);
+ assert.equal((await env.DB.prepare('SELECT count(*) n FROM tasks').first()).n,0);
+ const rows=await listMailSuggestions(env,'one');assert.equal(rows.length,1);
+ await assert.rejects(()=>reviewMailSuggestion(env,'two',rows[0].id,{decision:'confirm'}));
+ await reviewMailSuggestion(env,'one',rows[0].id,{decision:'confirm',title:'Reviewed title',due:null});
+ const task=await env.DB.prepare('SELECT * FROM tasks').first();assert.equal(task.title,'Reviewed title');assert.equal(task.due,null);assert.equal(task.user_id,'one');
+ await assert.rejects(()=>reviewMailSuggestion(env,'one',rows[0].id,{decision:'confirm'}));
+ assert.equal((await env.DB.prepare('SELECT count(*) n FROM tasks').first()).n,1);
+});
+
+test('group ownership transfer and leaving enforce ownership and assignment rules',async()=>{
+ const {manageMember}=await import('../src/collaboration.js');const env={DB:database()};
+ await env.DB.prepare("INSERT INTO groups(id,name,owner_user_id,created,updated) VALUES('g','Team','a',0,0)").run();
+ await env.DB.prepare("INSERT INTO group_members(group_id,user_id,role,joined) VALUES('g','a','owner',0),('g','b','member',0)").run();
+ await assert.rejects(()=>manageMember(env,'a','g',{action:'remove',userId:'a'}));
+ await assert.rejects(()=>manageMember(env,'b','g',{action:'transfer',userId:'a'}));
+ await manageMember(env,'a','g',{action:'transfer',userId:'b'});
+ assert.equal((await env.DB.prepare("SELECT owner_user_id FROM groups WHERE id='g'").first()).owner_user_id,'b');
+ await manageMember(env,'a','g',{action:'remove',userId:'a'});
+ assert.equal((await env.DB.prepare("SELECT COUNT(*) n FROM group_members WHERE group_id='g'").first()).n,1);
 });
