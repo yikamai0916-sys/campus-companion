@@ -7,7 +7,7 @@ import worker from '../src/worker.js';
 import { hash,b64,random,seal,unseal,makePasswordHash } from '../src/security.js';
 import { deliver } from '../src/jobs.js';
 function database(){
-  const sqlite=new DatabaseSync(':memory:');for(const name of ['0001.sql','0002_accounts.sql','0003_profile.sql','0004_message_localizations.sql','0005_localization_version.sql','0006_outlook_connections.sql','0007_mail_preferences.sql','0008_account_scoped_records.sql','0009_collaboration.sql','0010_meeting_planner.sql','0011_meeting_votes_and_announcements.sql','0012_review_and_membership.sql'])sqlite.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));
+  const sqlite=new DatabaseSync(':memory:');for(const name of ['0001.sql','0002_accounts.sql','0003_profile.sql','0004_message_localizations.sql','0005_localization_version.sql','0006_outlook_connections.sql','0007_mail_preferences.sql','0008_account_scoped_records.sql','0009_collaboration.sql','0010_meeting_planner.sql','0011_meeting_votes_and_announcements.sql','0012_review_and_membership.sql','0013_preferred_zh_name.sql'])sqlite.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));
   const db={prepare(sql){let args=[];const obj={bind(...a){args=a;return obj;},async first(){return sqlite.prepare(sql).get(...args)||null;},async all(){return {results:sqlite.prepare(sql).all(...args)};},async run(){const r=sqlite.prepare(sql).run(...args);return {meta:{changes:r.changes}};}};return obj;},async batch(stmts){sqlite.exec('BEGIN');try{const r=[];for(const s of stmts)r.push(await s.run());sqlite.exec('COMMIT');return r;}catch(e){sqlite.exec('ROLLBACK');throw e;}}};return db;
 }
 test('meeting workflow migration preserves historical confirmed state',()=>{
@@ -279,7 +279,7 @@ test('mail reminder preferences are saved separately for each account',async()=>
   const env={DB:database()},origin='https://campus.example',token=random();
   await env.DB.prepare("INSERT INTO users(id,email,password_hash,created) VALUES('prefs','prefs@example.com','unused',0)").run();
   await env.DB.prepare('INSERT INTO sessions(id,expires,user_id) VALUES(?,?,?)').bind(await hash(token),Date.now()+3600000,'prefs').run();
-  const preferences={focusTerms:['scholarship','SOC 210'],daily:{enabled:true,time:'18:30'},late:{enabled:false,time:'00:30'}};
+  const preferences={focusTerms:['scholarship','SOC 210'],daily:{enabled:true,time:'18:30'},late:{enabled:false,time:'00:30'},translateZh:true,englishSummary:false};
   const response=await worker.fetch(new Request(origin+'/api/profile',{method:'PATCH',headers:{Origin:origin,Cookie:'campus_session='+token,'Content-Type':'application/json'},body:JSON.stringify({mailPreferences:preferences})}),env);
   assert.equal(response.status,200);assert.deepEqual((await response.json()).mailPreferences,preferences);
   const profile=await worker.fetch(new Request(origin+'/api/profile',{headers:{Cookie:'campus_session='+token}}),env);
@@ -339,4 +339,24 @@ test('group ownership transfer and leaving enforce ownership and assignment rule
  assert.equal((await env.DB.prepare("SELECT owner_user_id FROM groups WHERE id='g'").first()).owner_user_id,'b');
  await manageMember(env,'a','g',{action:'remove',userId:'a'});
  assert.equal((await env.DB.prepare("SELECT COUNT(*) n FROM group_members WHERE group_id='g'").first()).n,1);
+});
+
+test('preferred Chinese name is stored and messages list is paginated without blocking',async()=>{
+  const env={DB:database()},origin='https://campus.example',token=random();
+  await env.DB.prepare("INSERT INTO users(id,email,password_hash,created,locale) VALUES('echo','echo@example.com','unused',0,'zh-CN')").run();
+  await env.DB.prepare('INSERT INTO sessions(id,expires,user_id) VALUES(?,?,?)').bind(await hash(token),Date.now()+3600000,'echo').run();
+  const patch=await worker.fetch(new Request(origin+'/api/profile',{method:'PATCH',headers:{Origin:origin,Cookie:'campus_session='+token,'Content-Type':'application/json'},body:JSON.stringify({preferredZhName:'马艺恺',mailPreferences:{translateZh:true,englishSummary:false,daily:{enabled:true,time:'20:00'},late:{enabled:true,time:'00:00'},focusTerms:[]}})}),env);
+  assert.equal(patch.status,200);
+  assert.equal((await patch.json()).preferredZhName,'马艺恺');
+  const now=Date.now();
+  for(let i=0;i<3;i++)await env.DB.prepare('INSERT INTO messages(id,subject,received,sender,origin,category,summary,action,url,quality,user_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)').bind('m'+i,'Subject '+i,now-i, 's','o',2,'用户马毅凯请留意','无需操作','','test','echo').run();
+  const list=await (await worker.fetch(new Request(origin+'/api/messages?limit=2',{headers:{Cookie:'campus_session='+token}}),env)).json();
+  assert.equal(list.messages.length,2);
+  assert.ok(list.nextBefore);
+  assert.match(list.messages[0].summary,/马艺恺/);
+  assert.doesNotMatch(list.messages[0].summary,/马毅凯/);
+  const detail=await (await worker.fetch(new Request(origin+'/api/messages/m0',{headers:{Cookie:'campus_session='+token}}),env)).json();
+  assert.equal(detail.id,'m0');
+  assert.ok(detail.chinese||detail.display);
+  assert.ok(detail.english);
 });

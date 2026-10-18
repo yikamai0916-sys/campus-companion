@@ -267,3 +267,23 @@ label .picker-error{color:var(--danger)}
   nav button span{font-size:19px}
 }
 .tabs button{white-space:nowrap}
+
+/* Mail digests & detail */
+.digest-day{display:grid;gap:12px;margin-top:8px}
+.digest-item{display:block;text-align:left;width:100%;border:0;border-radius:22px;padding:16px 18px;background:var(--surface);box-shadow:0 1px 0 rgba(0,0,0,.04);cursor:pointer;transition:transform .2s var(--ease-out),box-shadow .2s}
+.digest-item:hover,.digest-item:focus-visible{transform:translateY(-1px);box-shadow:0 10px 28px rgba(0,0,0,.08);outline:none}
+.digest-item .meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.digest-item h3{margin:0 0 6px;font-size:1.05rem;line-height:1.35}
+.digest-item p{margin:0;color:var(--muted);font-size:.92rem;line-height:1.45}
+.digest-item .digest-action{margin-top:8px;font-size:.85rem;color:var(--ink)}
+.mail-card{cursor:pointer}
+.mail-card .mail-card-head{pointer-events:none}
+.mail-card .icon-delete{pointer-events:auto}
+.mail-detail-meta{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px;color:var(--muted);font-size:.86rem}
+.mail-detail-tabs{display:flex;gap:8px;margin:0 0 14px}
+.mail-detail-tabs button{border:0;border-radius:999px;padding:8px 14px;background:var(--surface-2);font-weight:700;cursor:pointer}
+.mail-detail-tabs button.selected{background:var(--ink);color:#fff}
+.mail-detail-pane{white-space:pre-wrap;line-height:1.55;font-size:.95rem}
+.mail-detail-pane h3{margin:0 0 8px;font-size:1.15rem}
+.mail-load-more{margin:16px auto;display:block}
+.zh-only-settings{display:grid;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid var(--surface-3)}

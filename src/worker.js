@@ -3,7 +3,9 @@ import { listMailSuggestions,reviewMailSuggestion } from './suggestions.js';
 import { validateTask } from './domain.js';
 import { normalizePresets } from '../public/reminder-logic.js';
 import { random,hash,verifyPassword,makePasswordHash,makeAnswerHash,verifyAnswer } from './security.js';
-import { getKV,setKV,startOAuth,finishOAuth,syncMail,reprocessMail,ingestForwardedEmail,ingestShortcutEmail,localizeMessages,outlookConnection,outlookConfigProblems } from './mail.js';
+import { getKV,setKV,startOAuth,finishOAuth,syncMail,reprocessMail,ingestForwardedEmail,ingestShortcutEmail,localizeMessages,outlookConnection,outlookConfigProblems,fetchMessageOriginal } from './mail.js';
+import { applyPreferredNameToFields } from './names.js';
+import { normalizeDigestRecord } from './digest-format.js';
 import { scheduleTask,repeatTasks,deliver,makeDigest,enqueue } from './jobs.js';
 import { listInvitations,respondInvitation,manageMember,addGroupMember,createGroup,createTaskCandidate,groupSnapshot,listGroups,respondToAssignment,reviewTaskCandidate } from './collaboration.js';
 import { changeMeeting,confirmMeetingProposal,createMeetingPoll,meetingPollSnapshot,openMeetingVote,submitAvailability,voteMeetingProposal } from './meetings.js';
@@ -13,9 +15,9 @@ const emailOf=value=>String(value||'').trim().toLowerCase();
 const validEmail=value=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)&&value.length<=254;
 const defaultReminder={presets:[],offsets:[4320,1440,120,30],repeat:1440,maxCount:0,start:'08:00',end:'23:00',days:[1,2,3,4,5,6,0],push:true,email:false};
 const parseReminder=value=>{try{return {...defaultReminder,...JSON.parse(value||'{}')}}catch{return defaultReminder}};
-const defaultMailPreferences={focusTerms:[],daily:{enabled:true,time:'20:00'},late:{enabled:true,time:'00:00'}};
+const defaultMailPreferences={focusTerms:[],daily:{enabled:true,time:'20:00'},late:{enabled:true,time:'00:00'},translateZh:true,englishSummary:false};
 const validTime=value=>/^([01]\d|2[0-3]):[0-5]\d$/.test(String(value||''));
-const parseMailPreferences=value=>{try{const raw=typeof value==='string'?JSON.parse(value||'{}'):(value||{}),focusTerms=(Array.isArray(raw.focusTerms)?raw.focusTerms:[]).map(x=>String(x).trim()).filter(x=>x.length>0&&x.length<=80).filter((x,index,list)=>list.findIndex(other=>other.toLowerCase()===x.toLowerCase())===index).slice(0,30);return {focusTerms,daily:{enabled:raw.daily?.enabled!==false,time:validTime(raw.daily?.time)?raw.daily.time:'20:00'},late:{enabled:raw.late?.enabled!==false,time:validTime(raw.late?.time)?raw.late.time:'00:00'}};}catch{return structuredClone(defaultMailPreferences)}};
+const parseMailPreferences=value=>{try{const raw=typeof value==='string'?JSON.parse(value||'{}'):(value||{}),focusTerms=(Array.isArray(raw.focusTerms)?raw.focusTerms:[]).map(x=>String(x).trim()).filter(x=>x.length>0&&x.length<=80).filter((x,index,list)=>list.findIndex(other=>other.toLowerCase()===x.toLowerCase())===index).slice(0,30);return {focusTerms,daily:{enabled:raw.daily?.enabled!==false,time:validTime(raw.daily?.time)?raw.daily.time:'20:00'},late:{enabled:raw.late?.enabled!==false,time:validTime(raw.late?.time)?raw.late.time:'00:00'},translateZh:raw.translateZh!==false,englishSummary:raw.englishSummary===true};}catch{return structuredClone(defaultMailPreferences)}};
 async function session(request,env){const cookie=request.headers.get('Cookie')?.match(/(?:^|; )campus_session=([^;]+)/)?.[1];if(!cookie)return null;return env.DB.prepare('SELECT s.id,s.user_id,u.email,u.locale FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.expires>?').bind(await hash(cookie),Date.now()).first();}
 async function startSession(env,user,url){const token=random(),expires=Date.now()+30*86400000;await env.DB.prepare('INSERT INTO sessions(id,expires,user_id) VALUES(?,?,?)').bind(await hash(token),expires,user.id).run();return new Response('{}',{headers:{'Content-Type':'application/json','Set-Cookie':`campus_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000${url.protocol==='https:'?'; Secure':''}`}});}
 async function ownerUser(env){return env.DB.prepare('SELECT id,email FROM users WHERE email=?').bind(emailOf(env.LOGIN_EMAIL)).first();}
@@ -92,14 +94,16 @@ async function routes(request,env){
     await env.DB.prepare('UPDATE users SET security_question=?,security_answer_hash=? WHERE id=?').bind(question,await makeAnswerHash(data.answer),account.user_id).run();return json({ok:true});
   }
   if(path==='/api/profile'&&method==='GET'){
-    const user=await env.DB.prepare('SELECT email,nickname,avatar,linked_email,locale,reminder_defaults,mail_preferences FROM users WHERE id=?').bind(account.user_id).first();
-    return json({email:user.email,nickname:user.nickname||'',avatar:user.avatar||'',linkedEmail:user.linked_email||'',locale:user.locale||'zh-CN',reminders:parseReminder(user.reminder_defaults),mailPreferences:parseMailPreferences(user.mail_preferences)});
+    const user=await env.DB.prepare('SELECT email,nickname,avatar,linked_email,locale,reminder_defaults,mail_preferences,preferred_zh_name FROM users WHERE id=?').bind(account.user_id).first();
+    return json({email:user.email,nickname:user.nickname||'',avatar:user.avatar||'',linkedEmail:user.linked_email||'',locale:user.locale||'zh-CN',preferredZhName:user.preferred_zh_name||'',reminders:parseReminder(user.reminder_defaults),mailPreferences:parseMailPreferences(user.mail_preferences)});
   }
   if(path==='/api/profile'&&method==='PATCH'){
-    const data=await body(request),current=await env.DB.prepare('SELECT nickname,avatar,linked_email,locale,reminder_defaults,mail_preferences FROM users WHERE id=?').bind(account.user_id).first();
+    const data=await body(request),current=await env.DB.prepare('SELECT nickname,avatar,linked_email,locale,reminder_defaults,mail_preferences,preferred_zh_name FROM users WHERE id=?').bind(account.user_id).first();
     const nickname=String(data.nickname===undefined?(current?.nickname||''):data.nickname).trim(),avatar=String(data.avatar===undefined?(current?.avatar||''):data.avatar).trim(),linkedEmail=data.linkedEmail===undefined?(current?.linked_email||''):emailOf(data.linkedEmail),locale=data.locale===undefined?(current?.locale||'zh-CN'):(['zh-CN','zh-TW','en'].includes(data.locale)?data.locale:'zh-CN');
+    const preferredZhName=String(data.preferredZhName===undefined?(current?.preferred_zh_name||''):data.preferredZhName).trim();
     const avatarOk=avatar.length<=16||(/^data:image\/(?:png|jpeg|webp|gif);base64,/.test(avatar)&&avatar.length<=7*1024*1024);
     if(nickname.length>80||!avatarOk)return json({error:'昵称最多 80 个字符；图片头像需为 PNG、JPEG、WEBP 或 GIF'},400);
+    if(preferredZhName.length>40)return json({error:'偏好中文译名最多 40 个字符'},400);
     if(linkedEmail&&!validEmail(linkedEmail))return json({error:'关联邮箱格式不正确'},400);
     const reminders={...defaultReminder,...parseReminder(current?.reminder_defaults),...(data.reminders||{})};
     const mailPreferences=parseMailPreferences(data.mailPreferences===undefined?current?.mail_preferences:data.mailPreferences);
@@ -107,8 +111,8 @@ async function routes(request,env){
     reminders.presets=normalizePresets(reminders.presets);
     if(!Array.isArray(reminders.offsets)||reminders.offsets.length>12||reminders.offsets.some(n=>!Number.isInteger(n)||n<0||n>525600)||!Number.isFinite(Number(reminders.repeat))||Number(reminders.repeat)<0)return json({error:'提醒配置不正确'},400);
     if(!validTime(mailPreferences.daily.time)||!validTime(mailPreferences.late.time))return json({error:'邮件提醒时间不正确'},400);
-    await env.DB.prepare('UPDATE users SET nickname=?,avatar=?,linked_email=?,locale=?,reminder_defaults=?,mail_preferences=? WHERE id=?').bind(nickname,avatar,linkedEmail,locale,JSON.stringify(reminders),JSON.stringify(mailPreferences),account.user_id).run();
-    return json({ok:true,nickname,avatar,linkedEmail,locale,reminders,mailPreferences});
+    await env.DB.prepare('UPDATE users SET nickname=?,avatar=?,linked_email=?,locale=?,reminder_defaults=?,mail_preferences=?,preferred_zh_name=? WHERE id=?').bind(nickname,avatar,linkedEmail,locale,JSON.stringify(reminders),JSON.stringify(mailPreferences),preferredZhName,account.user_id).run();
+    return json({ok:true,nickname,avatar,linkedEmail,locale,preferredZhName,reminders,mailPreferences});
   }
   const isOwner=account.email===emailOf(env.LOGIN_EMAIL);
   if(path==='/api/invitations'&&method==='GET')return json(await listInvitations(env,account.user_id));
@@ -173,14 +177,60 @@ async function routes(request,env){
     await env.DB.batch([env.DB.prepare('DELETE FROM jobs WHERE task_id=? AND user_id=?').bind(taskId,account.user_id),env.DB.prepare('DELETE FROM tasks WHERE id=? AND user_id=?').bind(taskId,account.user_id)]);return json({ok:true});
   }
   if(path==='/api/messages'&&method==='GET'){
-    const messages=(await env.DB.prepare('SELECT * FROM messages WHERE user_id=? AND category<5 ORDER BY CAST((received+28800000)/86400000 AS INTEGER) DESC,category,received DESC LIMIT 200').bind(account.user_id).all()).results;
-    const profile=await env.DB.prepare('SELECT locale FROM users WHERE id=?').bind(account.user_id).first();
-    return json(await localizeMessages(env,account.user_id,profile?.locale||'zh-CN',messages));
+    const limit=Math.min(80,Math.max(1,Number(url.searchParams.get('limit'))||40));
+    const before=Number(url.searchParams.get('before'));
+    const binds=[account.user_id];
+    let sql='SELECT id,subject,received,sender,origin,category,summary,action,url,quality FROM messages WHERE user_id=? AND category<5';
+    if(Number.isFinite(before)&&before>0){sql+=' AND received<?';binds.push(before);}
+    sql+=' ORDER BY received DESC LIMIT ?';binds.push(limit);
+    const messages=(await env.DB.prepare(sql).bind(...binds).all()).results;
+    const profile=await env.DB.prepare('SELECT locale,preferred_zh_name,mail_preferences FROM users WHERE id=?').bind(account.user_id).first();
+    const prefs=parseMailPreferences(profile?.mail_preferences);
+    const locale=profile?.locale||'zh-CN';
+    const preferredZhName=profile?.preferred_zh_name||'';
+    const localized=await localizeMessages(env,account.user_id,locale,messages,{allowAi:false,translate:locale==='en'?true:prefs.translateZh!==false,preferredZhName});
+    return json({messages:localized,nextBefore:messages.length===limit?messages[messages.length-1].received:null});
   }
   const messageId=path.match(/^\/api\/messages\/(.+)$/)?.[1];
+  if(messageId&&method==='GET'){
+    const id=decodeURIComponent(messageId);
+    const profile=await env.DB.prepare('SELECT locale,preferred_zh_name,mail_preferences FROM users WHERE id=?').bind(account.user_id).first();
+    const prefs=parseMailPreferences(profile?.mail_preferences);
+    const locale=profile?.locale||'zh-CN';
+    const preferredZhName=profile?.preferred_zh_name||'';
+    const fetched=await fetchMessageOriginal(env,account.user_id,id);
+    if(!fetched)return json({error:'邮件不存在'},404);
+    const {row,englishSubject,englishBody}=fetched;
+    const wantZh=locale.startsWith('zh')&&prefs.translateZh!==false;
+    const localizedRows=await localizeMessages(env,account.user_id,locale,[row],{allowAi:env.ENABLE_AI==='true',translate:wantZh||locale==='en',preferredZhName});
+    const localized=applyPreferredNameToFields(localizedRows[0]||row,preferredZhName);
+    return json({
+      id:row.id,
+      received:row.received,
+      category:row.category,
+      url:row.url||'',
+      quality:localized.quality||row.quality,
+      chinese:wantZh?{subject:localized.subject,sender:localized.sender,origin:localized.origin,summary:localized.summary,action:localized.action}:null,
+      english:{subject:englishSubject,body:englishBody,summary:prefs.englishSummary&&locale.startsWith('zh')?String(row.summary||''):undefined},
+      display:localized,
+      translationEnabled:wantZh,
+      englishSummaryEnabled:prefs.englishSummary===true&&locale.startsWith('zh')
+    });
+  }
   if(messageId&&method==='DELETE'){await env.DB.batch([env.DB.prepare('DELETE FROM messages WHERE id=? AND user_id=?').bind(decodeURIComponent(messageId),account.user_id),env.DB.prepare('DELETE FROM mail_suggestions WHERE message_id=? AND user_id=?').bind(decodeURIComponent(messageId),account.user_id)]);return json({ok:true});}
   if(path==='/api/mail/reprocess'&&method==='POST')return json(await reprocessMail(env,account.user_id,2));
-  if(path==='/api/digests'){const prefix='digest:'+account.user_id+':%';const rows=(await env.DB.prepare("SELECT value FROM kv WHERE key LIKE ? AND value!='quiet' ORDER BY key DESC LIMIT 30").bind(prefix).all()).results;return json(rows.flatMap(row=>{try{return [JSON.parse(row.value)]}catch{return []}}));}
+  if(path==='/api/digests'){
+    const prefix='digest:'+account.user_id+':%';
+    const rows=(await env.DB.prepare("SELECT value FROM kv WHERE key LIKE ? AND value!='quiet' ORDER BY key DESC LIMIT 30").bind(prefix).all()).results;
+    const preferred=(await env.DB.prepare('SELECT preferred_zh_name FROM users WHERE id=?').bind(account.user_id).first())?.preferred_zh_name||'';
+    return json(rows.flatMap(row=>{try{
+      const normalized=normalizeDigestRecord(JSON.parse(row.value));
+      if(!normalized)return [];
+      if(preferred&&normalized.items)normalized.items=normalized.items.map(item=>applyPreferredNameToFields(item,preferred));
+      if(preferred)normalized.body=applyPreferredNameToFields({body:normalized.body},preferred).body;
+      return [normalized];
+    }catch{return []}}));
+  }
   if(path==='/api/outlook/start'&&method==='GET'){
     const requestedEmail=emailOf(url.searchParams.get('email'));
     if(requestedEmail&&!validEmail(requestedEmail))return json({error:'请输入有效的 Outlook 邮箱'},400);
