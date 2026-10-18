@@ -2,6 +2,8 @@ import { reminderPayload,meetingTask,wording } from './display.js';
 import webpush from 'web-push';
 import { initialTimes,nextAllowed,allowed } from './domain.js';
 import { getKV,setKV,outlookConnection } from './mail.js';
+import { applyPreferredNameToFields } from './names.js';
+import { shapeDigestItem, shapeDigestRecord } from './digest-format.js';
 const time=n=>new Date(n).toLocaleString('zh-CN',{timeZone:'Asia/Hong_Kong',hour12:false});
 export async function enqueue(env,key,task,at,payload,reminders,userId=task?.user_id) {
   const channels=[];
@@ -58,9 +60,9 @@ export async function deliver(env,now=Date.now()) {
     }
   }
 }
-const defaultMailPreferences={focusTerms:[],daily:{enabled:true,time:'20:00'},late:{enabled:true,time:'00:00'}};
+const defaultMailPreferences={focusTerms:[],daily:{enabled:true,time:'20:00'},late:{enabled:true,time:'00:00'},translateZh:true,englishSummary:false};
 const validTime=value=>/^([01]\d|2[0-3]):[0-5]\d$/.test(String(value||''));
-const mailPreferences=value=>{try{const raw=typeof value==='string'?JSON.parse(value||'{}'):(value||{}),focusTerms=(Array.isArray(raw.focusTerms)?raw.focusTerms:[]).map(x=>String(x).trim()).filter(x=>x.length>0&&x.length<=80).filter((x,index,list)=>list.findIndex(other=>other.toLowerCase()===x.toLowerCase())===index).slice(0,30);return {focusTerms,daily:{enabled:raw.daily?.enabled!==false,time:validTime(raw.daily?.time)?raw.daily.time:'20:00'},late:{enabled:raw.late?.enabled!==false,time:validTime(raw.late?.time)?raw.late.time:'00:00'}};}catch{return structuredClone(defaultMailPreferences)}};
+const mailPreferences=value=>{try{const raw=typeof value==='string'?JSON.parse(value||'{}'):(value||{}),focusTerms=(Array.isArray(raw.focusTerms)?raw.focusTerms:[]).map(x=>String(x).trim()).filter(x=>x.length>0&&x.length<=80).filter((x,index,list)=>list.findIndex(other=>other.toLowerCase()===x.toLowerCase())===index).slice(0,30);return {focusTerms,daily:{enabled:raw.daily?.enabled!==false,time:validTime(raw.daily?.time)?raw.daily.time:'20:00'},late:{enabled:raw.late?.enabled!==false,time:validTime(raw.late?.time)?raw.late.time:'00:00'},translateZh:raw.translateZh!==false,englishSummary:raw.englishSummary===true};}catch{return structuredClone(defaultMailPreferences)}};
 const hkStart=now=>Date.parse(new Date(now+8*3600000).toISOString().slice(0,10)+'T00:00:00+08:00');
 const atTime=(day,time)=>{const [hour,minute]=time.split(':').map(Number);return day+(hour*60+minute)*60000;};
 const dateOf=day=>new Date(day+8*3600000).toISOString().slice(0,10);
@@ -81,13 +83,16 @@ async function oneDigest(env,now,w,userId,prefs) {
   const connection=await outlookConnection(env,userId);
   if(!forwarding&&!connection)return;
   if(!forwarding){const since=Date.parse(connection?.since||'');if(!Number.isFinite(since)||since<w.end)return;}
-  const {results}=await env.DB.prepare('SELECT * FROM messages WHERE user_id=? AND received>=? AND received<? ORDER BY category,received').bind(userId,w.start,w.end).all();
+  const {results}=await env.DB.prepare('SELECT id,subject,received,sender,origin,category,summary,action FROM messages WHERE user_id=? AND received>=? AND received<? ORDER BY category,received').bind(userId,w.start,w.end).all();
+  const preferred=String((await env.DB.prepare('SELECT preferred_zh_name FROM users WHERE id=?').bind(userId).first())?.preferred_zh_name||'').trim();
   const visible=results.filter(m=>!prefs.focusTerms.length||prefs.focusTerms.some(term=>`${m.subject} ${m.sender} ${m.origin} ${m.summary} ${m.action}`.toLowerCase().includes(term.toLowerCase())));
   if(w.late&&!visible.length){await setKV(env,digestKey,'quiet');return;}
-  const body=visible.map(m=>`${m.subject}\n发件人：${m.sender}\n来源：${m.origin}\n${m.summary}\n${m.action}\n${m.url}`).join('\n\n')||(prefs.focusTerms.length?'在这个时段没有匹配你的关注词的学校邮件。':'这个时段没有需要总结的学校邮件。');
+  const emptyText=prefs.focusTerms.length?'在这个时段没有匹配你的关注词的学校邮件。':'这个时段没有需要总结的学校邮件。';
+  const items=visible.map(m=>shapeDigestItem(applyPreferredNameToFields(m,preferred)));
   const title=w.date+(w.late?' 晚间补充':' 学校邮件日报');
-  await enqueue(env,'digest:'+userId+':'+w.key,null,now,{title,body,url:'/?view=digests'},{push:true,email:true},userId);
-  await setKV(env,digestKey,JSON.stringify({title,body,created:now}));
+  const record=shapeDigestRecord({title,created:now,items,emptyText});
+  await enqueue(env,'digest:'+userId+':'+w.key,null,now,{title:record.title,body:record.body,url:'/?view=digests'},{push:true,email:true},userId);
+  await setKV(env,digestKey,JSON.stringify(record));
 }
 export async function makeDigest(env,now) {
   const day=hkStart(now),forwarding=env.MAIL_INGEST_MODE==='forwarding';
