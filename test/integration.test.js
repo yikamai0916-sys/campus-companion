@@ -7,7 +7,7 @@ import worker from '../src/worker.js';
 import { hash,b64,random,seal,unseal,makePasswordHash } from '../src/security.js';
 import { deliver } from '../src/jobs.js';
 function database(){
-  const sqlite=new DatabaseSync(':memory:');for(const name of ['0001.sql','0002_accounts.sql','0003_profile.sql','0004_message_localizations.sql','0005_localization_version.sql','0006_outlook_connections.sql','0007_mail_preferences.sql','0008_account_scoped_records.sql','0009_collaboration.sql','0010_meeting_planner.sql','0011_meeting_votes_and_announcements.sql','0012_review_and_membership.sql','0013_preferred_zh_name.sql'])sqlite.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));
+  const sqlite=new DatabaseSync(':memory:');for(const name of ['0001.sql','0002_accounts.sql','0003_profile.sql','0004_message_localizations.sql','0005_localization_version.sql','0006_outlook_connections.sql','0007_mail_preferences.sql','0008_account_scoped_records.sql','0009_collaboration.sql','0010_meeting_planner.sql','0011_meeting_votes_and_announcements.sql','0012_review_and_membership.sql','0013_preferred_zh_name.sql','0014_name_aliases.sql'])sqlite.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));
   const db={prepare(sql){let args=[];const obj={bind(...a){args=a;return obj;},async first(){return sqlite.prepare(sql).get(...args)||null;},async all(){return {results:sqlite.prepare(sql).all(...args)};},async run(){const r=sqlite.prepare(sql).run(...args);return {meta:{changes:r.changes}};}};return obj;},async batch(stmts){sqlite.exec('BEGIN');try{const r=[];for(const s of stmts)r.push(await s.run());sqlite.exec('COMMIT');return r;}catch(e){sqlite.exec('ROLLBACK');throw e;}}};return db;
 }
 test('meeting workflow migration preserves historical confirmed state',()=>{
@@ -359,4 +359,43 @@ test('preferred Chinese name is stored and messages list is paginated without bl
   assert.equal(detail.id,'m0');
   assert.ok(detail.chinese||detail.display);
   assert.ok(detail.english);
+});
+
+test('user-defined name aliases persist, rewrite senders, and mail search filters by query',async()=>{
+  const env={DB:database()},origin='https://campus.example',token=random();
+  await env.DB.prepare("INSERT INTO users(id,email,password_hash,created,locale) VALUES('a2','alias@example.com','unused',0,'zh-CN')").run();
+  await env.DB.prepare('INSERT INTO sessions(id,expires,user_id) VALUES(?,?,?)').bind(await hash(token),Date.now()+3600000,'a2').run();
+  const auth={Origin:origin,Cookie:'campus_session='+token,'Content-Type':'application/json'};
+  const patch=await worker.fetch(new Request(origin+'/api/profile',{method:'PATCH',headers:auth,body:JSON.stringify({nameAliases:[{alias:'MA Yikai',zhName:'马艺恺'},{alias:'YIKAI MA',zhName:'馬藝愷'}]})}),env);
+  assert.equal(patch.status,200);
+  const profile=await (await worker.fetch(new Request(origin+'/api/profile',{headers:{Cookie:'campus_session='+token}}),env)).json();
+  assert.equal(profile.nameAliases.length,2);
+  assert.ok(profile.nameAliases.some(a=>a.alias==='MA Yikai'&&a.zhName==='马艺恺'));
+  await env.DB.prepare('INSERT INTO messages(id,subject,received,sender,origin,category,summary,action,url,quality,user_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)').bind('ma1','Assignment 2 deadline','100','Yikai Ma <yikaima@ln.edu.hk>','o',2,'请在截止前提交','无','','t','a2').run();
+  await env.DB.prepare('INSERT INTO messages(id,subject,received,sender,origin,category,summary,action,url,quality,user_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)').bind('ma2','Party invite','200','MA Yikai <mayikai@ln.edu.hk>','o',3,'周六活动','无','','t','a2').run();
+  await env.DB.prepare('INSERT INTO messages(id,subject,received,sender,origin,category,summary,action,url,quality,user_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)').bind('ma3','Course news','300','Zhang Wei <zw@ln.edu.hk>','o',4,'无关邮件','无','','t','a2').run();
+  const all=await (await worker.fetch(new Request(origin+'/api/messages',{headers:{Cookie:'campus_session='+token}}),env)).json();
+  const byId=new Map(all.messages.map(m=>[m.id,m]));
+  assert.match(byId.get('ma1').sender,/马艺恺/);
+  assert.doesNotMatch(byId.get('ma1').sender,/Yikai Ma/);
+  assert.match(byId.get('ma2').sender,/马艺恺/);
+  assert.doesNotMatch(byId.get('ma2').sender,/MA Yikai/);
+  assert.match(byId.get('ma3').sender,/Zhang Wei/);
+  const bySubject=await (await worker.fetch(new Request(origin+'/api/messages?q=deadline',{headers:{Cookie:'campus_session='+token}}),env)).json();
+  assert.equal(bySubject.messages.length,1);
+  assert.equal(bySubject.messages[0].id,'ma1');
+  const bySender=await (await worker.fetch(new Request(origin+'/api/messages?q=zw@ln.edu.hk',{headers:{Cookie:'campus_session='+token}}),env)).json();
+  assert.equal(bySender.messages.length,1);
+  assert.equal(bySender.messages[0].id,'ma3');
+  const none=await (await worker.fetch(new Request(origin+'/api/messages?q='+encodeURIComponent('不存在的关键词'),{headers:{Cookie:'campus_session='+token}}),env)).json();
+  assert.equal(none.messages.length,0);
+  assert.equal(none.nextBefore,null);
+  const sug=await (await worker.fetch(new Request(origin+'/api/name-alias-suggestions',{headers:{Cookie:'campus_session='+token}}),env)).json();
+  assert.ok(Array.isArray(sug.suggestions));
+  assert.ok(sug.suggestions.some(s=>/yikai ma/i.test(s.variant)&&s.zhName==='马艺恺'));
+  // invalid alias shape is rejected without touching saved rows
+  const bad=await worker.fetch(new Request(origin+'/api/profile',{method:'PATCH',headers:auth,body:JSON.stringify({nameAliases:[{alias:'',zhName:'马艺恺'}]})}),env);
+  assert.equal(bad.status,400);
+  const kept=await (await worker.fetch(new Request(origin+'/api/profile',{headers:{Cookie:'campus_session='+token}}),env)).json();
+  assert.equal(kept.nameAliases.length,2);
 });

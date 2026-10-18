@@ -1,5 +1,6 @@
 import { meetingTask,wording } from './display.js';
 import { serverMessage,normalizeLocale } from './errors.js';
+import { buildAliasRules,normalizeName,suggestAliasVariants } from './names.js';
 import { listMailSuggestions,reviewMailSuggestion } from './suggestions.js';
 import { validateTask } from './domain.js';
 import { normalizePresets } from '../public/reminder-logic.js';
@@ -13,6 +14,10 @@ import { changeMeeting,confirmMeetingProposal,createMeetingPoll,meetingPollSnaps
 const json=(data,status=200)=>Response.json(data,{status});
 async function body(request){if(Number(request.headers.get('content-length'))>7*1024*1024)throw new Error('请求过大');const text=await request.text();if(text.length>7*1024*1024)throw new Error('请求过大');return JSON.parse(text);}
 const emailOf=value=>String(value||'').trim().toLowerCase();
+async function nameAliasRules(env,userId,preferredZhName=''){
+  const aliases=(await env.DB.prepare('SELECT id,alias,zh_name AS zhName FROM name_aliases WHERE user_id=? ORDER BY created').bind(userId).all()).results;
+  return buildAliasRules(aliases,preferredZhName||'');
+}
 const validEmail=value=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)&&value.length<=254;
 const defaultReminder={presets:[],offsets:[4320,1440,120,30],repeat:1440,maxCount:0,start:'08:00',end:'23:00',days:[1,2,3,4,5,6,0],push:true,email:false};
 const parseReminder=value=>{try{return {...defaultReminder,...JSON.parse(value||'{}')}}catch{return defaultReminder}};
@@ -97,7 +102,8 @@ async function routes(request,env){
   }
   if(path==='/api/profile'&&method==='GET'){
     const user=await env.DB.prepare('SELECT email,nickname,avatar,linked_email,locale,reminder_defaults,mail_preferences,preferred_zh_name FROM users WHERE id=?').bind(account.user_id).first();
-    return json({email:user.email,nickname:user.nickname||'',avatar:user.avatar||'',linkedEmail:user.linked_email||'',locale:user.locale||'zh-CN',preferredZhName:user.preferred_zh_name||'',reminders:parseReminder(user.reminder_defaults),mailPreferences:parseMailPreferences(user.mail_preferences)});
+    const nameAliases=(await env.DB.prepare('SELECT id,alias,zh_name AS zhName FROM name_aliases WHERE user_id=? ORDER BY created').bind(account.user_id).all()).results;
+    return json({email:user.email,nickname:user.nickname||'',avatar:user.avatar||'',linkedEmail:user.linked_email||'',locale:user.locale||'zh-CN',preferredZhName:user.preferred_zh_name||'',nameAliases,reminders:parseReminder(user.reminder_defaults),mailPreferences:parseMailPreferences(user.mail_preferences)});
   }
   if(path==='/api/profile'&&method==='PATCH'){
     const data=await body(request),current=await env.DB.prepare('SELECT nickname,avatar,linked_email,locale,reminder_defaults,mail_preferences,preferred_zh_name FROM users WHERE id=?').bind(account.user_id).first();
@@ -114,7 +120,27 @@ async function routes(request,env){
     if(!Array.isArray(reminders.offsets)||reminders.offsets.length>12||reminders.offsets.some(n=>!Number.isInteger(n)||n<0||n>525600)||!Number.isFinite(Number(reminders.repeat))||Number(reminders.repeat)<0)return json({error:serverMessage('提醒配置不正确',uiLocale)},400);
     if(!validTime(mailPreferences.daily.time)||!validTime(mailPreferences.late.time))return json({error:serverMessage('邮件提醒时间不正确',uiLocale)},400);
     await env.DB.prepare('UPDATE users SET nickname=?,avatar=?,linked_email=?,locale=?,reminder_defaults=?,mail_preferences=?,preferred_zh_name=? WHERE id=?').bind(nickname,avatar,linkedEmail,locale,JSON.stringify(reminders),JSON.stringify(mailPreferences),preferredZhName,account.user_id).run();
+    if(data.nameAliases!==undefined){
+      const raw=Array.isArray(data.nameAliases)?data.nameAliases:[];
+      const seen=new Set(),aliases=[];
+      for(const item of raw){
+        const alias=String(item?.alias||'').trim(),zhName=String(item?.zhName||'').trim();
+        if(!alias||alias.length>80||!zhName||zhName.length>40)return json({error:serverMessage('别名配置不正确',uiLocale)},400);
+        const key=normalizeName(alias);
+        if(!key||seen.has(key))continue;
+        seen.add(key);aliases.push({alias,zhName});
+      }
+      await env.DB.prepare('DELETE FROM name_aliases WHERE user_id=?').bind(account.user_id).run();
+      const now=Date.now();
+      for(const a of aliases)await env.DB.prepare('INSERT INTO name_aliases(id,user_id,alias,zh_name,created) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),account.user_id,a.alias,a.zhName,now).run();
+    }
     return json({ok:true,nickname,avatar,linkedEmail,locale,preferredZhName,reminders,mailPreferences});
+  }
+  if(path==='/api/name-alias-suggestions'&&method==='GET'){
+    const profile=await env.DB.prepare('SELECT preferred_zh_name FROM users WHERE id=?').bind(account.user_id).first();
+    const nameAliases=(await env.DB.prepare('SELECT id,alias,zh_name AS zhName FROM name_aliases WHERE user_id=? ORDER BY created').bind(account.user_id).all()).results;
+    const senders=(await env.DB.prepare('SELECT sender,MAX(received) AS last FROM messages WHERE user_id=? GROUP BY sender ORDER BY last DESC LIMIT 300').bind(account.user_id).all()).results.map(r=>r.sender);
+    return json({suggestions:suggestAliasVariants(senders,nameAliases,profile?.preferred_zh_name||'')});
   }
   const isOwner=account.email===emailOf(env.LOGIN_EMAIL);
   if(path==='/api/invitations'&&method==='GET')return json(await listInvitations(env,account.user_id));
@@ -181,16 +207,18 @@ async function routes(request,env){
   if(path==='/api/messages'&&method==='GET'){
     const limit=Math.min(80,Math.max(1,Number(url.searchParams.get('limit'))||40));
     const before=Number(url.searchParams.get('before'));
+    const q=String(url.searchParams.get('q')||'').trim().replace(/[\\%_]/g,'');
     const binds=[account.user_id];
     let sql='SELECT id,subject,received,sender,origin,category,summary,action,url,quality FROM messages WHERE user_id=? AND category<5';
+    if(q){sql+=' AND (subject LIKE ? OR sender LIKE ? OR summary LIKE ? OR action LIKE ? OR origin LIKE ?)';const like='%'+q+'%';binds.push(like,like,like,like,like);}
     if(Number.isFinite(before)&&before>0){sql+=' AND received<?';binds.push(before);}
     sql+=' ORDER BY received DESC LIMIT ?';binds.push(limit);
     const messages=(await env.DB.prepare(sql).bind(...binds).all()).results;
     const profile=await env.DB.prepare('SELECT locale,preferred_zh_name,mail_preferences FROM users WHERE id=?').bind(account.user_id).first();
     const prefs=parseMailPreferences(profile?.mail_preferences);
     const locale=profile?.locale||'zh-CN';
-    const preferredZhName=profile?.preferred_zh_name||'';
-    const localized=await localizeMessages(env,account.user_id,locale,messages,{allowAi:false,translate:locale==='en'?true:prefs.translateZh!==false,preferredZhName});
+    const aliasRules=await nameAliasRules(env,account.user_id,profile?.preferred_zh_name||'');
+    const localized=await localizeMessages(env,account.user_id,locale,messages,{allowAi:false,translate:locale==='en'?true:prefs.translateZh!==false,nameAliases:aliasRules});
     return json({messages:localized,nextBefore:messages.length===limit?messages[messages.length-1].received:null});
   }
   const messageId=path.match(/^\/api\/messages\/(.+)$/)?.[1];
@@ -199,13 +227,13 @@ async function routes(request,env){
     const profile=await env.DB.prepare('SELECT locale,preferred_zh_name,mail_preferences FROM users WHERE id=?').bind(account.user_id).first();
     const prefs=parseMailPreferences(profile?.mail_preferences);
     const locale=profile?.locale||'zh-CN';
-    const preferredZhName=profile?.preferred_zh_name||'';
+    const aliasRules=await nameAliasRules(env,account.user_id,profile?.preferred_zh_name||'');
     const fetched=await fetchMessageOriginal(env,account.user_id,id);
     if(!fetched)return json({error:serverMessage('邮件不存在',uiLocale)},404);
     const {row,englishSubject,englishBody}=fetched;
     const wantZh=locale.startsWith('zh')&&prefs.translateZh!==false;
-    const localizedRows=await localizeMessages(env,account.user_id,locale,[row],{allowAi:env.ENABLE_AI==='true',translate:wantZh||locale==='en',preferredZhName});
-    const localized=applyPreferredNameToFields(localizedRows[0]||row,preferredZhName);
+    const localizedRows=await localizeMessages(env,account.user_id,locale,[row],{allowAi:env.ENABLE_AI==='true',translate:wantZh||locale==='en',nameAliases:aliasRules});
+    const localized=applyPreferredNameToFields(localizedRows[0]||row,aliasRules);
     return json({
       id:row.id,
       received:row.received,
@@ -224,12 +252,12 @@ async function routes(request,env){
   if(path==='/api/digests'){
     const prefix='digest:'+account.user_id+':%';
     const rows=(await env.DB.prepare("SELECT value FROM kv WHERE key LIKE ? AND value!='quiet' ORDER BY key DESC LIMIT 30").bind(prefix).all()).results;
-    const preferred=(await env.DB.prepare('SELECT preferred_zh_name FROM users WHERE id=?').bind(account.user_id).first())?.preferred_zh_name||'';
+    const aliasRules=await nameAliasRules(env,account.user_id,(await env.DB.prepare('SELECT preferred_zh_name FROM users WHERE id=?').bind(account.user_id).first())?.preferred_zh_name||'');
     return json(rows.flatMap(row=>{try{
       const normalized=normalizeDigestRecord(JSON.parse(row.value));
       if(!normalized)return [];
-      if(preferred&&normalized.items)normalized.items=normalized.items.map(item=>applyPreferredNameToFields(item,preferred));
-      if(preferred)normalized.body=applyPreferredNameToFields({body:normalized.body},preferred).body;
+      if(aliasRules.length&&normalized.items)normalized.items=normalized.items.map(item=>applyPreferredNameToFields(item,aliasRules));
+      if(aliasRules.length)normalized.body=applyPreferredNameToFields({body:normalized.body},aliasRules).body;
       return [normalized];
     }catch{return []}}));
   }

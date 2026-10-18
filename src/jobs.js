@@ -2,7 +2,7 @@ import { reminderPayload,meetingTask,wording } from './display.js';
 import webpush from 'web-push';
 import { initialTimes,nextAllowed,allowed } from './domain.js';
 import { getKV,setKV,outlookConnection } from './mail.js';
-import { applyPreferredNameToFields } from './names.js';
+import { applyPreferredNameToFields, buildAliasRules } from './names.js';
 import { shapeDigestItem, shapeDigestRecord } from './digest-format.js';
 const time=n=>new Date(n).toLocaleString('zh-CN',{timeZone:'Asia/Hong_Kong',hour12:false});
 export async function enqueue(env,key,task,at,payload,reminders,userId=task?.user_id) {

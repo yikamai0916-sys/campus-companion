@@ -101,7 +101,8 @@ const MESSAGES={
   '系统通知尚未配置':['系統通知尚未設定','Push notifications are not configured'],
   '通知订阅已过期，请在手机重新启用通知':['通知訂閱已過期，請在手機重新啟用通知','Subscription expired. Enable notifications on your phone again.'],
   '不支持的提醒渠道':['不支援的提醒渠道','Unsupported reminder channel'],
-  '无法计算提醒时段':['無法計算提醒時段','Could not compute reminder times']
+  '无法计算提醒时段':['無法計算提醒時段','Could not compute reminder times'],
+  '别名配置不正确':['別名設定不正確','Invalid name alias configuration']
 };
 
 // cn -> ({twLabel, enLabel}) for the few parameterized templates.
