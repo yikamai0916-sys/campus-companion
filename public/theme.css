@@ -323,3 +323,14 @@ button.pending::before{content:'';display:inline-block;width:13px;height:13px;ma
 .alias-suggestion-list{display:flex;flex-wrap:wrap;gap:8px}
 .alias-suggestion-list .chip-button{border-style:solid;border-color:var(--surface-3);background:var(--surface-2)}
 .alias-suggestion-list .chip-button:hover{background:var(--surface-3)}
+
+/* Compact profile identity and consistent reminder controls. */
+.profile-identity{grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start;gap:24px}
+.profile-identity>label{min-width:0}
+.profile-identity input[type=file]{width:100%;min-width:0;padding:10px;font-size:13px}
+.profile-identity .avatar-preview{width:56px;height:56px;object-fit:cover;margin:0;border-radius:50%}
+.profile-identity small{font-size:12px}
+.zh-only-settings label{display:flex;flex-direction:row;align-items:center;gap:12px;margin:0;font-size:16px;font-weight:600;letter-spacing:normal;text-transform:none;color:var(--ink)}
+.zh-only-settings input[type=checkbox]{width:18px;height:18px;flex:0 0 18px;margin:0}
+.zh-only-settings{margin-bottom:20px;gap:16px}
+@media(max-width:480px){.profile-identity{gap:12px}.profile-identity input[type=file]{font-size:12px}.profile-identity input:not([type=file]){padding:12px}}
