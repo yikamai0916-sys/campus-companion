@@ -26,7 +26,7 @@ export async function playButtonSuccess(button) {
     burst.append(dot);
   }
   button.append(burst);
-  await wait(900);
+  await wait(800);
 }
 
 export function resetSuccessButton(button) {
@@ -56,4 +56,34 @@ export function circularTransition(event, update) {
       { duration: 420, easing: 'cubic-bezier(.2,.8,.2,1)', pseudoElement: '::view-transition-new(root)' },
     );
   }).catch(() => {});
+}
+
+/**
+ * Background of the progress card: lavender at 0 %, yellow at 50 %, lime at 100 %,
+ * blended smoothly in between. Returns an 'rgb(r, g, b)' string.
+ */
+export function progressColor(percent) {
+  const stops = [[0, [232, 227, 255]], [50, [255, 214, 10]], [100, [212, 255, 0]]]; // #E8E3FF, #FFD60A, #D4FF00
+  const p = Math.min(100, Math.max(0, Number(percent) || 0));
+  const [from, to] = p <= 50 ? [stops[0], stops[1]] : [stops[1], stops[2]];
+  const t = (p - from[0]) / (to[0] - from[0]);
+  const rgb = from[1].map((c, i) => Math.round(c + (to[1][i] - c) * t));
+  return `rgb(${rgb.join(', ')})`;
+}
+
+/**
+ * "叠卡展开": cards in `stack` start tucked behind the first one.
+ * Tapping the stack (or the button) fans them out with a small stagger; the button folds them back.
+ */
+export function setupCardStack(stack, button, labels) {
+  [...stack.children].forEach((card, i) => card.style.setProperty('--i', String(i))); // CSSOM, allowed by the CSP
+  const set = open => {
+    stack.classList.toggle('is-collapsed', !open);
+    button.setAttribute('aria-expanded', String(open));
+    button.textContent = open ? labels.close : labels.open;
+    stack.querySelectorAll('.digest-card:not(:first-child)').forEach(card => { card.inert = !open; });
+  };
+  stack.addEventListener('click', () => { if (stack.classList.contains('is-collapsed')) set(true); });
+  button.addEventListener('click', () => set(stack.classList.contains('is-collapsed')));
+  set(false);
 }

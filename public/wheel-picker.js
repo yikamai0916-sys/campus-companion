@@ -14,7 +14,7 @@
 
 import { daysInMonth, hkParts, hkPartsToMs, nextWholeHour, toMinutes, splitMinutes, unitName } from './reminder-logic.js';
 
-export const ITEM_HEIGHT = 40;   // px per row; keep in sync with .wheel-item in wheel-picker.css
+export const ITEM_HEIGHT = 48;   // px per row; keep in sync with .wheel-item in wheel-picker.css
 const VISIBLE_ROWS = 5;          // odd number, so one row sits in the middle
 const FRICTION = 0.004;          // how fast inertia fades (bigger = stops sooner)
 const SNAP_SPEED = 0.06;         // px/ms: below this speed we start snapping
@@ -32,6 +32,20 @@ const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
  */
 export function rubberBand(distance, size) {
   return (1 - 1 / ((distance * 0.55) / size + 1)) * size;
+}
+
+/**
+ * How a row looks at `far` rows from the centre (0, 1, 2 … also in between,
+ * so the change is smooth while scrolling). Straight lines between the points
+ * 0 → (1, 1), 1 → (.5, .85), 2 → (.2, .7).
+ */
+export function rowLook(far) {
+  const points = [[1, 1], [0.5, 0.85], [0.2, 0.7]];
+  const f = Math.min(Math.max(far, 0), 2);
+  const i = Math.min(Math.floor(f), 1);
+  const t = f - i;
+  const mix = k => points[i][k] + (points[i + 1][k] - points[i][k]) * t;
+  return { opacity: Math.round(mix(0) * 1000) / 1000, scale: Math.round(mix(1) * 1000) / 1000 };
 }
 
 /** Nearest item index for a scroll position, kept inside [0, count-1]. */
@@ -111,14 +125,16 @@ export class WheelColumn {
   render() {
     const centre = ((VISIBLE_ROWS - 1) / 2) * ITEM_HEIGHT;
     this.track.style.transform = `translateY(${this.y + centre}px)`;
-    // Rows further from the middle tilt away and fade, like a real wheel.
+    // Rows further from the middle shrink, fade and tilt a little, like a real wheel:
+    // centre row = opacity 1 / scale 1, ±1 row = .5 / .85, ±2 rows = .2 / .7.
     [...this.track.children].forEach((row, i) => {
       const distance = (i * ITEM_HEIGHT + this.y) / ITEM_HEIGHT; // 0 = centred row
       const far = Math.abs(distance);
-      row.style.visibility = far > 3 ? 'hidden' : '';
-      if (far > 3) return;
-      row.style.transform = `rotateX(${-distance * 18}deg)`;
-      row.style.opacity = String(1 - Math.min(far, 2.6) * 0.33);
+      row.style.visibility = far > 2.6 ? 'hidden' : '';
+      if (far > 2.6) return;
+      const { opacity, scale } = rowLook(far);
+      row.style.transform = `rotateX(${-distance * 12}deg) scale(${scale})`;
+      row.style.opacity = String(opacity);
       row.classList.toggle('is-selected', far < 0.5);
     });
     const item = this.items[this.index];
@@ -284,12 +300,14 @@ export class WheelColumn {
 }
 
 // ---------------------------------------------------------------------------
-// Dialog shell shared by both pickers
+// Dialog shell shared by all pickers
 // ---------------------------------------------------------------------------
 
 /**
- * Opens a small dialog that contains wheel columns.
- * Resolves with 'ok', 'clear' or 'cancel' when the user closes it.
+ * Opens a dialog with wheel columns.
+ *  columns: [{ wheel, caption, size }]  or  { separator: ':' } for a fixed colon
+ *  preview(): { label, big }  -> tiny caps label + big bold live readout
+ * Resolves with 'ok', 'clear' or 'cancel'.
  */
 function showWheelDialog({ title, columns, preview, shortcuts = [], allowClear = false }) {
   return new Promise(resolve => {
@@ -297,7 +315,7 @@ function showWheelDialog({ title, columns, preview, shortcuts = [], allowClear =
     dialog.className = 'wheel-dialog';
     dialog.innerHTML = `
       <div class="dialog-heading"><h2></h2><button type="button" class="icon-button" data-act="cancel" aria-label="${L('关闭', '關閉', 'Close')}">×</button></div>
-      <p class="wheel-preview" aria-live="polite"></p>
+      <div class="wheel-readout" aria-live="polite"><span class="caps-label"></span><strong class="wheel-big"></strong></div>
       <div class="wheel-shortcuts"></div>
       <div class="wheel-columns"><div class="wheel-highlight" aria-hidden="true"></div></div>
       <div class="form-actions">
@@ -306,16 +324,27 @@ function showWheelDialog({ title, columns, preview, shortcuts = [], allowClear =
         <button type="button" class="primary" data-act="ok">${L('确定', '確定', 'Done')}</button>
       </div>`;
     dialog.querySelector('h2').textContent = title;
-    const box = dialog.querySelector('.wheel-columns');
-    for (const column of columns) {
-      const wrap = document.createElement('div');
-      wrap.className = 'wheel-column-wrap';
+
+    // A two-row grid: row 1 = tiny captions, row 2 = the wheels.
+    // The lavender band sits in row 2 behind every column.
+    const grid = dialog.querySelector('.wheel-columns');
+    grid.style.gridTemplateColumns = columns.map(c => (c.separator ? 'auto' : `minmax(0,${c.size || 1}fr)`)).join(' ');
+    columns.forEach((column, i) => {
       const caption = document.createElement('span');
-      caption.className = 'wheel-caption';
+      caption.className = 'wheel-caption caps-label';
       caption.textContent = column.caption || '';
-      wrap.append(caption, column.wheel.el);
-      box.append(wrap);
-    }
+      caption.style.gridColumn = String(i + 1);
+      const cell = column.separator ? document.createElement('span') : column.wheel.el;
+      if (column.separator) {
+        cell.className = 'wheel-colon';
+        cell.textContent = column.separator;
+        cell.setAttribute('aria-hidden', 'true');
+      }
+      cell.style.gridColumn = String(i + 1);
+      cell.style.gridRow = '2';
+      grid.append(caption, cell);
+    });
+
     const shortcutBox = dialog.querySelector('.wheel-shortcuts');
     for (const shortcut of shortcuts) {
       const button = document.createElement('button');
@@ -327,9 +356,12 @@ function showWheelDialog({ title, columns, preview, shortcuts = [], allowClear =
     }
     if (!shortcuts.length) shortcutBox.remove();
 
-    const updatePreview = () => { dialog.querySelector('.wheel-preview').textContent = preview(); };
-    dialog.updatePreview = updatePreview;
-    updatePreview();
+    dialog.updatePreview = () => {
+      const { label, big } = preview();
+      dialog.querySelector('.wheel-readout .caps-label').textContent = label;
+      dialog.querySelector('.wheel-big').textContent = big;
+    };
+    dialog.updatePreview();
 
     let result = 'cancel';
     dialog.addEventListener('click', event => {
@@ -341,11 +373,11 @@ function showWheelDialog({ title, columns, preview, shortcuts = [], allowClear =
     dialog.addEventListener('close', () => { dialog.remove(); resolve(result); });
     document.body.append(dialog);
     dialog.showModal();
-    columns[0].wheel.el.focus();
+    columns.find(c => c.wheel).wheel.el.focus();
   });
 }
 
-/** Re-draw the preview line of the picker that is open right now. */
+/** Re-draw the live readout of the picker that is open right now. */
 const refreshPreview = () => document.querySelector('.wheel-dialog')?.updatePreview();
 
 // ---------------------------------------------------------------------------
@@ -356,12 +388,16 @@ const pad = n => String(n).padStart(2, '0');
 const range = (from, to, text) => Array.from({ length: to - from + 1 }, (_, i) => ({ value: from + i, text: text(from + i) }));
 const weekday = (y, m, d) => [L('周日', '週日', 'Sun'), L('周一', '週一', 'Mon'), L('周二', '週二', 'Tue'), L('周三', '週三', 'Wed'), L('周四', '週四', 'Thu'), L('周五', '週五', 'Fri'), L('周六', '週六', 'Sat')][new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
 
+/** Date part only: '2026年10月18日 周日' (or 'Sun 18/10/2026'). */
+export function formatHkDate(ms) {
+  const p = hkParts(ms);
+  return lang() === 'en' ? `${weekday(p.year, p.month, p.day)} ${p.day}/${p.month}/${p.year}` : `${p.year}年${p.month}月${p.day}日 ${weekday(p.year, p.month, p.day)}`;
+}
+
 /** '2026年10月18日 周日 22:30' (or the English equivalent) for a Hong Kong time. */
 export function formatHk(ms) {
   const p = hkParts(ms);
-  return lang() === 'en'
-    ? `${weekday(p.year, p.month, p.day)} ${p.day}/${p.month}/${p.year} ${pad(p.hour)}:${pad(p.minute)}`
-    : `${p.year}年${p.month}月${p.day}日 ${weekday(p.year, p.month, p.day)} ${pad(p.hour)}:${pad(p.minute)}`;
+  return `${formatHkDate(ms)} ${pad(p.hour)}:${pad(p.minute)}`;
 }
 
 /**
@@ -373,11 +409,11 @@ export async function openDateTimePicker({ title, value = null, allowClear = fal
   const thisYear = hkParts(Date.now()).year;
   const firstYear = Math.min(thisYear - 1, start.year);
   const lastYear = Math.min(2099, Math.max(thisYear + 5, start.year));
-  const en = lang() === 'en';
 
-  const days = (y, m) => range(1, daysInMonth(y, m), d => (en ? String(d) : d + '日'));
-  const year = new WheelColumn({ label: L('年', '年', 'Year'), items: range(firstYear, lastYear, y => String(y)), index: start.year - firstYear, onChange: () => refreshDays() });
-  const month = new WheelColumn({ label: L('月', '月', 'Month'), items: range(1, 12, m => (en ? String(m) : m + '月')), index: start.month - 1, onChange: () => refreshDays() });
+  // Plain numbers in the wheel; the captions above say 年 / 月 / 日 / 时 / 分.
+  const days = (y, m) => range(1, daysInMonth(y, m), String);
+  const year = new WheelColumn({ label: L('年', '年', 'Year'), items: range(firstYear, lastYear, String), index: start.year - firstYear, onChange: () => refreshDays() });
+  const month = new WheelColumn({ label: L('月', '月', 'Month'), items: range(1, 12, String), index: start.month - 1, onChange: () => refreshDays() });
   const day = new WheelColumn({ label: L('日', '日', 'Day'), items: days(start.year, start.month), index: start.day - 1, onChange: refreshPreview });
   const hour = new WheelColumn({ label: L('时', '時', 'Hour'), items: range(0, 23, pad), index: start.hour, onChange: refreshPreview });
   const minute = new WheelColumn({ label: L('分', '分', 'Minute'), items: range(0, 59, pad), index: start.minute, onChange: refreshPreview });
@@ -406,12 +442,35 @@ export async function openDateTimePicker({ title, value = null, allowClear = fal
   ];
 
   const columns = [
-    { wheel: year, caption: L('年', '年', 'Year') }, { wheel: month, caption: L('月', '月', 'Month') }, { wheel: day, caption: L('日', '日', 'Day') },
-    { wheel: hour, caption: L('时', '時', 'Hour') }, { wheel: minute, caption: L('分', '分', 'Min') },
+    { wheel: year, caption: L('年', '年', 'Year'), size: 1.35 }, { wheel: month, caption: L('月', '月', 'Month') }, { wheel: day, caption: L('日', '日', 'Day') },
+    { wheel: hour, caption: L('时', '時', 'Hour') }, { separator: ':' }, { wheel: minute, caption: L('分', '分', 'Min') },
   ];
-  const result = await showWheelDialog({ title, columns, allowClear, shortcuts, preview: () => formatHk(current()) + L('（香港）', '（香港）', ' (HKT)') });
+  const preview = () => {
+    const ms = current(), p = hkParts(ms);
+    return { label: `${formatHkDate(ms)} · ${L('香港时间', '香港時間', 'Hong Kong')}`, big: `${pad(p.hour)}:${pad(p.minute)}` };
+  };
+  const result = await showWheelDialog({ title, columns, allowClear, shortcuts, preview });
   if (result === 'ok') return current();
   if (result === 'clear') return null;
+  return undefined;
+}
+
+/**
+ * Ask for a time of day ('HH:mm'), e.g. the start of the reminder window.
+ * Resolves: 'HH:mm' after 确定, '' after 清除, undefined after 取消.
+ */
+export async function openTimePicker({ title, value = '', allowClear = false, label = '' } = {}) {
+  const [h, m] = /^\d{2}:\d{2}$/.test(value) ? value.split(':').map(Number) : [9, 0];
+  const hour = new WheelColumn({ label: L('时', '時', 'Hour'), items: range(0, 23, pad), index: h, onChange: refreshPreview });
+  const minute = new WheelColumn({ label: L('分', '分', 'Minute'), items: range(0, 59, pad), index: m, onChange: refreshPreview });
+  const current = () => `${pad(hour.value)}:${pad(minute.value)}`;
+  const result = await showWheelDialog({
+    title, allowClear,
+    columns: [{ wheel: hour, caption: L('时', '時', 'Hour') }, { separator: ':' }, { wheel: minute, caption: L('分', '分', 'Min') }],
+    preview: () => ({ label: label || L('香港时间', '香港時間', 'Hong Kong time'), big: current() }),
+  });
+  if (result === 'ok') return current();
+  if (result === 'clear') return '';
   return undefined;
 }
 
@@ -422,9 +481,9 @@ export async function openDateTimePicker({ title, value = null, allowClear = fal
 /**
  * Ask for a duration such as "2 小时".
  * Resolves with minutes after 确定, or undefined after 取消.
- * `describe(minutes)` builds the preview text, e.g. m => '截止前 ' + label.
+ * `label` is the tiny caps line above the big readout, e.g. '截止前提醒'.
  */
-export async function openDurationPicker({ title, minutes = 60, minMinutes = 1, describe = text => text } = {}) {
+export async function openDurationPicker({ title, minutes = 60, minMinutes = 1, label = '' } = {}) {
   const units = ['minute', 'hour', 'day'];
   const startSplit = splitMinutes(minutes);
   const amount = new WheelColumn({ label: L('数量', '數量', 'Amount'), items: range(1, 99, String), index: clamp(startSplit.amount, 1, 99) - 1, onChange: () => refresh() });
@@ -436,11 +495,11 @@ export async function openDurationPicker({ title, minutes = 60, minMinutes = 1, 
     const ok = document.querySelector('.wheel-dialog [data-act=ok]');
     if (ok) ok.disabled = tooShort();
   };
-  const preview = () => {
-    const label = `${amount.value} ${unitName(unit.value, lang(), amount.value)}`;
-    return tooShort() ? L(`至少 ${minMinutes} 分钟`, `至少 ${minMinutes} 分鐘`, `At least ${minMinutes} minutes`) : describe(label);
-  };
-  const resultPromise = showWheelDialog({ title, preview, columns: [{ wheel: amount, caption: L('数量', '數量', 'Amount') }, { wheel: unit, caption: L('单位', '單位', 'Unit') }] });
+  const preview = () => ({
+    label: tooShort() ? L(`至少 ${minMinutes} 分钟`, `至少 ${minMinutes} 分鐘`, `At least ${minMinutes} minutes`) : label,
+    big: `${amount.value} ${unitName(unit.value, lang(), amount.value)}`,
+  });
+  const resultPromise = showWheelDialog({ title, preview, columns: [{ wheel: amount, caption: L('数量', '數量', 'Amount') }, { wheel: unit, caption: L('单位', '單位', 'Unit'), size: 1.4 }] });
   refresh();
   const result = await resultPromise;
   return result === 'ok' && !tooShort() ? current() : undefined;

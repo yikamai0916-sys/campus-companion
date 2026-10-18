@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { toMinutes, splitMinutes, offsetLabel, normalizeOffsets, normalizePresets, chipOffsets, daysInMonth, hkParts, hkPartsToMs, toHkInputValue, fromHkInputValue, normalizeExact, nextWholeHour, BUILT_IN_OFFSETS } from '../public/reminder-logic.js';
-import { rubberBand, indexForPosition, ITEM_HEIGHT } from '../public/wheel-picker.js';
+import { rubberBand, indexForPosition, rowLook, ITEM_HEIGHT } from '../public/wheel-picker.js';
+import { progressColor } from '../public/motion.js';
 
 test('number + unit converts to minutes and back', () => {
   assert.equal(toMinutes(30, 'minute'), 30);
@@ -76,4 +77,22 @@ test('wheel physics: rubber band resists and snapping stays in range', () => {
   assert.equal(indexForPosition(-ITEM_HEIGHT * 2.6, 10), 3);
   assert.equal(indexForPosition(80, 10), 0);      // pulled past the top
   assert.equal(indexForPosition(-ITEM_HEIGHT * 50, 10), 9); // flung past the bottom
+});
+
+test('wheel rows fade and shrink with distance from the centre', () => {
+  assert.deepEqual(rowLook(0), { opacity: 1, scale: 1 });
+  assert.deepEqual(rowLook(1), { opacity: 0.5, scale: 0.85 });
+  assert.deepEqual(rowLook(2), { opacity: 0.2, scale: 0.7 });
+  assert.deepEqual(rowLook(5), { opacity: 0.2, scale: 0.7 });
+  const half = rowLook(0.5);
+  assert.ok(half.opacity < 1 && half.opacity > 0.5 && half.scale < 1 && half.scale > 0.85);
+});
+
+test('progress card colour goes lavender -> yellow -> lime', () => {
+  assert.equal(progressColor(0), 'rgb(232, 227, 255)');
+  assert.equal(progressColor(50), 'rgb(255, 214, 10)');
+  assert.equal(progressColor(100), 'rgb(212, 255, 0)');
+  assert.equal(progressColor(-10), progressColor(0));
+  assert.equal(progressColor(250), progressColor(100));
+  assert.equal(progressColor('x'), progressColor(0));
 });

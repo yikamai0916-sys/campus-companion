@@ -126,7 +126,7 @@ export class TaskReminderPicker {
     const minutes = await openDurationPicker({
       title: L('自定义截止前提醒', '自訂截止前提醒', 'Custom reminder'),
       minutes: 60,
-      describe: label => L(`截止前 ${label} 提醒`, `截止前 ${label} 提醒`, `${label} before the due time`),
+      label: L('截止前多久提醒', '截止前多久提醒', 'Remind me before the due time'),
     });
     if (minutes === undefined) return;
     if (!this.selected.has(minutes) && this.selected.size >= MAX_OFFSETS) {
@@ -223,7 +223,7 @@ export class TaskReminderPicker {
       title: L('自定义重复间隔', '自訂重複間隔', 'Custom repeat interval'),
       minutes: current,
       minMinutes: 30,
-      describe: label => L(`每 ${label} 提醒一次`, `每 ${label} 提醒一次`, `Every ${label}`),
+      label: L('每隔多久提醒一次', '每隔多久提醒一次', 'Repeat every'),
     });
     if (minutes !== undefined) this.setCustomRepeat(minutes);
     else if (!this.form.elements.customRepeat.value && previous) {

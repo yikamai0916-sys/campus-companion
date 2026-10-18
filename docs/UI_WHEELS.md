@@ -9,4 +9,6 @@ The task form no longer needs the keyboard for times:
 
 Feedback: saving a task shrinks the button into a circle, draws a tick and bursts particles (`public/motion.js`). Switching pages from the navigation uses a circular reveal from the tap point (View Transitions API; other browsers switch instantly). Both are skipped with `prefers-reduced-motion`.
 
+Other native date/time inputs are upgraded by `public/native-pickers.js` (see UI_THEME.md).
+
 Pure helpers live in `public/reminder-logic.js` and are tested in `test/reminder-logic.test.js`.
