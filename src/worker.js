@@ -1,6 +1,7 @@
 import { meetingTask,wording } from './display.js';
 import { listMailSuggestions,reviewMailSuggestion } from './suggestions.js';
 import { validateTask } from './domain.js';
+import { normalizePresets } from '../public/reminder-logic.js';
 import { random,hash,verifyPassword,makePasswordHash,makeAnswerHash,verifyAnswer } from './security.js';
 import { getKV,setKV,startOAuth,finishOAuth,syncMail,reprocessMail,ingestForwardedEmail,ingestShortcutEmail,localizeMessages,outlookConnection,outlookConfigProblems } from './mail.js';
 import { scheduleTask,repeatTasks,deliver,makeDigest,enqueue } from './jobs.js';
@@ -10,7 +11,7 @@ const json=(data,status=200)=>Response.json(data,{status});
 async function body(request){if(Number(request.headers.get('content-length'))>7*1024*1024)throw new Error('请求过大');const text=await request.text();if(text.length>7*1024*1024)throw new Error('请求过大');return JSON.parse(text);}
 const emailOf=value=>String(value||'').trim().toLowerCase();
 const validEmail=value=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)&&value.length<=254;
-const defaultReminder={offsets:[4320,1440,120,30],repeat:1440,maxCount:0,start:'08:00',end:'23:00',days:[1,2,3,4,5,6,0],push:true,email:false};
+const defaultReminder={presets:[],offsets:[4320,1440,120,30],repeat:1440,maxCount:0,start:'08:00',end:'23:00',days:[1,2,3,4,5,6,0],push:true,email:false};
 const parseReminder=value=>{try{return {...defaultReminder,...JSON.parse(value||'{}')}}catch{return defaultReminder}};
 const defaultMailPreferences={focusTerms:[],daily:{enabled:true,time:'20:00'},late:{enabled:true,time:'00:00'}};
 const validTime=value=>/^([01]\d|2[0-3]):[0-5]\d$/.test(String(value||''));
@@ -102,7 +103,9 @@ async function routes(request,env){
     if(linkedEmail&&!validEmail(linkedEmail))return json({error:'关联邮箱格式不正确'},400);
     const reminders={...defaultReminder,...parseReminder(current?.reminder_defaults),...(data.reminders||{})};
     const mailPreferences=parseMailPreferences(data.mailPreferences===undefined?current?.mail_preferences:data.mailPreferences);
-    if(!Array.isArray(reminders.offsets)||reminders.offsets.some(n=>!Number.isFinite(Number(n))||Number(n)<0)||!Number.isFinite(Number(reminders.repeat))||Number(reminders.repeat)<0)return json({error:'提醒配置不正确'},400);
+    // presets = the user's saved custom "截止前提醒" chips (minutes). Clean them instead of rejecting.
+    reminders.presets=normalizePresets(reminders.presets);
+    if(!Array.isArray(reminders.offsets)||reminders.offsets.length>12||reminders.offsets.some(n=>!Number.isInteger(n)||n<0||n>525600)||!Number.isFinite(Number(reminders.repeat))||Number(reminders.repeat)<0)return json({error:'提醒配置不正确'},400);
     if(!validTime(mailPreferences.daily.time)||!validTime(mailPreferences.late.time))return json({error:'邮件提醒时间不正确'},400);
     await env.DB.prepare('UPDATE users SET nickname=?,avatar=?,linked_email=?,locale=?,reminder_defaults=?,mail_preferences=? WHERE id=?').bind(nickname,avatar,linkedEmail,locale,JSON.stringify(reminders),JSON.stringify(mailPreferences),account.user_id).run();
     return json({ok:true,nickname,avatar,linkedEmail,locale,reminders,mailPreferences});

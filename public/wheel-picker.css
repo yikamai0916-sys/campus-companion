@@ -1,0 +1,76 @@
+/* Wheel pickers and reminder chips. Colours and radii come from the tokens in theme.css. */
+
+/* ---------- picker dialog ---------- */
+.wheel-dialog{width:min(440px,calc(100vw - 24px));padding:24px 22px 22px}
+.wheel-dialog .dialog-heading{margin-bottom:14px}
+.wheel-dialog h2{font-size:15px;font-weight:700;color:var(--muted-text)}
+/* big live readout, e.g. "21:30" with a tiny caps label above */
+.wheel-readout{display:flex;flex-direction:column;gap:4px;margin:0 0 16px}
+.wheel-big{font-size:clamp(40px,12vw,56px);font-weight:800;letter-spacing:-.03em;line-height:1;font-variant-numeric:tabular-nums;color:var(--ink)}
+.wheel-shortcuts{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+/* two-row grid: captions on top, wheels below; the lavender band spans every column */
+.wheel-columns{position:relative;display:grid;grid-template-rows:auto auto;column-gap:2px;align-items:center;padding:14px 10px;margin-bottom:20px;border-radius:var(--radius-card);background:var(--surface-2)}
+.wheel-highlight{grid-row:2;grid-column:1/-1;align-self:center;height:48px;border-radius:var(--pill);background:var(--lavender)}
+.wheel-caption{text-align:center;padding-bottom:6px}
+.wheel-colon{font-size:clamp(24px,7vw,32px);font-weight:800;padding:0 2px;margin-top:-4px;position:relative;color:var(--ink)}
+.wheel-column{position:relative;width:100%;overflow:hidden;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;perspective:500px;border-radius:var(--pill);outline-offset:-2px}
+.wheel-column:active{cursor:grabbing}
+.wheel-column:focus-visible{outline:2px solid var(--ink)}
+.wheel-track{position:absolute;left:0;right:0;top:0;will-change:transform}
+.wheel-item{height:48px;line-height:48px;text-align:center;font-size:clamp(22px,6.6vw,32px);font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.02em;color:var(--ink);white-space:nowrap;backface-visibility:hidden}
+.wheel-dialog .form-actions .primary{padding:16px 32px}
+
+/* ---------- buttons that open a picker ---------- */
+#task-form [hidden]{display:none!important} /* .field uses display:flex, which would otherwise beat the hidden attribute */
+.field{display:flex;flex-direction:column;gap:8px;margin-bottom:18px}
+.picker-field{display:flex;align-items:center;gap:6px}
+.picker-button{flex:1;width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;padding:14px 18px;border:0;border-radius:var(--radius-field);background:var(--surface-2);color:var(--ink);font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:normal;text-transform:none}
+.picker-button:hover{background:var(--surface-3)}
+.picker-button.is-empty{color:var(--muted-text);font-weight:500}
+.picker-button::after{content:'';width:8px;height:8px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg) translateY(-3px);opacity:.5;flex-shrink:0}
+.picker-error{display:block;margin-top:6px;font-size:13px}
+.icon-button.small{font-size:20px;padding:6px 10px}
+
+/* ---------- chips ---------- */
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.chips:empty{display:none}
+.chip-wrap{display:inline-flex;align-items:center;border-radius:var(--pill);background:var(--surface);box-shadow:var(--shadow-soft)}
+.chip{position:relative;display:inline-flex;flex-direction:row;align-items:center;gap:6px;margin:0;padding:10px 16px;border:0;border-radius:var(--pill);background:var(--surface);color:var(--ink);font-size:14px;font-weight:700;letter-spacing:normal;text-transform:none;cursor:pointer;user-select:none;font-variant-numeric:tabular-nums;transition:background .2s,color .2s,transform .35s var(--spring)}
+.chip input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none} /* the real checkbox stays for keyboard + forms */
+.chip:has(input:checked),.chip.is-on{background:var(--ink);color:#fff}
+.chip:has(input:checked)::before{content:'✓';font-size:12px}
+.chip:has(input:focus-visible){outline:2px solid var(--ink);outline-offset:3px}
+.chip:active{transform:scale(.94)}
+.chip-wrap:has(.chip-star) .chip{border-radius:var(--pill) 0 0 var(--pill)}
+.chip-star{border:0;border-radius:0 var(--pill) var(--pill) 0;padding:10px 14px 10px 10px;font-size:11px;font-weight:800;letter-spacing:1px;background:transparent;color:var(--muted-text)}
+.chip-star[aria-pressed=true]{background:var(--lime);color:var(--ink)}
+.chip.is-on{padding:0;gap:0}
+.chip-text,.chip-remove{background:none;border:0;color:inherit;padding:10px 6px 10px 16px;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;box-shadow:none}
+.chip-text:hover,.chip-remove:hover{background:none}
+.chip-remove{padding:10px 14px 10px 6px;font-size:17px;line-height:1;opacity:.75}
+.chip.is-past{background:var(--surface-3);color:var(--muted-text);text-decoration:line-through}
+.chip-button{padding:10px 16px;border-radius:var(--pill);border:1.5px dashed #c7c7cc;background:transparent;font-size:14px;font-weight:700;color:var(--ink);box-shadow:none}
+.chip-button:hover{background:var(--surface-2)}
+.chip-button:disabled{opacity:.4;cursor:not-allowed}
+.chip-tools{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;margin-bottom:8px}
+.chip-tools .link-button{font-size:13px;padding:4px 0;margin:0}
+
+/* ---------- (a) completion button: lime pill -> circle -> black tick -> particles ---------- */
+.form-actions .primary{position:relative;transition:width .28s var(--ease-out),border-radius .28s,padding .28s,background .15s,color .1s}
+.primary.is-success:disabled{opacity:1;cursor:default}
+.primary.is-success{width:52px!important;height:52px;padding:0;border-radius:50%;background:var(--lime);border-color:var(--lime);color:transparent;overflow:visible}
+.success-tick{position:absolute;inset:0;margin:auto;width:26px;height:26px;fill:none;stroke:var(--ink);stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.success-tick path{stroke-dasharray:24;stroke-dashoffset:24;animation:draw-tick .2s .15s ease-out forwards}
+.success-burst{position:absolute;left:50%;top:50%;pointer-events:none}
+.success-burst i{position:absolute;width:7px;height:7px;margin:-3.5px;border-radius:50%;background:var(--lime);opacity:0;animation:success-spark .4s .35s cubic-bezier(.2,.8,.2,1) both}
+.success-burst i:nth-child(4n+1){background:var(--ink)}
+.success-burst i:nth-child(4n+2){background:var(--orange)}
+.success-burst i:nth-child(4n+3){background:#b9a8ff}
+@keyframes draw-tick{to{stroke-dashoffset:0}}
+@keyframes success-spark{from{opacity:1;transform:rotate(var(--angle)) translateX(22px) scale(1)}to{opacity:0;transform:rotate(var(--angle)) translateX(50px) scale(.2)}}
+
+/* ---------- (f) circular page transition: turn off the default cross-fade ---------- */
+::view-transition-old(root),::view-transition-new(root){animation:none;mix-blend-mode:normal}
+
+@media(max-width:700px){.wheel-dialog{padding:20px 14px 16px}.wheel-columns{padding:12px 4px}}
+@media(prefers-reduced-motion:reduce){.chip,.form-actions .primary{transition:none}}

@@ -287,6 +287,23 @@ test('mail reminder preferences are saved separately for each account',async()=>
 });
 
 
+test('custom reminder presets are cleaned and saved with the reminder defaults',async()=>{
+  const env={DB:database()},origin='https://campus.example',token=random();
+  await env.DB.prepare("INSERT INTO users(id,email,password_hash,created) VALUES('presets','presets@example.com','unused',0)").run();
+  await env.DB.prepare('INSERT INTO sessions(id,expires,user_id) VALUES(?,?,?)').bind(await hash(token),Date.now()+3600000,'presets').run();
+  const patch=data=>worker.fetch(new Request(origin+'/api/profile',{method:'PATCH',headers:{Origin:origin,Cookie:'campus_session='+token,'Content-Type':'application/json'},body:JSON.stringify(data)}),env);
+  const saved=await patch({reminders:{presets:[90,90,1440,'x',360]}});
+  assert.equal(saved.status,200);
+  assert.deepEqual((await saved.json()).reminders.presets,[360,90]);
+  // saving only offsets keeps the presets that were saved before
+  assert.equal((await patch({reminders:{offsets:[1440,90]}})).status,200);
+  const profile=await (await worker.fetch(new Request(origin+'/api/profile',{headers:{Cookie:'campus_session='+token}}),env)).json();
+  assert.deepEqual(profile.reminders.presets,[360,90]);
+  assert.deepEqual(profile.reminders.offsets,[1440,90]);
+  // offsets that a task would reject are refused here too
+  assert.equal((await patch({reminders:{offsets:[1.5]}})).status,400);
+});
+
 test('digest history is visible only to the account that received it',async()=>{
   const env={DB:database()},origin='https://campus.example',firstToken=random(),secondToken=random();
   await env.DB.prepare("INSERT INTO users(id,email,password_hash,created) VALUES('first','first@example.com','unused',0),('second','second@example.com','unused',0)").run();
