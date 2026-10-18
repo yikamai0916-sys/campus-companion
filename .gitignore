@@ -10,3 +10,6 @@ wrangler.local.jsonc
 .DS_Store
 coverage/
 dist/
+
+# Database exports contain private account data.
+backups/
