@@ -6,4 +6,4 @@ Completion feedback starts only after the API confirms the change. The row brief
 
 Validation: 39 automated tests; local browser check of task view, successful completion (0% to 100%), and Undo (100% to 0%). New interface copy has simplified Chinese, traditional Chinese and English mappings. Device-specific touch testing and real-device push delivery are not covered by this UI check.
 
-Remaining optional ideas: time wheels, scroll-snapping timelines, circular navigation transitions. These are deliberately outside this iteration.
+Time wheels and the circular navigation transition were added later; see UI_WHEELS.md. Scroll-snapping timelines remain an optional idea.

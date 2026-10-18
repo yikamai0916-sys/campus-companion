@@ -110,6 +110,8 @@ function translateCopy(value){
  return raw.replace(key,translated);
 }
 Object.assign(TEXTS,{'全部待办完成率':['全部待辦完成率','All tasks completion rate'],'一点一点，完成重要的事':['一點一點，完成重要的事','One small step at a time'],'全部待办进度':['全部待辦進度','Your overall progress'],'每一个小小的完成，都算数。':['每一個小小的完成，都算數。','Every small finish counts.'],'展开摘要':['展開摘要','Read summary'],'收起摘要':['收起摘要','Close summary']});
+// Copy for the wheel pickers and reminder chips (zh-TW, en).
+Object.assign(TEXTS,{'点此选择截止时间':['點此選擇截止時間','Choose a due time'],'＋ 自定义':['＋ 自訂','＋ Custom'],'把当前选择设为新待办默认':['把目前選擇設為新待辦預設','Use this selection for new tasks'],'设置截止时间后，这些提醒才会生效。':['設定截止時間後，這些提醒才會生效。','These reminders start working once a due time is set.'],'指定提醒时间（香港）':['指定提醒時間（香港）','Specific reminder times (Hong Kong)'],'＋ 添加提醒时间':['＋ 新增提醒時間','＋ Add a reminder time'],'选择间隔':['選擇間隔','Choose interval']});
 function translateTextNodes(){
  const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);let node;
  while(node=walker.nextNode()){
@@ -153,8 +155,59 @@ function renderTasks(){
   $$('[data-delete-task]').forEach(b=>b.onclick=async()=>{if(!confirm(translateCopy('确定永久删除这项已完成任务吗？')))return;b.disabled=true;try{await api('tasks/'+b.dataset.deleteTask,{method:'DELETE',body:{}});await loadTasks();toast('已删除任务');}catch(e){toast(e.message);b.disabled=false;}});
 }
 async function loadTasks(){tasks=await api('tasks');renderTasks();translateTextNodes();}
-function openForm(task=null){editing=task;const f=$('#task-form');f.reset();if(!task){const r=reminderDefaults;$$('[name=offset]').forEach(c=>c.checked=(r.offsets||[]).includes(Number(c.value)));f.elements.repeat.value=[0,30,60,120,1440].includes(Number(r.repeat))?String(r.repeat):'custom';f.elements.start.value=r.start||'08:00';f.elements.end.value=r.end||'23:00';}$('#form-error').textContent='';$('#form-heading').textContent=task?'编辑待办':'添加待办';if(task){f.elements.title.value=task.title;f.elements.notes.value=task.notes;f.elements.due.value=localDate(task.due);f.elements.priority.value=task.priority;const r=task.reminders;$$('[name=offset]').forEach(c=>c.checked=r.offsets.includes(Number(c.value)));const known=[4320,2880,1440,120,30];f.elements.customOffsets.value=r.offsets.filter(n=>!known.includes(n)).join(', ');f.elements.exact.value=r.exact.map(n=>localDate(n).replace('T',' ')).join('\n');f.elements.repeat.value=[0,30,60,120,1440].includes(r.repeat)?String(r.repeat):'custom';if(f.elements.repeat.value==='custom')f.elements.customRepeat.value=r.repeat;f.elements.maxCount.value=r.maxCount||0;f.elements.start.value=r.start;f.elements.end.value=r.end;f.elements.push.checked=r.push;f.elements.email.checked=false;$$('[name=day]').forEach(c=>c.checked=r.days.includes(Number(c.value)));}f.elements.email.checked=false;translateTextNodes();$('#task-dialog').showModal();}
-$('#task-form').onsubmit=async event=>{event.preventDefault();const f=event.currentTarget,save=f.querySelector('[type=submit]');save.disabled=true;$('#form-error').textContent='';try{const exact=f.elements.exact.value.split('\n').map(s=>s.trim()).filter(Boolean).map(s=>{if(!/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}$/.test(s))throw Error('指定提醒请使用 YYYY-MM-DD HH:mm 格式');return Date.parse(s.replace(' ','T')+':00+08:00');});const offsets=[...$$('[name=offset]:checked').map(c=>Number(c.value)),...f.elements.customOffsets.value.split(/[,，]/).map(s=>s.trim()).filter(Boolean).map(Number)];const data={title:f.elements.title.value,notes:f.elements.notes.value,due:f.elements.due.value?Date.parse(f.elements.due.value+':00+08:00'):null,priority:Number(f.elements.priority.value),reminders:{offsets:[...new Set(offsets)],exact,repeat:Number(f.elements.repeat.value==='custom'?f.elements.customRepeat.value:f.elements.repeat.value),maxCount:Number(f.elements.maxCount.value)||0,start:f.elements.start.value,end:f.elements.end.value,days:$$('[name=day]:checked').map(c=>Number(c.value)),push:f.elements.push.checked,email:f.elements.email.checked}};if(editing)data.version=editing.version;await api(editing?'tasks/'+editing.id:'tasks',{method:editing?'PATCH':'POST',body:data});$('#task-dialog').close();await loadTasks();toast('待办已保存');}catch(e){$('#form-error').textContent=e.message;}finally{save.disabled=false;}};
+// ES module imports are hoisted, so these work even though they are not at the very top.
+// (They sit here because test/localization.test.js evaluates the top of this file as a plain script.)
+import { TaskReminderPicker } from './task-reminders.js';
+import { playButtonSuccess, resetSuccessButton, circularTransition } from './motion.js';
+
+// Handles the due time, reminder chips, exact times and custom repeat inside #task-form.
+const reminderPicker = new TaskReminderPicker({
+  form: $('#task-form'),
+  getDefaults: () => reminderDefaults,
+  // Saves part of the reminder defaults (for example {presets:[90]}) on the server, in users.reminder_defaults.
+  saveDefaults: async patch => { const r = await api('profile', {method:'PATCH', body:{reminders:patch}}); reminderDefaults = r.reminders; return r.reminders; },
+  notify: text => toast(text),
+});
+
+function openForm(task=null){
+  editing=task;
+  const f=$('#task-form');
+  f.reset();
+  $('#form-error').textContent='';
+  $('#form-heading').textContent=task?'编辑待办':'添加待办';
+  const r=task?task.reminders:reminderDefaults;
+  if(task){
+    f.elements.title.value=task.title;
+    f.elements.notes.value=task.notes;
+    f.elements.priority.value=task.priority;
+    f.elements.push.checked=r.push;
+  }
+  f.elements.maxCount.value=r.maxCount||0;
+  f.elements.start.value=r.start||'08:00';
+  f.elements.end.value=r.end||'23:00';
+  if(Array.isArray(r.days)&&r.days.length)$$('[name=day]').forEach(c=>c.checked=r.days.includes(Number(c.value)));
+  f.elements.email.checked=false;
+  reminderPicker.load(task); // due time, offsets, exact times, repeat
+  translateTextNodes();
+  $('#task-dialog').showModal();
+}
+$('#task-form').onsubmit=async event=>{
+  event.preventDefault();
+  const f=event.currentTarget,save=f.querySelector('[type=submit]');
+  save.disabled=true;$('#form-error').textContent='';
+  try{
+    const picked=reminderPicker.collect(); // {due, offsets, exact, repeat} — same format as before
+    const data={title:f.elements.title.value,notes:f.elements.notes.value,due:picked.due,priority:Number(f.elements.priority.value),
+      reminders:{offsets:picked.offsets,exact:picked.exact,repeat:picked.repeat,maxCount:Number(f.elements.maxCount.value)||0,start:f.elements.start.value,end:f.elements.end.value,days:$$('[name=day]:checked').map(c=>Number(c.value)),push:f.elements.push.checked,email:f.elements.email.checked}};
+    if(editing)data.version=editing.version;
+    await api(editing?'tasks/'+editing.id:'tasks',{method:editing?'PATCH':'POST',body:data});
+    await playButtonSuccess(save); // shrink → tick → particles (skipped with reduced motion)
+    $('#task-dialog').close();
+    resetSuccessButton(save);
+    await loadTasks();toast('待办已保存');
+  }catch(e){resetSuccessButton(save);$('#form-error').textContent=e.message;}
+  finally{save.disabled=false;}
+};
 async function loadMail(){
   try{
     const messages=await api('messages');await renderMailSuggestions();const categories={1:'cat1',2:'cat2',3:'cat3',4:'cat4'};
@@ -262,7 +315,7 @@ $('#new-group').onclick=()=>{$('#group-form').reset();$('#group-form-error').tex
 $('#group-form').onsubmit=async event=>{event.preventDefault();const form=event.currentTarget,button=form.querySelector('[type=submit]');button.disabled=true;try{const group=await api('groups',{method:'POST',body:{name:form.elements.name.value}});selectedGroupId=group.id;$('#group-dialog').close();toast('小组已创建');await loadGroups(true);}catch(error){$('#group-form-error').textContent=error.message;}finally{button.disabled=false;}};
 $('#show-pending').onclick=()=>{showDone=false;$('#show-pending').classList.add('selected');$('#show-completed').classList.remove('selected');renderTasks();};
 $('#show-completed').onclick=()=>{showDone=true;$('#show-completed').classList.add('selected');$('#show-pending').classList.remove('selected');renderTasks();};
-$$('[data-view]').forEach(b=>b.onclick=()=>view(b.dataset.view));
+$$('[data-view]').forEach(b=>b.onclick=event=>{if(b.dataset.view===activeView)view(b.dataset.view);else circularTransition(event,()=>view(b.dataset.view));});
 async function boot(){try{status=await api('status');const profile=await api('profile');reminderDefaults=profile.reminders||reminderDefaults;applyLocale(status.account.locale||localStorage.getItem('campus-locale')||'zh-CN');localStorage.setItem('campus-locale',locale);$('#login').classList.add('hidden');$('#app').classList.remove('hidden');$('#account-label').textContent=accountLabel(status.account);setAvatar(status.account.avatar,accountLabel(status.account).slice(0,1).toUpperCase());$('#date-label').textContent=new Date().toLocaleDateString(dateLocale(),{timeZone:'Asia/Hong_Kong',year:'numeric',month:'long',day:'numeric',weekday:'long'});await loadTasks();const v=new URLSearchParams(location.search).get('view');view(['groups','mail','digests','settings'].includes(v)?v:'tasks');}catch(e){if(!$('#app').classList.contains('hidden'))$('#global-error').textContent=e.message;else showLogin();}}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!$('#app').classList.contains('hidden'))loadTasks().catch(e=>toast(e.message));});
 
@@ -306,7 +359,7 @@ async function loadSettingsProfile(){
     const syncOutlook=$('#sync-outlook');if(syncOutlook)syncOutlook.onclick=async()=>{syncOutlook.disabled=true;syncOutlook.textContent=tx('syncing');try{const r=await api('outlook/sync',{method:'POST',body:{}});toast(tx('syncFinished').replace('{count}',r.imported));await loadMail();await loadSettingsProfile();}catch(err){toast(err.message);}finally{syncOutlook.disabled=false;}};
     const disconnectOutlook=$('#disconnect-outlook');if(disconnectOutlook)disconnectOutlook.onclick=async()=>{if(!confirm(tx('confirmDisconnectOutlook')))return;disconnectOutlook.disabled=true;try{await api('outlook',{method:'DELETE',body:{}});toast(tx('outlookDisconnected'));await loadSettingsProfile();}catch(err){toast(err.message);disconnectOutlook.disabled=false;}};
     $('#profile-form').elements.avatarFile.onchange=e=>{const file=e.target.files[0];if(!file)return;if(!['image/png','image/jpeg','image/webp','image/gif'].includes(file.type)){e.target.value='';toast(tx('avatarInvalid'));return;}const reader=new FileReader();reader.onload=()=>{e.target.form.elements.avatar.value=reader.result;$('#avatar-preview').src=reader.result;$('#avatar-preview').hidden=false;};reader.readAsDataURL(file);};
-    $('#profile-form').onsubmit=async e=>{e.preventDefault();const f=e.currentTarget;try{const r=await api('profile',{method:'PATCH',body:{nickname:f.elements.nickname.value,avatar:f.elements.avatar.value,linkedEmail:f.elements.linkedEmail.value,locale:f.elements.locale.value,reminders:p.reminders}});applyLocale(r.locale);localStorage.setItem('campus-locale',r.locale);$('#account-label').textContent=r.nickname||accountLabel(status.account);setAvatar(r.avatar,(r.nickname||accountLabel(status.account)).slice(0,1).toUpperCase());toast(tx('profileSaved'));setTimeout(()=>location.reload(),120);}catch(err){toast(err.message);}};
+    $('#profile-form').onsubmit=async e=>{e.preventDefault();const f=e.currentTarget;try{const r=await api('profile',{method:'PATCH',body:{nickname:f.elements.nickname.value,avatar:f.elements.avatar.value,linkedEmail:f.elements.linkedEmail.value,locale:f.elements.locale.value}});applyLocale(r.locale);localStorage.setItem('campus-locale',r.locale);$('#account-label').textContent=r.nickname||accountLabel(status.account);setAvatar(r.avatar,(r.nickname||accountLabel(status.account)).slice(0,1).toUpperCase());toast(tx('profileSaved'));setTimeout(()=>location.reload(),120);}catch(err){toast(err.message);}};
     $('#password-form').onsubmit=async e=>{e.preventDefault();const f=e.currentTarget;try{await api('password',{method:'POST',body:{current:f.elements.current.value,next:f.elements.next.value}});f.reset();toast(tx('passwordSaved'));}catch(err){toast(err.message);}};
     $('#security-form').onsubmit=async e=>{e.preventDefault();const f=e.currentTarget;try{await api('security-question',{method:'POST',body:{password:f.elements.password.value,question:f.elements.question.value,answer:f.elements.answer.value}});f.reset();toast(tx('securitySaved'));}catch(err){toast(err.message);}};
     $('#settings-logout').onclick=logout;$('#enable-push').onclick=enablePush;$('#test-push').onclick=async()=>{try{await api('test-notification',{method:'POST',body:{}});toast(local('已提交推送，请检查设备通知','已提交推送，請檢查裝置通知','Push requested. Check this device.'));}catch(error){toast(error.message);}};
