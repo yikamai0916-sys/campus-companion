@@ -76,7 +76,7 @@ const digestWindows=(day,prefs)=>{
     prefs.late.enabled?{key:`late:${dateOf(day)}:${prefs.late.time}`,date:dateOf(day),start:dailyEnd,end:lateEnd,late:true}:null
   ].filter(Boolean);
 };
-async function oneDigest(env,now,w,userId,prefs) {
+async function oneDigest(env,now,w,userId,prefs,locale='zh-CN') {
   const digestKey='digest:'+userId+':'+w.key;
   if(!w||await getKV(env,digestKey))return;
   const forwarding=env.MAIL_INGEST_MODE==='forwarding';
@@ -87,18 +87,18 @@ async function oneDigest(env,now,w,userId,prefs) {
   const preferred=String((await env.DB.prepare('SELECT preferred_zh_name FROM users WHERE id=?').bind(userId).first())?.preferred_zh_name||'').trim();
   const visible=results.filter(m=>!prefs.focusTerms.length||prefs.focusTerms.some(term=>`${m.subject} ${m.sender} ${m.origin} ${m.summary} ${m.action}`.toLowerCase().includes(term.toLowerCase())));
   if(w.late&&!visible.length){await setKV(env,digestKey,'quiet');return;}
-  const emptyText=prefs.focusTerms.length?'在这个时段没有匹配你的关注词的学校邮件。':'这个时段没有需要总结的学校邮件。';
+  const emptyText=prefs.focusTerms.length?wording(locale,'在这个时段没有匹配你的关注词的学校邮件。','在這個時段沒有符合你關注詞的學校郵件。','No school mail matching your focus terms in this window.'):wording(locale,'这个时段没有需要总结的学校邮件。','這個時段沒有需要總結的學校郵件。','No school mail to summarize in this window.');
   const items=visible.map(m=>shapeDigestItem(applyPreferredNameToFields(m,preferred)));
-  const title=w.date+(w.late?' 晚间补充':' 学校邮件日报');
+  const title=w.date+(w.late?wording(locale,' 晚间补充',' 晚間補充',' Evening digest'):wording(locale,' 学校邮件日报',' 學校郵件日報',' School mail digest'));
   const record=shapeDigestRecord({title,created:now,items,emptyText});
   await enqueue(env,'digest:'+userId+':'+w.key,null,now,{title:record.title,body:record.body,url:'/?view=digests'},{push:true,email:true},userId);
   await setKV(env,digestKey,JSON.stringify(record));
 }
 export async function makeDigest(env,now) {
   const day=hkStart(now),forwarding=env.MAIL_INGEST_MODE==='forwarding';
-  const users=forwarding?(await env.DB.prepare('SELECT id,mail_preferences FROM users WHERE email=?').bind(String(env.LOGIN_EMAIL||'').trim().toLowerCase()).all()).results:(await env.DB.prepare('SELECT u.id,u.mail_preferences FROM users u JOIN outlook_connections c ON c.user_id=u.id').all()).results;
+  const users=forwarding?(await env.DB.prepare('SELECT id,locale,mail_preferences FROM users WHERE email=?').bind(String(env.LOGIN_EMAIL||'').trim().toLowerCase()).all()).results:(await env.DB.prepare('SELECT u.id,u.locale,u.mail_preferences FROM users u JOIN outlook_connections c ON c.user_id=u.id').all()).results;
   for(const user of users){
     const start=Number(await getKV(env,'digest_start:'+user.id)||await getKV(env,'digest_start')||now),prefs=mailPreferences(user.mail_preferences);
-    for(let d=2;d>=0;d--)for(const w of digestWindows(day-d*86400000,prefs))if(w.end>=start&&w.end<=now)await oneDigest(env,now,w,user.id,prefs);
+    for(let d=2;d>=0;d--)for(const w of digestWindows(day-d*86400000,prefs))if(w.end>=start&&w.end<=now)await oneDigest(env,now,w,user.id,prefs,user.locale||'zh-CN');
   }
 }

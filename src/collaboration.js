@@ -1,5 +1,6 @@
 import { assignmentReminders, validateTask } from './domain.js';
 import { scheduleTask } from './jobs.js';
+import { meetingTask } from './display.js';
 
 export class CollaborationError extends Error {
   constructor(message,status=400){super(message);this.status=status;}
@@ -75,14 +76,19 @@ export async function listGroups(env,actorId){
 export async function groupSnapshot(env,actorId,groupId){
   const access=await membership(env,groupId,actorId);
   const members=(await env.DB.prepare('SELECT gm.user_id,gm.role,gm.joined,u.email,u.nickname FROM group_members gm JOIN users u ON u.id=gm.user_id WHERE gm.group_id=? ORDER BY gm.joined').bind(groupId).all()).results;
-  const tasks=(await env.DB.prepare('SELECT id,title,notes,due,priority,completed,user_id,assigned_by,acceptance_status,candidate_id,version,created,updated FROM tasks WHERE group_id=? ORDER BY completed,acceptance_status,due IS NULL,due').bind(groupId).all()).results;
+  const tasks=(await env.DB.prepare('SELECT id,title,notes,due,priority,completed,user_id,assigned_by,acceptance_status,candidate_id,source,source_id,version,created,updated FROM tasks WHERE group_id=? ORDER BY completed,acceptance_status,due IS NULL,due').bind(groupId).all()).results;
   const taskByCandidate=new Map(tasks.filter(task=>task.candidate_id).map(task=>[task.candidate_id,task]));
   const candidates=(await env.DB.prepare('SELECT * FROM task_candidates WHERE group_id=? ORDER BY status,created DESC').bind(groupId).all()).results.map(row=>{
     const task=taskByCandidate.get(row.id),nextAction=row.status==='pending'?'owner_review':task?.acceptance_status==='pending'?'assignee_accept':task?.acceptance_status==='accepted'?(task.completed?'completed':'in_progress'):task?.acceptance_status==='declined'?'declined':'done';
     return {...row,evidence:JSON.parse(row.evidence),next_action:nextAction,next_actor_user_id:nextAction==='owner_review'?access.owner_user_id:nextAction==='assignee_accept'?task.user_id:null};
   });
-  const visibleTasks=tasks.map(task=>({...task,next_action:task.acceptance_status==='pending'?'assignee_accept':task.acceptance_status==='accepted'?(task.completed?'completed':'in_progress'):'declined',can_respond:task.user_id===actorId&&task.acceptance_status==='pending'}));
   const meetingPolls=(await env.DB.prepare('SELECT id,name,range_start,range_end,duration_minutes,buffer_minutes,status,phase,confirmed_start,confirmed_end,created FROM meeting_polls WHERE group_id=? ORDER BY status,created DESC').bind(groupId).all()).results;
+  // Meeting-derived tasks were stored per member locale from 2026-10; older
+  // rows still carry Simplified Chinese titles, so re-render them for the
+  // viewer's language when the poll is known.
+  const actorLocale=(await env.DB.prepare('SELECT locale FROM users WHERE id=?').bind(actorId).first())?.locale||'zh-CN';
+  const pollNames=new Map(meetingPolls.map(poll=>[poll.id,poll.name]));
+  const visibleTasks=tasks.map(task=>({...task,next_action:task.acceptance_status==='pending'?'assignee_accept':task.acceptance_status==='accepted'?(task.completed?'completed':'in_progress'):'declined',can_respond:task.user_id===actorId&&task.acceptance_status==='pending',...(task.source==='meeting'&&pollNames.has(task.source_id)?meetingTask(task,{name:pollNames.get(task.source_id)},actorLocale):{})}));
   const announcements=(await env.DB.prepare('SELECT * FROM group_announcements WHERE group_id=? ORDER BY created DESC LIMIT 30').bind(groupId).all()).results;
   return {group:{id:groupId,name:access.name,owner_user_id:access.owner_user_id,role:access.role},members,candidates,tasks:visibleTasks,meetingPolls,announcements};
 }

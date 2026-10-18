@@ -1,6 +1,7 @@
 import { CollaborationError } from './collaboration.js';
 import { AvailabilityCalendar,MeetingPlanner } from './meeting-planner.js';
 import { taskJobRows } from './jobs.js';
+import { meetingTask } from './display.js';
 
 const text=(value,label,max)=>{const result=String(value??'').trim();if(!result||result.length>max)throw new CollaborationError(`${label}需为 1–${max} 个字符`);return result;};
 
@@ -82,7 +83,17 @@ export async function confirmMeetingProposal(env,actorId,pollId,start){
   if(!selected||selected.count!==highest)throw new CollaborationError('只能确认当前得票最高的时间',409);
   const members=JSON.parse(poll.eligible_user_ids||'[]').map(String),claimToken=crypto.randomUUID();
   const now=Date.now(),reminders={offsets:[1440,60,15],exact:[],repeat:0,maxCount:0,start:'08:00',end:'23:00',days:[0,1,2,3,4,5,6],push:true,email:false};
-  const tasks=members.map(userId=>({id:crypto.randomUUID(),userId,title:'参加会议：'+poll.name,notes:`小组会议已由全员投票确定。\n时间：${new Date(selected.start).toLocaleString('zh-CN',{timeZone:'Asia/Hong_Kong',hour12:false})}`,due:selected.start}));
+  // Each member's generated task and note follow that member's interface
+  // language, so a confirmed meeting never shows Simplified Chinese wording
+  // to an English or Traditional (Hong Kong) user.
+  const localeRows=members.length?(await env.DB.prepare(`SELECT id,locale FROM users WHERE id IN (${members.map(()=>'?').join(',')})`).bind(...members).all()).results:[];
+  const localeByUser=new Map(localeRows.map(row=>[String(row.id),row.locale||'zh-CN']));
+  const plainDue=new Date(selected.start).toLocaleString('zh-CN',{timeZone:'Asia/Hong_Kong',hour12:false});
+  const tasks=members.map(userId=>{
+    const base={id:crypto.randomUUID(),userId,title:'参加会议：'+poll.name,notes:`小组会议已由全员投票确定。\n时间：${plainDue}`,due:selected.start};
+    const localized=meetingTask(base,{name:poll.name},localeByUser.get(userId)||'zh-CN');
+    return {...base,title:localized.title,notes:localized.notes};
+  });
   const announcement={id:crypto.randomUUID(),title:'会议时间已确认：'+poll.name,body:`${new Date(selected.start).toLocaleString('zh-CN',{timeZone:'Asia/Hong_Kong',hour12:false})}，时长 ${poll.duration_minutes} 分钟。`};
   const jobRows=(await Promise.all(tasks.map(task=>taskJobRows(env,{...task,user_id:task.userId,completed:0,acceptance_status:'accepted',version:1,reminders},now)))).flat();
   let results;try{results=await env.DB.batch([
