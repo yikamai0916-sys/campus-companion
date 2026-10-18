@@ -109,6 +109,7 @@ function translateCopy(value){
  const variants=TEXTS[source],translated=locale==='zh-CN'?source:locale==='zh-TW'?variants.at(-2):variants.at(-1);
  return raw.replace(key,translated);
 }
+Object.assign(TEXTS,{'全部待办完成率':['全部待辦完成率','All tasks completion rate'],'一点一点，完成重要的事':['一點一點，完成重要的事','One small step at a time'],'全部待办进度':['全部待辦進度','Your overall progress'],'每一个小小的完成，都算数。':['每一個小小的完成，都算數。','Every small finish counts.'],'展开摘要':['展開摘要','Read summary'],'收起摘要':['收起摘要','Close summary']});
 function translateTextNodes(){
  const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);let node;
  while(node=walker.nextNode()){
@@ -143,9 +144,10 @@ function view(name){activeView=name;for(const v of ['tasks','groups','mail','dig
 function renderTasks(){
   const now=Date.now(),pending=tasks.filter(t=>!t.completed);
   $('#pending').textContent=pending.length;$('#soon').textContent=pending.filter(t=>t.due&&t.due>now&&t.due<=now+3*86400000).length;$('#completed').textContent=tasks.length-pending.length;$('#nav-count').textContent=pending.length;$('#heading-count').textContent=pending.length?' / '+pending.length:'';
+  updateProgress(tasks.length-pending.length,tasks.length);
   const visible=tasks.filter(t=>t.completed===showDone);
   $('#task-list').innerHTML=visible.length?visible.map(t=>{const overdue=t.due&&t.due<now&&!t.completed,soon=t.due&&t.due>=now&&t.due<=now+3*86400000&&!t.completed,source=t.source==='candidate'?'来自小组分工':t.source==='meeting'?'来自已确认的小组会议':t.source==='email'?'来自已确认的邮件建议':'自己添加';return `<article class="task ${t.completed?'done':''}"><input class="task-check" type="checkbox" aria-label="${esc(t.completed?local('重新打开','重新開啟','Reopen'):local('完成','完成','Complete'))} ${esc(t.title)}" data-check="${esc(t.id)}" ${t.completed?'checked':''}><div><h3 data-user-content>${esc(t.title)}</h3><div class="meta"><span class="${overdue||soon?'badge urgent':''}">${overdue?local('已逾期 · ','已逾期 · ','Overdue · '):soon?local('即将截止 · ','即將截止 · ','Due soon · '):''}${esc(fmt(t.due))}</span><span class="badge ${t.priority===1?'high':''}">${['','重要','普通','较低'][t.priority]}</span><span>${source}</span></div>${t.notes?`<details><summary class="task-note">查看备注</summary><p class="task-note">${esc(t.notes)}</p></details>`:''}</div><div class="task-actions"><button data-edit="${esc(t.id)}">编辑</button>${t.due?`<button data-calendar="${esc(t.id)}">日历</button>`:''}${t.completed?`<button class="danger-text" data-delete-task="${esc(t.id)}">删除</button>`:''}</div></article>`;}).join(''):`<div class="empty"><span class="empty-mark">✓</span><h2>${showDone?'还没有已完成任务':'清单里，留一点从容'}</h2><p>${showDone?'完成的任务会显示在这里，并可随时删除。':'先添加一项待办，或在小组中接受一项已经确认的分工。'}</p></div>`;
-  $$('[data-check]').forEach(c=>c.onchange=async()=>{const task=tasks.find(t=>t.id===c.dataset.check);c.disabled=true;try{await api('tasks/'+task.id,{method:'PATCH',body:{version:task.version,completed:c.checked}});await loadTasks();toast(c.checked?'已完成，后续提醒已取消':'已重新打开待办');}catch(e){c.checked=!c.checked;toast(e.message);c.disabled=false;}});
+  $$('[data-check]').forEach(c=>c.onchange=async()=>{const task=tasks.find(t=>t.id===c.dataset.check);c.disabled=true;try{const completed=c.checked;await api('tasks/'+task.id,{method:'PATCH',body:{version:task.version,completed}});if(completed){updateProgress(tasks.filter(t=>t.completed).length+1,tasks.length);await celebrateTask(c);}await loadTasks();toast(completed?'已完成，后续提醒已取消':'已重新打开待办');if(completed)offerUndo(task.id);}catch(e){c.checked=!c.checked;toast(e.message);c.disabled=false;}});
   $$('[data-edit]').forEach(b=>b.onclick=()=>openForm(tasks.find(t=>t.id===b.dataset.edit)));
   $$('[data-calendar]').forEach(b=>b.onclick=()=>exportCalendar(tasks.find(t=>t.id===b.dataset.calendar)));
   $$('[data-delete-task]').forEach(b=>b.onclick=async()=>{if(!confirm(translateCopy('确定永久删除这项已完成任务吗？')))return;b.disabled=true;try{await api('tasks/'+b.dataset.deleteTask,{method:'DELETE',body:{}});await loadTasks();toast('已删除任务');}catch(e){toast(e.message);b.disabled=false;}});
@@ -160,7 +162,7 @@ async function loadMail(){
     $$('[data-delete-mail]').forEach(b=>b.onclick=async()=>{if(!confirm(tx('confirmDeleteMail')))return;b.disabled=true;try{await api('messages/'+b.dataset.deleteMail,{method:'DELETE',body:{}});await loadMail();toast(tx('mailDeleted'));}catch(e){toast(e.message);b.disabled=false;}});
   }catch(e){$('#global-error').textContent=e.message;}
 }
-async function loadDigests(){try{const digests=await api('digests');$('#digest-list').innerHTML=digests.length?digests.map(d=>`<article class="mail-card digest-card"><div class="meta"><span class="badge">${esc(fmt(d.created))}</span></div><h2>${esc(d.title)}</h2><p class="body-text" data-user-content>${esc(d.body)}</p></article>`).join(''):`<div class="empty"><span class="empty-mark">◷</span><h2>${esc(tx('digestHistoryEmpty'))}</h2><p>${esc(tx('digestHistoryHelp'))}</p></div>`;}catch(e){$('#global-error').textContent=e.message;}}
+async function loadDigests(){try{const digests=await api('digests');$('#digest-list').innerHTML=digests.length?digests.map(d=>`<article class="mail-card digest-card"><div class="meta"><span class="badge">${esc(fmt(d.created))}</span></div><h2>${esc(d.title)}</h2><details class="digest-expand"><summary>${esc(local('展开摘要','展開摘要','Read summary'))}<span aria-hidden="true">＋</span></summary><p class="body-text" data-user-content>${esc(d.body)}</p></details></article>`).join(''):`<div class="empty"><span class="empty-mark">◷</span><h2>${esc(tx('digestHistoryEmpty'))}</h2><p>${esc(tx('digestHistoryHelp'))}</p></div>`;}catch(e){$('#global-error').textContent=e.message;}}
 
 let invitations=[],groups=[],selectedGroupId=null,groupState=null,activePoll=null;
 const hkValue=n=>n?new Date(Number(n)+8*3600000).toISOString().slice(0,16):'';
@@ -313,3 +315,23 @@ async function loadSettingsProfile(){
 const renderSettingsLocalized=loadSettingsProfile;
 loadSettingsProfile=async()=>{await renderSettingsLocalized();translateTextNodes();};
 loadSettings=loadSettingsProfile;
+
+function updateProgress(done,total){
+ const percent=total?Math.round(done/total*100):0,ring=$('.progress-ring');
+ ring.setAttribute('aria-valuenow',String(percent));ring.setAttribute('aria-label',local('全部待办完成率','全部待辦完成率','All tasks completion rate'));
+ ring.style.setProperty('--progress',percent);$('#progress-percent').textContent=percent+'%';
+ $('.progress-panel').style.background=`hsl(38 35% ${96-percent*.05}%)`;
+ const counter=$('#completed');if(counter.dataset.previous!==String(done)&&!matchMedia('(prefers-reduced-motion: reduce)').matches)counter.animate([{transform:'translateY(8px)',opacity:.3},{transform:'translateY(0)',opacity:1}],{duration:280});counter.textContent=done;counter.dataset.previous=String(done);
+}
+async function celebrateTask(control){
+ if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+ const card=control.closest('.task');card.classList.add('just-completed');
+ const burst=document.createElement('span');burst.className='completion-burst';burst.setAttribute('aria-hidden','true');
+ for(let i=0;i<8;i++){const dot=document.createElement('i');dot.style.setProperty('--angle',i*45+'deg');burst.append(dot);}card.append(burst);
+ await new Promise(resolve=>setTimeout(resolve,520));burst.remove();
+}
+
+function offerUndo(id){
+ const button=document.createElement('button');button.type='button';button.textContent=local('撤销','復原','Undo');$('#toast').append(button);clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.add('hidden'),8000);
+ button.onclick=async()=>{button.disabled=true;try{const current=tasks.find(t=>t.id===id);if(!current)throw Error(local('任务不存在','任務不存在','Task not found'));await api('tasks/'+id,{method:'PATCH',body:{version:current.version,completed:false}});await loadTasks();toast('已重新打开待办');}catch(e){toast(e.message);}};
+}
