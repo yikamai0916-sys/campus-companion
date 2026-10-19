@@ -653,13 +653,96 @@ async function loadSettingsProfile(){
     const zhNameField=zhUi?`<div class="name-aliases-block"><div class="alias-list" id="alias-list">${aliasRows}</div><div class="alias-actions"><button type="button" id="alias-add" class="chip-button">＋ ${tx('addAlias')}</button></div><div id="alias-suggestions" class="alias-suggestions"></div></div>`:'';
     const translateFields=zhUi?`<div class="zh-only-settings"><label><input type="checkbox" name="translateZh" ${mailPrefs.translateZh!==false?'checked':''}> ${tx('mailTranslateZh')}</label><label><input type="checkbox" name="englishSummary" ${mailPrefs.englishSummary?'checked':''}> ${tx('mailEnglishSummary')}</label><small>${tx('mailTranslateHelp')}</small></div>`:'';
     const mailPreferences=`<div class="setting-card"><h2>${tx('mailNotifications')}</h2><p>${tx('mailReminderHelp')}</p><form id="mail-preferences-form"><label>${tx('focusTerms')}<textarea name="focusTerms" rows="4" maxlength="2400">${esc((mailPrefs.focusTerms||[]).join('\n'))}</textarea><small>${tx('focusTermsHelp')}</small></label><div class="settings-grid"><label><span><input type="checkbox" name="dailyEnabled" ${mailPrefs.daily.enabled?'checked':''}> ${tx('dailyDigest')}</span><input type="time" name="dailyTime" value="${esc(mailPrefs.daily.time)}"></label><label><span><input type="checkbox" name="lateEnabled" ${mailPrefs.late.enabled?'checked':''}> ${tx('lateDigest')}</span><input type="time" name="lateTime" value="${esc(mailPrefs.late.time)}"></label></div>${translateFields}<button class="primary" type="submit">${tx('saveMailPreferences')}</button></form></div>`;
-    $('#settings-content').innerHTML=`<div class="setting-card"><h2>${tx('profile')}</h2><form id="profile-form"><div class="settings-grid profile-identity"><label>${tx('nickname')}<input name="nickname" maxlength="80" value="${esc(p.nickname)}"></label><label>${tx('avatar')}<input type="hidden" name="avatar" value="${esc(p.avatar)}"><input name="avatarFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif"><small>${tx('avatarType')}</small><img class="avatar-preview" id="avatar-preview" alt="${esc(tx('avatarPreview'))}" ${p.avatar.startsWith('data:image/')?`src="${esc(p.avatar)}"`:'hidden'}></label></div><label>${tx('language')}<select name="locale"><option value="zh-CN" ${p.locale==='zh-CN'?'selected':''}>简体中文</option><option value="zh-TW" ${p.locale==='zh-TW'?'selected':''}>繁體中文</option><option value="en" ${p.locale==='en'?'selected':''}>English</option></select></label>${zhNameField}<button class="primary" type="submit">${tx('save')}</button></form></div>${outlook}${mailPreferences}<div class="setting-card"><h2>${local('通知渠道','通知渠道','Notification channels')}</h2><p>${local('可以启用本机推送，或在网站查看待办与日报。','可以啟用本機推送，或在網站查看待辦與日報。','Enable push on this device or check tasks and digests here.')}</p><p>${local('iPhone：在 Safari 添加到主屏幕后，再开启通知。','iPhone：在 Safari 加入主畫面後，再開啟通知。','iPhone: add this site to your Home Screen in Safari before enabling notifications.')}</p><button id="enable-push" ${status.pushReady?'':'disabled'}>${local('在此设备启用通知','在此裝置啟用通知','Enable notifications on this device')}</button> <button id="test-push" ${status.pushReady?'':'disabled'}>${local('测试手机通知','測試手機通知','Test push notification')}</button></div><div class="setting-card"><h2>${tx('accountSecurity')}</h2><div class="settings-grid"><form id="password-form"><label>${tx('currentPassword')}<input name="current" type="password" required></label><label>${tx('newPassword')}<input name="next" type="password" minlength="12" required></label><button class="primary" type="submit">${tx('changePassword')}</button></form><form id="security-form"><label>${tx('currentPassword')}<input name="password" type="password" required></label><label>${tx('customQuestion')}<input name="question" required></label><label>${tx('answer')}<input name="answer" type="password" required></label><button type="submit">${tx('saveSecurity')}</button></form></div></div><div class="setting-card account-exit"><h2>${tx('signOutHere')}</h2><p>${tx('signOutHint')}</p><button type="button" id="settings-logout" class="danger-text">${tx('logout')}</button></div>`;
+    const displayName=p.nickname||`${tx('defaultNickname')} ${String(status.account.userCode||'0000')}`;
+    const hasAvatar=p.avatar&&p.avatar.startsWith('data:image/');
+    const qqProfileCard=`<div class="setting-card qq-profile-card"><h2>${tx('profile')}</h2>
+      <div class="qq-profile-hero">
+        <button type="button" class="qq-avatar-btn" id="qq-avatar-btn" aria-label="${esc(tx('avatar'))}">
+          ${hasAvatar?`<img src="${esc(p.avatar)}" alt="">`:`<span class="qq-avatar-default" aria-hidden="true"><svg viewBox="0 0 24 24" width="44" height="44" fill="currentColor"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.2c-3.3 0-9.8 1.6-9.8 5v2.6h19.6V19.2c0-3.4-6.5-5-9.8-5z"/></svg></span>`}
+          <span class="qq-avatar-edit-hint" aria-hidden="true">📷</span>
+        </button>
+        <div class="qq-profile-info">
+          <div class="qq-name-row">
+            <span class="qq-name" id="qq-name-display" data-user-content>${esc(displayName)}</span>
+            <button type="button" class="qq-edit-btn" id="qq-name-edit-btn" aria-label="${esc(local('修改昵称','修改暱稱','Edit nickname'))}">🖊️</button>
+          </div>
+          <p class="qq-id">ID: ${esc(String(status.account.userCode||'').toLowerCase()||'--')}</p>
+        </div>
+      </div>
+      <form id="profile-form" class="qq-profile-form">
+        <input type="hidden" name="nickname" value="${esc(p.nickname)}">
+        <input type="hidden" name="avatar" value="${esc(p.avatar)}">
+        <label>${tx('language')}<select name="locale"><option value="zh-CN" ${p.locale==='zh-CN'?'selected':''}>简体中文</option><option value="zh-TW" ${p.locale==='zh-TW'?'selected':''}>繁體中文</option><option value="en" ${p.locale==='en'?'selected':''}>English</option></select></label>
+        ${zhNameField}
+        <div class="qq-form-actions"><button class="primary" type="submit">${tx('save')}</button></div>
+      </form>
+    </div>
+    <dialog id="qq-avatar-dialog" class="qq-dialog">
+      <form method="dialog" class="qq-dialog-inner">
+        <div class="dialog-heading"><h3>${esc(local('更换头像','更換頭像','Change avatar'))}</h3><button type="button" class="icon-button" id="qq-avatar-close" aria-label="${esc(tx('close'))}">×</button></div>
+        <div class="qq-avatar-preview-wrap">
+          ${hasAvatar?`<img id="qq-avatar-preview" src="${esc(p.avatar)}" alt="">`:`<span id="qq-avatar-preview" class="qq-avatar-default large" aria-hidden="true"><svg viewBox="0 0 24 24" width="64" height="64" fill="currentColor"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.2c-3.3 0-9.8 1.6-9.8 5v2.6h19.6V19.2c0-3.4-6.5-5-9.8-5z"/></svg></span>`}
+        </div>
+        <label class="qq-upload-btn">${esc(local('选择图片','選擇圖片','Choose image'))}<input type="file" id="qq-avatar-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden></label>
+        <small>${esc(tx('avatarType'))}</small>
+        <div class="form-actions"><button type="button" id="qq-avatar-remove" class="danger-text">${esc(local('移除头像','移除頭像','Remove avatar'))}</button><button type="submit" class="primary" id="qq-avatar-done">${esc(local('完成','完成','Done'))}</button></div>
+      </form>
+    </dialog>
+    <dialog id="qq-name-dialog" class="qq-dialog">
+      <form method="dialog" class="qq-dialog-inner" id="qq-name-form">
+        <div class="dialog-heading"><h3>${esc(local('修改昵称','修改暱稱','Edit nickname'))}</h3><button type="button" class="icon-button" id="qq-name-close" aria-label="${esc(tx('close'))}">×</button></div>
+        <label>${esc(tx('nickname'))}<input name="qqNickname" maxlength="80" value="${esc(p.nickname)}" placeholder="${esc(displayName)}"></label>
+        <div class="form-actions"><button type="submit" class="primary">${esc(tx('save'))}</button></div>
+      </form>
+    </dialog>`;
+    $('#settings-content').innerHTML=qqProfileCard+`${outlook}${mailPreferences}<div class="setting-card"><h2>${local('通知渠道','通知渠道','Notification channels')}</h2><p>${local('可以启用本机推送，或在网站查看待办与日报。','可以啟用本機推送，或在網站查看待辦與日報。','Enable push on this device or check tasks and digests here.')}</p><p>${local('iPhone：在 Safari 添加到主屏幕后，再开启通知。','iPhone：在 Safari 加入主畫面後，再開啟通知。','iPhone: add this site to your Home Screen in Safari before enabling notifications.')}</p><button id="enable-push" ${status.pushReady?'':'disabled'}>${local('在此设备启用通知','在此裝置啟用通知','Enable notifications on this device')}</button> <button id="test-push" ${status.pushReady?'':'disabled'}>${local('测试手机通知','測試手機通知','Test push notification')}</button></div><div class="setting-card"><h2>${tx('accountSecurity')}</h2><div class="settings-grid"><form id="password-form"><label>${tx('currentPassword')}<input name="current" type="password" required></label><label>${tx('newPassword')}<input name="next" type="password" minlength="12" required></label><button class="primary" type="submit">${tx('changePassword')}</button></form><form id="security-form"><label>${tx('currentPassword')}<input name="password" type="password" required></label><label>${tx('customQuestion')}<input name="question" required></label><label>${tx('answer')}<input name="answer" type="password" required></label><button type="submit">${tx('saveSecurity')}</button></form></div></div><div class="setting-card account-exit"><h2>${tx('signOutHere')}</h2><p>${tx('signOutHint')}</p><button type="button" id="settings-logout" class="danger-text">${tx('logout')}</button></div>`;
     const mailPreferencesForm=$('#mail-preferences-form');if(mailPreferencesForm)mailPreferencesForm.onsubmit=async e=>{e.preventDefault();const f=e.currentTarget,button=f.querySelector('[type=submit]');button.disabled=true;try{const mailPreferences={focusTerms:[...new Set(f.elements.focusTerms.value.split(/[\n,，]/).map(x=>x.trim()).filter(Boolean))],daily:{enabled:f.elements.dailyEnabled.checked,time:f.elements.dailyTime.value},late:{enabled:f.elements.lateEnabled.checked,time:f.elements.lateTime.value},translateZh:f.elements.translateZh?f.elements.translateZh.checked:true,englishSummary:f.elements.englishSummary?f.elements.englishSummary.checked:false};await api('profile',{method:'PATCH',body:{mailPreferences}});toast(tx('mailPreferencesSaved'));}catch(err){toast(err.message);}finally{button.disabled=false;}};
     const outlookForm=$('#outlook-connect-form');if(outlookForm)outlookForm.onsubmit=e=>{e.preventDefault();const input=outlookForm.elements.email;if(!input.reportValidity())return;location.assign('/api/outlook/start?email='+encodeURIComponent(input.value.trim()));};
     const syncOutlook=$('#sync-outlook');if(syncOutlook)syncOutlook.onclick=async()=>{syncOutlook.disabled=true;syncOutlook.textContent=tx('syncing');try{const r=await api('outlook/sync',{method:'POST',body:{}});toast(tx('syncFinished').replace('{count}',r.imported));await loadMail();await loadSettingsProfile();}catch(err){toast(err.message);}finally{syncOutlook.disabled=false;}};
     const disconnectOutlook=$('#disconnect-outlook');if(disconnectOutlook)disconnectOutlook.onclick=async()=>{if(!confirm(tx('confirmDisconnectOutlook')))return;disconnectOutlook.disabled=true;try{await api('outlook',{method:'DELETE',body:{}});toast(tx('outlookDisconnected'));await loadSettingsProfile();}catch(err){toast(err.message);disconnectOutlook.disabled=false;}};
-    $('#profile-form').elements.avatarFile.onchange=e=>{const file=e.target.files[0];if(!file)return;if(!['image/png','image/jpeg','image/webp','image/gif'].includes(file.type)){e.target.value='';toast(tx('avatarInvalid'));return;}const reader=new FileReader();reader.onload=()=>{e.target.form.elements.avatar.value=reader.result;$('#avatar-preview').src=reader.result;$('#avatar-preview').hidden=false;};reader.readAsDataURL(file);};
-    $('#profile-form').onsubmit=async e=>{e.preventDefault();const f=e.currentTarget,b=f.querySelector('[type=submit]');b.disabled=true;b.classList.add('pending');const original=b.textContent;b.textContent=local('保存中…','儲存中…','Saving…');try{const body={nickname:f.elements.nickname.value,avatar:f.elements.avatar.value,locale:f.elements.locale.value,preferredZhName:f.elements.preferredZhName?f.elements.preferredZhName.value:undefined};if(f.elements.nickname.form.querySelector('#alias-list'))body.nameAliases=[...$$('#alias-list .alias-row')].map(row=>({alias:row.querySelector('[name=alias]').value.trim(),zhName:row.querySelector('[name=aliasZh]').value.trim()})).filter(a=>a.alias&&a.zhName);const r=await api('profile',{method:'PATCH',body});applyLocale(r.locale);localStorage.setItem('campus-locale',r.locale);$('#account-label').textContent=r.nickname||accountLabel(status.account);setAvatar(r.avatar,(r.nickname||accountLabel(status.account)).slice(0,1).toUpperCase());b.textContent=local('已保存 ✓','已儲存 ✓','Saved ✓');setTimeout(()=>location.reload(),150);}catch(err){toast(err.message);b.disabled=false;b.classList.remove('pending');b.textContent=original;}};
+    // ---------- QQ 风格头像：点击进二级界面 ----------
+    const qqAvatarBtn=$('#qq-avatar-btn'),qqAvatarDialog=$('#qq-avatar-dialog');
+    if(qqAvatarBtn&&qqAvatarDialog){
+      qqAvatarBtn.onclick=()=>qqAvatarDialog.showModal();
+      $('#qq-avatar-close').onclick=()=>qqAvatarDialog.close();
+      const qqFile=$('#qq-avatar-file'),qqPreview=$('#qq-avatar-preview');
+      const setPreview=dataUrl=>{
+        const form=$('#profile-form');
+        form.elements.avatar.value=dataUrl||'';
+        // 更新对话框预览
+        const wrap=qqPreview.parentElement;
+        if(dataUrl){
+          wrap.innerHTML=`<img id="qq-avatar-preview" src="${esc(dataUrl)}" alt="">`;
+        }else{
+          wrap.innerHTML=`<span id="qq-avatar-preview" class="qq-avatar-default large" aria-hidden="true"><svg viewBox="0 0 24 24" width="64" height="64" fill="currentColor"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.2c-3.3 0-9.8 1.6-9.8 5v2.6h19.6V19.2c0-3.4-6.5-5-9.8-5z"/></svg></span>`;
+        }
+        // 更新主界面头像按钮
+        qqAvatarBtn.innerHTML=(dataUrl?`<img src="${esc(dataUrl)}" alt="">`:`<span class="qq-avatar-default" aria-hidden="true"><svg viewBox="0 0 24 24" width="44" height="44" fill="currentColor"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.2c-3.3 0-9.8 1.6-9.8 5v2.6h19.6V19.2c0-3.4-6.5-5-9.8-5z"/></svg></span>`)+'<span class="qq-avatar-edit-hint" aria-hidden="true">📷</span>';
+      };
+      qqFile.onchange=e=>{
+        const file=e.target.files[0];if(!file)return;
+        if(!['image/png','image/jpeg','image/webp','image/gif'].includes(file.type)){e.target.value='';toast(tx('avatarInvalid'));return;}
+        const reader=new FileReader();
+        reader.onload=()=>setPreview(reader.result);
+        reader.readAsDataURL(file);
+      };
+      $('#qq-avatar-remove').onclick=()=>{setPreview('');qqFile.value='';};
+    }
+    // ---------- QQ 风格昵称：🖊️ 按钮编辑 ----------
+    const qqNameBtn=$('#qq-name-edit-btn'),qqNameDialog=$('#qq-name-dialog'),qqNameDisplay=$('#qq-name-display');
+    if(qqNameBtn&&qqNameDialog){
+      qqNameBtn.onclick=()=>qqNameDialog.showModal();
+      $('#qq-name-close').onclick=()=>qqNameDialog.close();
+      $('#qq-name-form').onsubmit=e=>{
+        const input=e.target.elements.qqNickname;
+        const val=input.value.trim().slice(0,80);
+        $('#profile-form').elements.nickname.value=val;
+        const fallback=`${tx('defaultNickname')} ${String(status.account.userCode||'0000')}`;
+        qqNameDisplay.textContent=val||fallback;
+        qqNameDialog.close();
+      };
+    }
+    $('#profile-form').onsubmit=async e=>{e.preventDefault();const f=e.currentTarget,b=f.querySelector('[type=submit]');b.disabled=true;b.classList.add('pending');const original=b.textContent;b.textContent=local('保存中…','儲存中…','Saving…');try{const body={nickname:f.elements.nickname.value,avatar:f.elements.avatar.value,locale:f.elements.locale.value,preferredZhName:f.elements.preferredZhName?f.elements.preferredZhName.value:undefined};const aliasListEl=f.querySelector('#alias-list');if(aliasListEl)body.nameAliases=[...aliasListEl.querySelectorAll('.alias-row')].map(row=>({alias:row.querySelector('[name=alias]').value.trim(),zhName:row.querySelector('[name=aliasZh]').value.trim()})).filter(a=>a.alias&&a.zhName);const r=await api('profile',{method:'PATCH',body});applyLocale(r.locale);localStorage.setItem('campus-locale',r.locale);$('#account-label').textContent=r.nickname||accountLabel(status.account);setAvatar(r.avatar,(r.nickname||accountLabel(status.account)).slice(0,1).toUpperCase());b.textContent=local('已保存 ✓','已儲存 ✓','Saved ✓');setTimeout(()=>location.reload(),150);}catch(err){toast(err.message);b.disabled=false;b.classList.remove('pending');b.textContent=original;}};
     const aliasList=$('#alias-list'),aliasAdd=$('#alias-add');
     if(aliasAdd&&aliasList){
       aliasAdd.onclick=()=>{aliasList.insertAdjacentHTML('beforeend',aliasRowHTML());bindAliasRows();};
