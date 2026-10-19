@@ -212,7 +212,7 @@ const categoryKey=c=>({1:'cat1',2:'cat2',3:'cat3',4:'cat4'}[c]||'cat3');
 const briefRequests=new Map();
 function briefContent(m,compact=false){
   const b=m.brief;
-  if(!b)return `<p class="quality">${esc(local('正在依据原文整理详细要点；若未生成，可稍后重试。','正在依據原文整理詳細重點；若未產生，可稍後重試。','Preparing detailed notes from the original email. Retry later if unavailable.'))}</p>`;
+  if(!b)return `<p class="quality">${esc(local('后台正在整理这封邮件，完成后会保留摘要。','背景正在整理這封郵件，完成後會保留摘要。','This email is being summarized in the background. The result will be saved.'))}</p>`;
   const points=compact?b.points.slice(0,2):b.points;
   return `<ul class="mail-points">${points.map(p=>`<li data-user-content>${esc(p.text)}</li>`).join('')}</ul>${b.actions.length?`<div class="brief-actions"><strong>${local('邮件中的请求','郵件中的請求','Requests in this email')}</strong><ul>${b.actions.map(p=>`<li data-user-content>${esc(p.text)}</li>`).join('')}</ul></div>`:''}`;
 }
@@ -296,11 +296,7 @@ async function loadMail(opts={}){
       $('#mail-list').appendChild(btn);
     }
     bindMailList($('#mail-list'));
-    const activeLocale=locale;
-    void prepareBriefs(messages,()=>{
-      for(const card of $$('#mail-list .mail-card[data-open-mail]')){const row=messages.find(m=>encodeURIComponent(m.id)===card.dataset.openMail);if(row)card.outerHTML=mailCard(row);}
-      bindMailList($('#mail-list'));
-    },()=>locale===activeLocale&&!$('#mail-view').classList.contains('hidden'));
+
 
 
   }catch(e){$('#global-error').textContent=e.message;}
@@ -334,7 +330,7 @@ async function loadDigests(opts={}){
       const list=items.length?`<div class="digest-day">${ordered.map(digestItemButton).join('')}</div>`:`<p class="body-text" data-user-content>${esc(d.body||tx('noDigestItems'))}</p>`;
       return `<article class="mail-card digest-card"><div class="meta"><span class="badge">${esc(fmt(d.created))}</span><span>${items.length||0} ${local('封','封','mails')}</span></div><h2>${esc(d.title)}</h2>${overview}<details class="digest-expand" open><summary>${esc(local('展开摘要','展開摘要','Read summary'))}<span aria-hidden="true">＋</span></summary>${list}</details></article>`;
     }).join('')+(stacked?'</div>':''):`<div class="empty"><span class="empty-mark">◷</span><h2>${esc(tx('digestHistoryEmpty'))}</h2><p>${esc(tx('digestHistoryHelp'))}</p></div>`;
-    if(opts.generate!==false){const activeLocale=locale;void prepareBriefs(digests.flatMap(d=>d.items||[]),()=>loadDigests({generate:false}),()=>locale===activeLocale&&!$('#digests-view').classList.contains('hidden'));}
+
     if(stacked)setupCardStack($('#digest-list .card-stack'),$('#digest-list .stack-toggle'),{open:local(`展开全部 ${digests.length} 份日报`,`展開全部 ${digests.length} 份日報`,`Show all ${digests.length} digests`),close:local('收起','收起','Collapse')});
     $('#digest-list').querySelectorAll('[data-open-mail]').forEach(btn=>btn.onclick=()=>{const id=decodeURIComponent(btn.dataset.openMail);openMailDetail(id);});
   }catch(e){$('#global-error').textContent=e.message;}

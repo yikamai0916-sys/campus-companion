@@ -1,4 +1,4 @@
-import {attachBriefs,generateBrief,readBrief} from './mail-briefs.js';
+import {attachBriefs,generateBrief,readBrief,processBriefBacklog} from './mail-briefs.js';
 import { meetingTask,wording } from './display.js';
 import { serverMessage,normalizeLocale } from './errors.js';
 import { buildAliasRules,normalizeName,suggestAliasVariants } from './names.js';
@@ -337,6 +337,7 @@ export default {
         }
       }
       await makeDigest(env,Date.now());
+      await processBriefBacklog(env);
       await env.DB.batch([env.DB.prepare('DELETE FROM sessions WHERE expires<?').bind(now),env.DB.prepare('DELETE FROM oauth WHERE expires<?').bind(now)]);
     }finally{await env.DB.prepare("UPDATE kv SET value='0' WHERE key='cron_lease' AND value=?").bind(String(now+240000)).run();}
   }

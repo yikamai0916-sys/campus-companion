@@ -11,7 +11,7 @@ test('summary retains only points/actions supported by source excerpts',()=>{
  assert.throws(()=>validateBrief({title:'Approved',titleEvidence:'approved',points:[]},source));
 });
 test('brief cache is scoped to account and language',async()=>{
- const keys=[];const env={DB:{prepare(){return {bind(k){keys.push(k);return this},async first(){return null}}}}};
+ const keys=[];const env={DB:{prepare(){return {bind(k){keys.push(k);return this},async first(){return null},async all(){return {results:[]}}}}}};
  await attachBriefs(env,'alice','en',[{id:'same',subject:'FW: update'}]);
  await attachBriefs(env,'bob','en',[{id:'same',subject:'FW: update'}]);
  await attachBriefs(env,'alice','zh-CN',[{id:'same',subject:'FW: update'}]);
