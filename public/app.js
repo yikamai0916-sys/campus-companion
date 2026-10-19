@@ -424,23 +424,33 @@ async function openMailDetail(id){
     const zh=detail.chinese||detail.display;
     $('#mail-detail-meta').innerHTML=`<span class="badge">${esc(tx(categoryKey(detail.category)))}</span><span>${esc(fmt(detail.received))}</span>`;
     if(detail.translationEnabled&&zh){
-      // 中文页：显示英文原文的完整逐句翻译（非摘要）
+      // 中文页：Outlook 风格，头部显示发件人/收件人/时间，正文放大居中
       const fullBody = zh.fullBody || '';
       const fromTo = formatMailFromTo(detail);
-      const fromToHtml = (fromTo.from || fromTo.to) ?
-        `<p class="mail-fromto"><span class="mail-from">${esc(fromTo.from || '')}</span>${fromTo.from && fromTo.to ? '<span class="mail-arrow">→</span>' : ''}<span class="mail-to">${esc(fromTo.to || '')}</span></p>` : '';
-      $('#mail-detail-zh').innerHTML=`<h3 data-user-content>${esc(detail.display?.brief?.title||zh.subject)}</h3>${fromToHtml}${fullBody?`<div class="mail-body" data-user-content>${cleanMailBody(fullBody)}</div>`:`<p data-user-content>${esc(zh.summary)}</p><p>${esc(zh.action||'')}</p>`}`;
+      const timeStr = fmt(detail.received);
+      const outlookHeader = `
+        <div class="outlook-header">
+          <div class="outlook-row"><span class="outlook-label">${esc(local('发件人','寄件人','From'))}</span><span class="outlook-value">${esc(fromTo.from || '')}</span></div>
+          ${fromTo.to ? `<div class="outlook-row"><span class="outlook-label">${esc(local('收件人','收件人','To'))}</span><span class="outlook-value">${esc(fromTo.to)}</span></div>` : ''}
+          <div class="outlook-row"><span class="outlook-label">${esc(local('时间','時間','Date'))}</span><span class="outlook-value">${esc(timeStr)}</span></div>
+        </div>`;
+      $('#mail-detail-zh').innerHTML=`<h3 data-user-content>${esc(detail.display?.brief?.title||zh.subject)}</h3>${outlookHeader}${fullBody?`<div class="mail-body outlook-body" data-user-content>${cleanMailBody(fullBody)}</div>`:`<p data-user-content>${esc(zh.summary)}</p><p>${esc(zh.action||'')}</p>`}`;
       $$('[data-mail-pane]').forEach(b=>b.classList.toggle('hidden',false));
     }else{
       $('#mail-detail-zh').innerHTML=`<h3 data-user-content>${esc(detail.display?.brief?.title||detail.display?.subject||detail.english?.subject||'')}</h3>${detail.display?.brief?briefContent(detail.display):`<p data-user-content>${esc(detail.display?.summary||'')}</p>`}`;
       const zhTab=document.querySelector('[data-mail-pane="zh"]');if(zhTab)zhTab.classList.add('hidden');
     }
     const en=detail.english||{};
-    // 英文页：清理正文（去图片提示、渲染图片、美化链接），直观显示发件/收件
+    // 英文页：Outlook 风格头部，正文放大居中
     const fromTo = formatMailFromTo(detail);
-    const fromToHtml = (fromTo.from || fromTo.to) ?
-      `<p class="mail-fromto"><span class="mail-from">${esc(fromTo.from || '')}</span>${fromTo.from && fromTo.to ? '<span class="mail-arrow">→</span>' : ''}<span class="mail-to">${esc(fromTo.to || '')}</span></p>` : '';
-    $('#mail-detail-en').innerHTML=`<h3 data-user-content>${esc(en.subject||'')}</h3>${fromToHtml}<div class="mail-body" data-user-content>${cleanMailBody(en.body||'')}</div>${detail.englishSummaryEnabled&&en.summary?`<p class="quality">${esc(en.summary)}</p>`:''}`;
+    const timeStr = fmt(detail.received);
+    const outlookHeaderEn = `
+      <div class="outlook-header">
+        <div class="outlook-row"><span class="outlook-label">From</span><span class="outlook-value">${esc(fromTo.from || '')}</span></div>
+        ${fromTo.to ? `<div class="outlook-row"><span class="outlook-label">To</span><span class="outlook-value">${esc(fromTo.to)}</span></div>` : ''}
+        <div class="outlook-row"><span class="outlook-label">Date</span><span class="outlook-value">${esc(timeStr)}</span></div>
+      </div>`;
+    $('#mail-detail-en').innerHTML=`<h3 data-user-content>${esc(en.subject||'')}</h3>${outlookHeaderEn}<div class="mail-body outlook-body" data-user-content>${cleanMailBody(en.body||'')}</div>${detail.englishSummaryEnabled&&en.summary?`<p class="quality">${esc(en.summary)}</p>`:''}`;
     const link=$('#mail-detail-outlook');
     if(link){if(/^https:\/\/(?:outlook\.live\.com|outlook\.office\.com|outlook\.office365\.com)\//.test(detail.url||'')){link.hidden=false;link.href=detail.url;link.textContent=tx('viewOriginal');}else{link.hidden=true;link.removeAttribute('href');}}
     const showZh=detail.translationEnabled!==false&&!!detail.chinese;

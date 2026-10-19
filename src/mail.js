@@ -481,9 +481,9 @@ export async function summarizeLink(env, locale, url){
 }
 
 // 全文逐句翻译：把英文正文完整翻译成中文（非摘要）
-export async function translateFullBody(env,userId,locale,messageId,englishBody){
+export async function translateFullBody(env,userId,locale,messageId,englishBody,preferredZhName=''){
   if(!englishBody||!englishBody.trim())return null;
-  const cacheKey=`fulltrans:v1:${locale}:${userId}:${await hash(messageId)}`;
+  const cacheKey=`fulltrans:v2:${locale}:${userId}:${await hash(messageId)}`;
   try{
     const cached=await getKV(env,cacheKey);
     if(cached)return cached;
@@ -493,9 +493,11 @@ export async function translateFullBody(env,userId,locale,messageId,englishBody)
   const scriptNote=locale==='zh-TW'
     ?'必须使用繁體中文（香港/台灣用法），例如：學、會、們、這、個、來、時。绝对不要使用简体字。'
     :'必须使用简体中文（大陆用法），例如：学、会、们、这、个、来、时。绝对不要使用繁體字。';
+  // 用户名字：确保翻译中使用用户设置的正确中文名（如马艺恺），而非 AI 猜测
+  const nameNote=preferredZhName?` The reader's Chinese name is "${preferredZhName}" — when the English text refers to them (e.g. "MA Yikai", "Yikai MA", "MA, Yikai"), always translate it as "${preferredZhName}", never guess a different spelling.`:'';
   try{
     const out=await env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast',{messages:[
-      {role:'system',content:`Translate the following email body into ${language}. ${scriptNote} Translate faithfully sentence by sentence, preserving paragraphs and structure. Do NOT summarize or omit content. Keep person names, institution names, dates, email addresses and URLs unchanged. Return only the translation, no explanations.`},
+      {role:'system',content:`Translate the following email body into ${language}. ${scriptNote}${nameNote} Translate faithfully sentence by sentence, preserving paragraphs and structure. Do NOT summarize or omit content. Keep person names, institution names, dates, email addresses and URLs unchanged. Return only the translation, no explanations.`},
       {role:'user',content:englishBody.slice(0,12000)}
     ],max_tokens:4000});
     const translation=typeof out.response==='string'?out.response.trim():JSON.stringify(out.response);

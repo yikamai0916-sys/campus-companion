@@ -7,3 +7,8 @@
 .mail-from{font-weight:600;color:#3a342c}
 .mail-arrow{color:#a09a92}
 .mail-to{color:#6a655d}
+.outlook-header{background:#f8f9fa;border:1px solid #e9ecef;border-radius:10px;padding:14px 18px;margin:16px 0 20px}
+.outlook-row{display:flex;gap:12px;padding:5px 0;font-size:14.5px;line-height:1.6}
+.outlook-label{flex:0 0 auto;min-width:52px;color:#6c757d;font-weight:500}
+.outlook-value{color:#212529;overflow-wrap:anywhere}
+.mail-body.outlook-body{font-size:16.5px;line-height:1.9;max-width:720px;margin:0 auto}

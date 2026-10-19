@@ -246,9 +246,14 @@ async function routes(request,env){
     const localizedRows=await localizeMessages(env,account.user_id,locale,[row],{allowAi:env.ENABLE_AI==='true',translate:wantZh||locale==='en',nameAliases:aliasRules});
     const localized=applyPreferredNameToFields(localizedRows[0]||row,aliasRules);
     // 全文翻译：中文页显示英文原文的完整逐句翻译
+    // 获取用户偏好中文名，确保翻译中使用正确的名字（如马艺恺而非 AI 猜测）
     let fullTranslation=null;
     if(wantZh&&englishBody){
-      try{fullTranslation=await translateFullBody(env,account.user_id,locale,id,englishBody);}catch{}
+      try{
+        const userProfile=await env.DB.prepare('SELECT preferred_zh_name FROM users WHERE id=?').bind(account.user_id).first();
+        const preferredName=userProfile?.preferred_zh_name||'';
+        fullTranslation=await translateFullBody(env,account.user_id,locale,id,englishBody,preferredName);
+      }catch{}
     }
     return json({
       id:row.id,
