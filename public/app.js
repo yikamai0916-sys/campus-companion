@@ -618,9 +618,14 @@ function bindDigestEvents(){
     const rowOf=key=>{const [di,n]=key.split(':').map(Number);return {row:root.querySelector(`[data-dg-row="${key}"]`),r:digestViews[di]?.rows[n]};};
     const head=find('.dg-head');
     if(head){
-      const row=head.closest('.dg-row'),{r}=rowOf(row.dataset.dgRow),open=!row.classList.contains('open'),id=r?.item.id||row.dataset.dgRow;
-      row.classList.toggle('open',open);head.setAttribute('aria-expanded',String(open));
-      open?digestOpen.add(id):digestOpen.delete(id);syncToggleAll(row.closest('.dg-card'));return;
+      // 点击日报行直接跳转到邮件详情页（用户要求）
+      const row=head.closest('.dg-row'),{r}=rowOf(row.dataset.dgRow);
+      if(r?.item.id){
+        history.replaceState(null,'','/?view=mail&message='+encodeURIComponent(r.item.id));
+        view('mail');
+        openMailDetail(r.item.id);
+      }
+      return;
     }
     const filter=find('[data-dg-filter]');
     if(filter&&!filter.disabled){digestFilter=filter.dataset.dgFilter;applyDigestFilter(true);return;}
@@ -841,70 +846,144 @@ async function loadSettingsProfile(){
         <div class="qq-form-actions"><button class="primary" type="submit">${tx('save')}</button></div>
       </form>
     </div>
-    <dialog id="qq-avatar-dialog" class="qq-dialog">
-      <form method="dialog" class="qq-dialog-inner">
-        <div class="dialog-heading"><h3>${esc(local('更换头像','更換頭像','Change avatar'))}</h3><button type="button" class="icon-button" id="qq-avatar-close" aria-label="${esc(tx('close'))}">×</button></div>
-        <div class="qq-avatar-preview-wrap">
-          ${hasAvatar?`<img id="qq-avatar-preview" src="${esc(p.avatar)}" alt="">`:`<span id="qq-avatar-preview" class="qq-avatar-default large" aria-hidden="true"><svg viewBox="0 0 24 24" width="64" height="64" fill="currentColor"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.2c-3.3 0-9.8 1.6-9.8 5v2.6h19.6V19.2c0-3.4-6.5-5-9.8-5z"/></svg></span>`}
+    <div id="avatar-page" class="avatar-page" hidden>
+      <div class="avatar-page-inner">
+        <div class="avatar-page-header">
+          <button type="button" class="avatar-page-back" id="avatar-page-back" aria-label="Back">←</button>
+          <h3>更换头像</h3>
+          <span class="avatar-page-spacer"></span>
         </div>
-        <label class="qq-upload-btn">${esc(local('选择图片','選擇圖片','Choose image'))}<input type="file" id="qq-avatar-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden></label>
-        <small>${esc(tx('avatarType'))}</small>
-        <div class="form-actions"><button type="button" id="qq-avatar-remove" class="danger-text">${esc(local('移除头像','移除頭像','Remove avatar'))}</button><button type="submit" class="primary" id="qq-avatar-done">${esc(local('完成','完成','Done'))}</button></div>
-      </form>
-    </dialog>
-    <dialog id="qq-name-dialog" class="qq-dialog">
-      <form method="dialog" class="qq-dialog-inner" id="qq-name-form">
-        <div class="dialog-heading"><h3>${esc(local('修改昵称','修改暱稱','Edit nickname'))}</h3><button type="button" class="icon-button" id="qq-name-close" aria-label="${esc(tx('close'))}">×</button></div>
-        <label>${esc(tx('nickname'))}<input name="qqNickname" maxlength="80" value="${esc(p.nickname)}" placeholder="${esc(displayName)}"></label>
-        <div class="form-actions"><button type="submit" class="primary">${esc(tx('save'))}</button></div>
-      </form>
-    </dialog>`;
+        <div class="avatar-page-preview">
+          <div class="avatar-page-img-wrap" id="avatar-page-img-wrap">
+            <!-- preview inserted by JS -->
+          </div>
+        </div>
+        <div class="avatar-page-actions">
+          <label class="avatar-page-upload-btn">选择图片<input type="file" id="avatar-page-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden></label>
+          <button type="button" id="avatar-page-remove" class="avatar-page-remove">移除头像</button>
+        </div>
+        <p class="avatar-page-hint">PNG、JPEG、WEBP 或 GIF</p>
+        <div class="avatar-page-footer">
+          <button type="button" class="primary avatar-page-done" id="avatar-page-done">完成</button>
+        </div>
+      </div>
+    </div>
+    `;
     $('#settings-content').innerHTML=qqProfileCard+`${outlook}${mailPreferences}<div class="setting-card"><h2>${local('通知渠道','通知渠道','Notification channels')}</h2><p>${local('可以启用本机推送，或在网站查看待办与日报。','可以啟用本機推送，或在網站查看待辦與日報。','Enable push on this device or check tasks and digests here.')}</p><p>${local('iPhone：在 Safari 添加到主屏幕后，再开启通知。','iPhone：在 Safari 加入主畫面後，再開啟通知。','iPhone: add this site to your Home Screen in Safari before enabling notifications.')}</p><button id="enable-push" ${status.pushReady?'':'disabled'}>${local('在此设备启用通知','在此裝置啟用通知','Enable notifications on this device')}</button> <button id="test-push" ${status.pushReady?'':'disabled'}>${local('测试手机通知','測試手機通知','Test push notification')}</button></div><div class="setting-card"><h2>${tx('accountSecurity')}</h2><div class="settings-grid"><form id="password-form"><label>${tx('currentPassword')}<input name="current" type="password" required></label><label>${tx('newPassword')}<input name="next" type="password" minlength="12" required></label><button class="primary" type="submit">${tx('changePassword')}</button></form><form id="security-form"><label>${tx('currentPassword')}<input name="password" type="password" required></label><label>${tx('customQuestion')}<input name="question" required></label><label>${tx('answer')}<input name="answer" type="password" required></label><button type="submit">${tx('saveSecurity')}</button></form></div></div><div class="setting-card account-exit"><h2>${tx('signOutHere')}</h2><p>${tx('signOutHint')}</p><button type="button" id="settings-logout" class="danger-text">${tx('logout')}</button></div>`;
     const mailPreferencesForm=$('#mail-preferences-form');if(mailPreferencesForm)mailPreferencesForm.onsubmit=async e=>{e.preventDefault();const f=e.currentTarget,button=f.querySelector('[type=submit]');button.disabled=true;try{const mailPreferences={focusTerms:[...new Set(f.elements.focusTerms.value.split(/[\n,，]/).map(x=>x.trim()).filter(Boolean))],daily:{enabled:f.elements.dailyEnabled.checked,time:f.elements.dailyTime.value},late:{enabled:f.elements.lateEnabled.checked,time:f.elements.lateTime.value},translateZh:f.elements.translateZh?f.elements.translateZh.checked:true,englishSummary:f.elements.englishSummary?f.elements.englishSummary.checked:false};await api('profile',{method:'PATCH',body:{mailPreferences}});toast(tx('mailPreferencesSaved'));}catch(err){toast(err.message);}finally{button.disabled=false;}};
     const outlookForm=$('#outlook-connect-form');if(outlookForm)outlookForm.onsubmit=e=>{e.preventDefault();const input=outlookForm.elements.email;if(!input.reportValidity())return;location.assign('/api/outlook/start?email='+encodeURIComponent(input.value.trim()));};
     const syncOutlook=$('#sync-outlook');if(syncOutlook)syncOutlook.onclick=async()=>{syncOutlook.disabled=true;syncOutlook.textContent=tx('syncing');try{const r=await api('outlook/sync',{method:'POST',body:{}});toast(tx('syncFinished').replace('{count}',r.imported));await loadMail();await loadSettingsProfile();}catch(err){toast(err.message);}finally{syncOutlook.disabled=false;}};
     const disconnectOutlook=$('#disconnect-outlook');if(disconnectOutlook)disconnectOutlook.onclick=async()=>{if(!confirm(tx('confirmDisconnectOutlook')))return;disconnectOutlook.disabled=true;try{await api('outlook',{method:'DELETE',body:{}});toast(tx('outlookDisconnected'));await loadSettingsProfile();}catch(err){toast(err.message);disconnectOutlook.disabled=false;}};
     // ---------- QQ 风格头像：点击进二级界面 ----------
-    const qqAvatarBtn=$('#qq-avatar-btn'),qqAvatarDialog=$('#qq-avatar-dialog');
-    if(qqAvatarBtn&&qqAvatarDialog){
-      qqAvatarBtn.onclick=()=>qqAvatarDialog.showModal();
-      $('#qq-avatar-close').onclick=()=>qqAvatarDialog.close();
-      const qqFile=$('#qq-avatar-file'),qqPreview=$('#qq-avatar-preview');
+    const qqAvatarBtn=$('#qq-avatar-btn'),avatarPage=$('#avatar-page');
+    if(qqAvatarBtn&&avatarPage){
+      // 打开头像二级页面（从右侧滑入）
+      const openAvatarPage=()=>{
+        updateAvatarPagePreview();
+        avatarPage.hidden=false;
+        void avatarPage.offsetWidth;
+        avatarPage.classList.add('open');
+        document.body.style.overflow='hidden';
+      };
+      const closeAvatarPage=()=>{
+        avatarPage.classList.remove('open');
+        setTimeout(()=>{avatarPage.hidden=true;document.body.style.overflow='';},320);
+      };
+      qqAvatarBtn.onclick=openAvatarPage;
+      $('#avatar-page-back').onclick=closeAvatarPage;
+      $('#avatar-page-done').onclick=()=>{
+        // 同步预览到主页面按钮
+        const form=$('#profile-form');
+        const avatarVal=form.elements.avatar.value;
+        const btnImg=qqAvatarBtn.querySelector('img');
+        const btnDefault=qqAvatarBtn.querySelector('.qq-avatar-default');
+        if(avatarVal&&avatarVal.startsWith('data:image/')){
+          if(btnImg)btnImg.src=avatarVal;
+          else{
+            if(btnDefault)btnDefault.remove();
+            const img=document.createElement('img');img.src=avatarVal;img.alt='';
+            qqAvatarBtn.insertBefore(img,qqAvatarBtn.firstChild);
+          }
+        }else{
+          if(btnImg)btnImg.remove();
+        }
+        closeAvatarPage();
+      };
+      const qqFile=$('#avatar-page-file');
+      const updateAvatarPagePreview=()=>{
+        const form=$('#profile-form');
+        const avatarVal=form?form.elements.avatar.value:'';
+        const wrap=$('#avatar-page-img-wrap');
+        if(!wrap)return;
+        if(avatarVal&&avatarVal.startsWith('data:image/')){
+          wrap.innerHTML=`<img src="${avatarVal}" alt="">`;
+        }else{
+          wrap.innerHTML=`<span class="qq-avatar-default large"><svg viewBox="0 0 24 24" width="64" height="64" fill="currentColor"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.2c-3.3 0-9.8 1.6-9.8 5v2.6h19.6V19.2c0-3.4-6.5-5-9.8-5z"/></svg></span>`;
+        }
+      };
       const setPreview=dataUrl=>{
         const form=$('#profile-form');
-        form.elements.avatar.value=dataUrl||'';
-        // 更新对话框预览
-        const wrap=qqPreview.parentElement;
-        if(dataUrl){
-          wrap.innerHTML=`<img id="qq-avatar-preview" src="${esc(dataUrl)}" alt="">`;
-        }else{
-          wrap.innerHTML=`<span id="qq-avatar-preview" class="qq-avatar-default large" aria-hidden="true"><svg viewBox="0 0 24 24" width="64" height="64" fill="currentColor"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.2c-3.3 0-9.8 1.6-9.8 5v2.6h19.6V19.2c0-3.4-6.5-5-9.8-5z"/></svg></span>`;
-        }
-        // 更新主界面头像按钮
-        qqAvatarBtn.innerHTML=(dataUrl?`<img src="${esc(dataUrl)}" alt="">`:`<span class="qq-avatar-default" aria-hidden="true"><svg viewBox="0 0 24 24" width="44" height="44" fill="currentColor"><path d="M12 12c2.7 0 4.9-2.2 4.9-4.9S14.7 2.2 12 2.2 7.1 4.4 7.1 7.1 9.3 12 12 12zm0 2.2c-3.3 0-9.8 1.6-9.8 5v2.6h19.6V19.2c0-3.4-6.5-5-9.8-5z"/></svg></span>`)+'<span class="qq-avatar-edit-hint" aria-hidden="true">📷</span>';
+        if(form)form.elements.avatar.value=dataUrl||'';
+        updateAvatarPagePreview();
       };
-      qqFile.onchange=e=>{
-        const file=e.target.files[0];if(!file)return;
-        if(!['image/png','image/jpeg','image/webp','image/gif'].includes(file.type)){e.target.value='';toast(tx('avatarInvalid'));return;}
+      qqFile.onchange=()=>{
+        const file=qqFile.files&&qqFile.files[0];if(!file)return;
+        if(!/^image\/(png|jpeg|webp|gif)$/.test(file.type)){toast(tx('avatarInvalid'));return;}
         const reader=new FileReader();
         reader.onload=()=>setPreview(reader.result);
         reader.readAsDataURL(file);
       };
-      $('#qq-avatar-remove').onclick=()=>{setPreview('');qqFile.value='';};
+      $('#avatar-page-remove').onclick=()=>{setPreview('');qqFile.value='';};
     }
-    // ---------- QQ 风格昵称：🖊️ 按钮编辑 ----------
-    const qqNameBtn=$('#qq-name-edit-btn'),qqNameDialog=$('#qq-name-dialog'),qqNameDisplay=$('#qq-name-display');
-    if(qqNameBtn&&qqNameDialog){
-      qqNameBtn.onclick=()=>qqNameDialog.showModal();
-      $('#qq-name-close').onclick=()=>qqNameDialog.close();
-      $('#qq-name-form').onsubmit=e=>{
-        const input=e.target.elements.qqNickname;
-        const val=input.value.trim().slice(0,80);
-        $('#profile-form').elements.nickname.value=val;
-        const fallback=`${tx('defaultNickname')} ${String(status.account.userCode||'0000')}`;
-        qqNameDisplay.textContent=val||fallback;
-        qqNameDialog.close();
+    // ---------- 名字内联编辑：点击笔变成文本框（流畅高级） ----------
+    const qqNameBtn=$('#qq-name-edit-btn'),qqNameDisplay=$('#qq-name-display'),qqNameRow=qqNameBtn?.closest('.qq-name-row');
+    if(qqNameBtn&&qqNameDisplay&&qqNameRow){
+      let editing=false,originalName='';
+      const startEdit=()=>{
+        if(editing)return;
+        editing=true;
+        originalName=qqNameDisplay.textContent;
+        // 创建输入框，样式如邮件搜索框般精致
+        const input=document.createElement('input');
+        input.type='text';
+        input.className='qq-name-input';
+        input.value=$('#profile-form').elements.nickname.value||originalName;
+        input.maxLength=80;
+        input.setAttribute('aria-label','修改昵称');
+        // 替换显示为输入框（带淡入动画）
+        qqNameDisplay.style.opacity='0';
+        setTimeout(()=>{
+          qqNameDisplay.hidden=true;
+          qqNameRow.insertBefore(input,qqNameBtn);
+          void input.offsetWidth;
+          input.classList.add('open');
+          input.focus();
+          input.select();
+        },150);
+        const finish=(save)=>{
+          if(!editing)return;
+          editing=false;
+          const val=input.value.trim().slice(0,80);
+          if(save&&val){
+            $('#profile-form').elements.nickname.value=val;
+            const fallback=`${tx('defaultNickname')} ${String(status.account.userCode||'0000')}`;
+            qqNameDisplay.textContent=val||fallback;
+          }
+          input.classList.remove('open');
+          setTimeout(()=>{
+            input.remove();
+            qqNameDisplay.hidden=false;
+            void qqNameDisplay.offsetWidth;
+            qqNameDisplay.style.opacity='1';
+          },200);
+        };
+        input.addEventListener('keydown',e=>{
+          if(e.key==='Enter'){finish(true);}
+          else if(e.key==='Escape'){input.value=originalName;finish(false);}
+        });
+        input.addEventListener('blur',()=>setTimeout(()=>finish(true),150));
       };
+      qqNameBtn.onclick=startEdit;
     }
     $('#profile-form').onsubmit=async e=>{e.preventDefault();const f=e.currentTarget,b=f.querySelector('[type=submit]');b.disabled=true;b.classList.add('pending');const original=b.textContent;b.textContent=local('保存中…','儲存中…','Saving…');try{const body={nickname:f.elements.nickname.value,avatar:f.elements.avatar.value,locale:f.elements.locale.value,preferredZhName:f.elements.preferredZhName?f.elements.preferredZhName.value:undefined};const aliasListEl=f.querySelector('#alias-list');if(aliasListEl)body.nameAliases=[...aliasListEl.querySelectorAll('.alias-row')].map(row=>({alias:row.querySelector('[name=alias]').value.trim(),zhName:row.querySelector('[name=aliasZh]').value.trim()})).filter(a=>a.alias&&a.zhName);const r=await api('profile',{method:'PATCH',body});applyLocale(r.locale);localStorage.setItem('campus-locale',r.locale);$('#account-label').textContent=r.nickname||accountLabel(status.account);setAvatar(r.avatar,(r.nickname||accountLabel(status.account)).slice(0,1).toUpperCase());b.textContent=local('已保存 ✓','已儲存 ✓','Saved ✓');setTimeout(()=>location.reload(),150);}catch(err){toast(err.message);b.disabled=false;b.classList.remove('pending');b.textContent=original;}};
     const aliasList=$('#alias-list'),aliasAdd=$('#alias-add');

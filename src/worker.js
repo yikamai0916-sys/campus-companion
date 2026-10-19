@@ -1,4 +1,4 @@
-import {attachBriefs,generateBrief,readBrief} from './mail-briefs.js';
+import {attachBriefs,generateBrief,readBrief,preGenerateBriefs} from './mail-briefs.js';
 import { meetingTask,wording } from './display.js';
 import { serverMessage,normalizeLocale } from './errors.js';
 import { buildAliasRules,normalizeName,suggestAliasVariants } from './names.js';
@@ -299,10 +299,14 @@ async function routes(request,env){
   if(path==='/api/outlook/callback'&&method==='GET'){
     await finishOAuth(env,url,account);
     try{await syncMail(env,account.user_id);}catch(error){await env.DB.prepare('UPDATE outlook_connections SET status=? WHERE user_id=?').bind(String(error.message).slice(0,300),account.user_id).run();}
+    // 后台预生成新邮件的 AI 摘要（不阻塞跳转）
+    try{preGenerateBriefs(env,account.user_id).catch(()=>{});}catch{}
     return Response.redirect(url.origin+'/?view=settings');
   }
   if(path==='/api/outlook/sync'&&method==='POST'){
     const result=await syncMail(env,account.user_id);
+    // 后台预生成新邮件的 AI 摘要（不阻塞响应）
+    try{preGenerateBriefs(env,account.user_id).catch(()=>{});}catch{}
     return json(result||{imported:0,pages:0,more:false});
   }
   if(path==='/api/outlook'&&method==='DELETE'){
@@ -350,7 +354,11 @@ export default {
         const connections=(await env.DB.prepare('SELECT user_id,cursor,last_attempt FROM outlook_connections WHERE last_attempt IS NULL OR last_attempt<? OR cursor IS NOT NULL').bind(now-240000).all()).results;
         for(const connection of connections){
           await env.DB.prepare('UPDATE outlook_connections SET last_attempt=? WHERE user_id=?').bind(now,connection.user_id).run();
-          try{await syncMail(env,connection.user_id);}catch(error){await env.DB.prepare('UPDATE outlook_connections SET status=? WHERE user_id=?').bind(String(error.message).slice(0,300),connection.user_id).run();}
+          try{
+            await syncMail(env,connection.user_id);
+            // 定时任务中预生成摘要（等待完成，因为是后台任务）
+            try{await preGenerateBriefs(env,connection.user_id,3);}catch{}
+          }catch(error){await env.DB.prepare('UPDATE outlook_connections SET status=? WHERE user_id=?').bind(String(error.message).slice(0,300),connection.user_id).run();}
         }
       }
       await makeDigest(env,Date.now());
