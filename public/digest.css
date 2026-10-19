@@ -92,7 +92,20 @@
 .dg-quick{margin:0;font-size:.95rem;line-height:1.6}
 .dg-quick b{display:inline-block;margin-right:6px;padding:2px 9px;border-radius:var(--pill);background:var(--lavender);font-size:.72rem;font-weight:800;letter-spacing:.04em}
 .dg-note{margin:10px 0 0;font-size:.85rem;color:var(--muted-text)}
+.dg-note.is-error{color:var(--orange-dark,#b3541e)}
 .dg-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+
+/* ---------- 日报专属 AI 摘要：简报风格，与邮件页区分 ---------- */
+.dg-brief{margin:4px 0 0}
+.dg-brief-label{display:inline-block;margin:10px 0 8px;padding:3px 10px;border-radius:var(--pill);background:var(--ink);color:#fff;font-size:.72rem;font-weight:800;letter-spacing:.05em}
+.dg-brief-label.is-action{background:var(--orange);margin-top:14px}
+.dg-brief-points{margin:0;padding:0;list-style:none;display:grid;gap:8px}
+.dg-brief-points li{position:relative;padding:10px 12px 10px 30px;border-radius:14px;background:var(--surface);font-size:.93rem;line-height:1.55;animation:dgIn .4s var(--ease-out) both}
+.dg-brief-points li::before{content:"";position:absolute;left:12px;top:17px;width:7px;height:7px;border-radius:50%;background:var(--lime);box-shadow:0 0 0 3px color-mix(in srgb,var(--lime) 25%,transparent)}
+.dg-brief-points.is-action li::before{background:var(--orange);box-shadow:0 0 0 3px color-mix(in srgb,var(--orange) 22%,transparent)}
+.dg-brief-points li:nth-child(2){animation-delay:.06s}
+.dg-brief-points li:nth-child(3){animation-delay:.12s}
+.dg-brief-points li:nth-child(n+4){animation-delay:.18s}
 
 /* skeleton while the AI notes are being prepared */
 .dg-skel{display:grid;gap:9px;margin:6px 0 2px}

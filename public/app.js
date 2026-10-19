@@ -216,6 +216,25 @@ function briefContent(m,compact=false){
   const points=compact?b.points.slice(0,2):b.points;
   return `<ul class="mail-points">${points.map(p=>`<li data-user-content>${esc(p.text)}</li>`).join('')}</ul>${b.actions.length?`<div class="brief-actions"><strong>${local('邮件中的请求','郵件中的請求','Requests in this email')}</strong><ul>${b.actions.map(p=>`<li data-user-content>${esc(p.text)}</li>`).join('')}</ul></div>`:''}`;
 }
+// ---------- 日报专属摘要渲染 ----------
+// 与邮件页的 briefContent 区分开：日报用更紧凑的简报风格，带明确的"AI 详细要点"标识，
+// 避免用户觉得"和邮件页一样"。
+function digestBriefContent(m){
+  const b=m.brief;
+  if(!b)return '';
+  const points=b.points||[];
+  const actions=b.actions||[];
+  let html=`<div class="dg-brief"><p class="dg-brief-label">${esc(local('AI 详细要点','AI 詳細重點','AI detailed notes'))}</p><ul class="dg-brief-points">`;
+  html+=points.map(p=>`<li data-user-content>${esc(p.text)}</li>`).join('');
+  html+=`</ul>`;
+  if(actions.length){
+    html+=`<p class="dg-brief-label is-action">${esc(local('需要你处理的请求','需要你處理的請求','Requests for you'))}</p><ul class="dg-brief-points is-action">`;
+    html+=actions.map(p=>`<li data-user-content>${esc(p.text)}</li>`).join('');
+    html+=`</ul>`;
+  }
+  html+=`</div>`;
+  return html;
+}
 async function prepareBriefs(rows,onUpdate,isCurrent,opts={}){
   // Briefs are generated on demand (original mail fetch + AI), two mails per request.
   // `live` also reports per-row loading/error state so the page can show progress, and
@@ -347,11 +366,14 @@ function digestLede(o){
 function digestBody(r,key){
   const it=r.item,meta=[it.brief?.topic||(it.category?tx(categoryKey(it.category)):''),it.origin||it.sender,it.received?fmt(it.received):''].filter(Boolean);
   let html=meta.length?`<p class="dg-meta" data-user-content>${esc(meta.join(' · '))}</p>`:'';
-  if(it.brief)html+=briefContent(it,false);
+  if(it.brief)html+=digestBriefContent(it);
   else if(it.briefLoading)html+=`<div class="dg-skel" role="status" aria-label="${esc(local('正在从原文整理要点','正在從原文整理重點','Reading the original email'))}"><span></span><span></span><span></span></div><p class="dg-note">${esc(local('正在从原文整理要点…','正在從原文整理重點…','Reading the original email…'))}</p>`;
   else{
+    // 没有 AI 摘要时，先展示已有的速览（extractive summary），而不是一直"正在整理"。
+    // 这样用户总能看到内容，不会觉得卡住了。
     if(r.gist.text)html+=`<p class="dg-quick"><b>${esc(local('速览','速覽','Quick view'))}</b> <span data-user-content>${esc(r.gist.text)}</span></p>`;
-    if(it.briefError)html+=`<p class="dg-note">${esc(local('详细要点暂未生成，可稍后重试。','詳細重點暫未產生，可稍後重試。','Detailed notes could not be prepared. You can retry.'))}</p>`;
+    if(it.briefError)html+=`<p class="dg-note is-error">${esc(local('详细要点暂未生成，可能是原文暂时不可用。','詳細重點暫未產生，可能是原文暫時不可用。','Detailed notes could not be prepared; the original mail may be unavailable.'))}</p>`;
+    else if(!r.gist.text)html+=`<p class="dg-note">${esc(local('暂无摘要，可点击下方按钮生成详细要点。','暫無摘要，可點擊下方按鈕產生詳細重點。','No summary yet. Tap the button below to generate detailed notes.'))}</p>`;
   }
   const buttons=[];
   if(it.id)buttons.push(`<button type="button" class="dg-btn primary" data-dg-open="${key}">${esc(local('查看邮件','查看郵件','Open email'))}<span aria-hidden="true"> ↗</span></button>`);
@@ -455,7 +477,11 @@ function bindDigestEvents(){
     if(open){const {r}=rowOf(open.dataset.dgOpen);if(r?.item.id){history.replaceState(null,'','/?view=mail&message='+encodeURIComponent(r.item.id));view('mail');openMailDetail(r.item.id);}return;}
     const brief=find('[data-dg-brief]');
     if(brief){
-      const {r}=rowOf(brief.dataset.dgBrief);if(!r)return;
+      const {r}=rowOf(brief.dataset.dgBrief);if(!r||r.item.briefLoading)return;
+      // 按钮即时反馈：禁用并显示"生成中"，避免重复点击
+      brief.disabled=true;
+      brief.dataset.origText=brief.textContent;
+      brief.textContent=local('生成中…','生成中…','Preparing…');
       const activeLocale=locale;r.item.briefError=false;
       void prepareBriefs([r.item],()=>renderDigests(false),()=>locale===activeLocale&&!$('#digests-view').classList.contains('hidden'),{live:true});
     }
