@@ -312,7 +312,9 @@ async function loadMail(opts={}){
     mailNextBefore=Array.isArray(payload)?null:payload.nextBefore;
     const html=messages.map(mailCard).join('');
     if(!append){
-      $('#mail-list').innerHTML=messages.length?html:`<div class="empty"><span class="empty-mark">▤</span><h2>${esc(tx('mailEmptyTitle'))}</h2><p>${esc(q?local('没有找到匹配「'+q+'」的邮件。','沒有找到符合「'+q+'」的郵件。','No mail matches “'+q+'”.'):tx('mailEmptyText'))}</p></div>`;
+      const mailEmptyCta=q?'':`<button type="button" class="primary" data-goto-settings style="margin-top:14px">${esc(local('去设置连接 Outlook','去設定連接 Outlook','Connect Outlook in Settings'))}</button>`;
+      $('#mail-list').innerHTML=messages.length?html:`<div class="empty"><span class="empty-mark">▤</span><h2>${esc(tx('mailEmptyTitle'))}</h2><p>${esc(q?local('没有找到匹配「'+q+'」的邮件。','沒有找到符合「'+q+'」的郵件。','No mail matches “'+q+'”.'):tx('mailEmptyText'))}</p>${mailEmptyCta}</div>`;
+      const gotoSettingsBtn=$('#mail-list [data-goto-settings]');if(gotoSettingsBtn)gotoSettingsBtn.onclick=()=>view('settings');
     }else if(html){
       $('#mail-list').insertAdjacentHTML('beforeend',html);
     }
