@@ -418,7 +418,8 @@ async function openMailDetail(id){
   $('#mail-detail-title').textContent=tx('mailDetail');
   $('#mail-detail-zh').textContent=local('加载中…','載入中…','Loading…');
   $('#mail-detail-en').textContent='';
-  dialog.showModal();
+  // dialog 可能已打开（日报跳转与列表加载双链路），已打开时直接刷新内容
+  if(!dialog.open)dialog.showModal();
   try{
     const detail=await api('messages/'+encodeURIComponent(id));
     const zh=detail.chinese||detail.display;
@@ -616,9 +617,17 @@ function bindDigestEvents(){
         const {r}=rowOf(row.dataset.dgRow);
         const mailId=r?.item?.id;
         if(mailId){
+          // 先切到邮件视图，再写 deep-link 参数：loadMail 加载完列表后会自动打开对应邮件；
+          // 同时立即打开详情（带加载中提示），dialog.open 守卫保证两次调用不冲突
           view('mail');
-          // 确保在 mail 视图渲染后再打开详情
-          setTimeout(()=>{openMailDetail(mailId).catch(e=>console.warn('openMailDetail failed',e));},50);
+          history.replaceState(null,'','/?view=mail&message='+encodeURIComponent(mailId));
+          openMailDetail(mailId).catch(e=>console.warn('openMailDetail failed',e));
+        }else{
+          // 旧日报条目没有关联邮件 id：展开行内摘要，保证点击一定有反馈
+          const open=!row.classList.contains('open');
+          row.classList.toggle('open',open);
+          head.setAttribute('aria-expanded',String(open));
+          syncToggleAll(row.closest('.dg-card'));
         }
       }catch(e){console.warn('digest row click failed',e);}
       return;
