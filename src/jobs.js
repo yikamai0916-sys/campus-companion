@@ -85,7 +85,8 @@ async function oneDigest(env,now,w,userId,prefs) {
   const body=visible.map(m=>`${m.subject}\n发件人：${m.sender}\n来源：${m.origin}\n${m.summary}\n${m.action}\n${m.url}`).join('\n\n')||(prefs.focusTerms.length?'在这个时段没有匹配你的关注词的学校邮件。':'这个时段没有需要总结的学校邮件。');
   const title=w.date+(w.late?' 晚间补充':' 学校邮件日报');
   await enqueue(env,'digest:'+userId+':'+w.key,null,now,{title,body,url:'/?view=digests'},{push:true,email:true},userId);
-  await setKV(env,digestKey,JSON.stringify({title,body,created:now}));
+  const messages=visible.map(m=>({id:m.id,subject:m.subject,received:m.received,sender:m.sender,origin:m.origin,summary:m.summary,action:m.action,quality:m.quality,category:m.category,url:m.url}));
+  await setKV(env,digestKey,JSON.stringify({title,body,created:now,messages}));
 }
 export async function makeDigest(env,now) {
   const day=hkStart(now),forwarding=env.MAIL_INGEST_MODE==='forwarding';

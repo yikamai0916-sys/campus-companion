@@ -77,6 +77,17 @@ export const plain = m=>{
   // Restrict removal to actual tag names: <person@example.edu> is mail data.
   return raw.replace(/<br\s*\/?>|<\/p>|<\/div>/gi,'\n').replace(/<\/?[A-Za-z][\w-]*(?:\s+[^>]*)?\/?>/g,'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&');
 };
+const forwardedHeaderLine=/^\s*\*{0,2}\s*(?:from|sent|date|to|cc|bcc|subject|reply-to|发件人|寄件者|发送时间|日期|收件人|收件者|主题|抄送|回复至)\s*[:：]/i;
+export function stripForwardedHeaders(input) {
+  const lines=String(input||'').replace(/\r\n?/g,'\n').split('\n');
+  let index=0,count=0;
+  while(index<lines.length){
+    if(!lines[index].trim()){index++;continue;}
+    if(forwardedHeaderLine.test(lines[index])){count++;index++;continue;}
+    break;
+  }
+  return count>=2?lines.slice(index).join('\n').trim():String(input||'').trim();
+}
 export function explicitDeadline(body) {
   const months=['january','february','march','april','may','june','july','august','september','october','november','december'];
   const pattern=/\b(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+(20\d{2})\s+(?:at\s+)?(\d{1,2}):(\d{2})\s*(AM|PM)\b/gi;
@@ -95,8 +106,10 @@ export function explicitDeadline(body) {
   }
   return null;
 }
-export async function analyze(env,m,body) {
-  const sender=originalSender(body,m.sender?.emailAddress?.address||m.from?.emailAddress?.address||'',env.SCHOOL_EMAIL,[env.LOGIN_EMAIL,env.OWNER_EMAIL]);
+export async function analyze(env,m,inputBody) {
+  const originalBody=String(inputBody||'');
+  const sender=originalSender(originalBody,m.sender?.emailAddress?.address||m.from?.emailAddress?.address||'',env.SCHOOL_EMAIL,[env.LOGIN_EMAIL,env.OWNER_EMAIL]);
+  const body=stripForwardedHeaders(originalBody);
   const category=classify(m.subject,body);
   const taskText=`${m.subject||''}\n${body}`;
   const assignment=category===2&&/(?:assignment|homework|coursework|作业|作業).{0,140}(?:due|deadline|submit|submission|complete|截止|提交|完成)|(?:due|deadline|submit|submission|截止|提交).{0,140}(?:assignment|homework|coursework|作业|作業)/is.test(taskText);

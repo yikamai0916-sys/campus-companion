@@ -158,6 +158,12 @@ async function routes(request,env){
     return json(await localizeMessages(env,account.user_id,profile?.locale||'zh-CN',messages));
   }
   const messageId=path.match(/^\/api\/messages\/(.+)$/)?.[1];
+  if(messageId&&method==='GET'){
+    const message=await env.DB.prepare('SELECT * FROM messages WHERE id=? AND user_id=?').bind(decodeURIComponent(messageId),account.user_id).first();
+    if(!message)return json({error:'邮件不存在或已删除'},404);
+    const profile=await env.DB.prepare('SELECT locale FROM users WHERE id=?').bind(account.user_id).first();
+    return json((await localizeMessages(env,account.user_id,profile?.locale||'zh-CN',[message]))[0]);
+  }
   if(messageId&&method==='DELETE'){await env.DB.prepare('DELETE FROM messages WHERE id=? AND user_id=?').bind(decodeURIComponent(messageId),account.user_id).run();return json({ok:true});}
   if(path==='/api/mail/reprocess'&&method==='POST')return json(await reprocessMail(env,account.user_id,2));
   if(path==='/api/digests'){const prefix='digest:'+account.user_id+':%';const rows=(await env.DB.prepare("SELECT value FROM kv WHERE key LIKE ? AND value!='quiet' ORDER BY key DESC LIMIT 30").bind(prefix).all()).results;return json(rows.flatMap(row=>{try{return [JSON.parse(row.value)]}catch{return []}}));}
