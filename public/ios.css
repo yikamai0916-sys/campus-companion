@@ -31,11 +31,11 @@ dialog {
 @media (max-width: 700px) {
   html,
   body {
-    background: #183c38;
+    background: #322b22;
   }
 
   .shell {
-    background: #183c38;
+    background: #322b22;
   }
 
   aside {
@@ -45,7 +45,7 @@ dialog {
   main {
     min-height: calc(100dvh - 130px - env(safe-area-inset-top));
     padding-bottom: calc(40px + env(safe-area-inset-bottom));
-    background: #f4f6f6;
+    background: #f5f5f5;
   }
 
   nav {
@@ -70,7 +70,7 @@ dialog {
     margin: 0;
     padding-top: calc(35px + env(safe-area-inset-top));
     padding-bottom: calc(35px + env(safe-area-inset-bottom));
-    background: #f4f6f6;
+    background: #f5f5f5;
   }
 
   dialog {

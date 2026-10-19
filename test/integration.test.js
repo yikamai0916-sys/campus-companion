@@ -7,7 +7,7 @@ import worker from '../src/worker.js';
 import { hash,b64,random,seal,unseal,makePasswordHash } from '../src/security.js';
 import { deliver } from '../src/jobs.js';
 function database(){
-  const sqlite=new DatabaseSync(':memory:');for(const name of ['0001.sql','0002_accounts.sql','0003_profile.sql','0004_message_localizations.sql','0005_localization_version.sql','0006_outlook_connections.sql','0007_mail_preferences.sql','0008_account_scoped_records.sql','0009_collaboration.sql','0010_meeting_planner.sql','0011_meeting_votes_and_announcements.sql'])sqlite.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));
+  const sqlite=new DatabaseSync(':memory:');for(const name of ['0001.sql','0002_accounts.sql','0003_profile.sql','0004_message_localizations.sql','0005_localization_version.sql','0006_outlook_connections.sql','0007_mail_preferences.sql','0008_account_scoped_records.sql','0009_collaboration.sql','0010_meeting_planner.sql','0011_meeting_votes_and_announcements.sql','0012_review_and_membership.sql','0013_preferred_zh_name.sql','0014_name_aliases.sql'])sqlite.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));
   const db={prepare(sql){let args=[];const obj={bind(...a){args=a;return obj;},async first(){return sqlite.prepare(sql).get(...args)||null;},async all(){return {results:sqlite.prepare(sql).all(...args)};},async run(){const r=sqlite.prepare(sql).run(...args);return {meta:{changes:r.changes}};}};return obj;},async batch(stmts){sqlite.exec('BEGIN');try{const r=[];for(const s of stmts)r.push(await s.run());sqlite.exec('COMMIT');return r;}catch(e){sqlite.exec('ROLLBACK');throw e;}}};return db;
 }
 test('meeting workflow migration preserves historical confirmed state',()=>{
@@ -132,6 +132,12 @@ test('group candidate review and assignee acceptance are separate transitions',a
   const groupResponse=await call(ownerToken,'groups','POST',{name:'CDS2003 Group Project'});assert.equal(groupResponse.status,201);
   const group=await groupResponse.json();
   assert.equal((await call(ownerToken,`groups/${group.id}/members`,'POST',{email:'member@example.com'})).status,201);
+  assert.equal((await call(memberToken,`groups/${group.id}`)).status,404);
+  const invites=await (await call(memberToken,'invitations')).json();
+  assert.equal(invites.length,1);
+  assert.equal((await call(outsiderToken,`invitations/${invites[0].id}`,'POST',{decision:'accept'})).status,404);
+  assert.equal((await call(memberToken,`invitations/${invites[0].id}`,'POST',{decision:'accept'})).status,200);
+  assert.equal((await call(memberToken,`invitations/${invites[0].id}`,'POST',{decision:'accept'})).status,404);
   assert.equal((await call(outsiderToken,`groups/${group.id}`)).status,404);
   const candidateResponse=await call(ownerToken,`groups/${group.id}/candidates`,'POST',{title:'Analyse meeting algorithm',proposedAssigneeId:'member',due:Date.now()+5*86400000,evidence:{title:'Member will analyse the meeting algorithm.'}});assert.equal(candidateResponse.status,201);
   const candidate=await candidateResponse.json();
@@ -210,6 +216,16 @@ test('meeting polls treat missing availability as unknown and confirm only full-
   assert.equal((await (await call(ownerToken,'tasks')).json()).some(task=>task.source==='meeting'),true);
   assert.equal((await (await call(memberToken,'tasks')).json()).some(task=>task.source==='meeting'),true);
   assert.equal((await (await call(lateToken,'tasks')).json()).some(task=>task.source==='meeting'),false);
+  const before=await (await call(ownerToken,`meeting-polls/${poll.id}`)).json();
+  assert.equal((await call(memberToken,`meeting-polls/${poll.id}/lifecycle`,'POST',{action:'cancel',revision:before.poll.revision})).status,403);
+  assert.equal((await call(ownerToken,`meeting-polls/${poll.id}/lifecycle`,'POST',{action:'cancel',revision:before.poll.revision})).status,200);
+  assert.equal((await env.DB.prepare("SELECT COUNT(*) n FROM tasks WHERE source='meeting'").first()).n,0);
+  assert.equal((await env.DB.prepare("SELECT COUNT(*) n FROM jobs WHERE state='pending'").first()).n,0);
+  assert.equal((await call(ownerToken,`meeting-polls/${poll.id}/lifecycle`,'POST',{action:'reopen',revision:before.poll.revision,rangeStart:start,rangeEnd:end})).status,409);
+  const closed=await (await call(ownerToken,`meeting-polls/${poll.id}`)).json();assert.equal(closed.poll.status,'closed');
+  assert.equal((await call(ownerToken,`meeting-polls/${poll.id}/lifecycle`,'POST',{action:'reopen',revision:closed.poll.revision,rangeStart:start+86400000,rangeEnd:end+86400000})).status,200);
+  const reopened=await (await call(ownerToken,`meeting-polls/${poll.id}`)).json();assert.equal(reopened.poll.phase,'collecting');assert.equal(reopened.submissions.length,0);assert.equal(reopened.ownVote,null);
+
 });
 
 test('unauthenticated shared view URLs redirect to the public home page',async()=>{
@@ -263,13 +279,30 @@ test('mail reminder preferences are saved separately for each account',async()=>
   const env={DB:database()},origin='https://campus.example',token=random();
   await env.DB.prepare("INSERT INTO users(id,email,password_hash,created) VALUES('prefs','prefs@example.com','unused',0)").run();
   await env.DB.prepare('INSERT INTO sessions(id,expires,user_id) VALUES(?,?,?)').bind(await hash(token),Date.now()+3600000,'prefs').run();
-  const preferences={focusTerms:['scholarship','SOC 210'],daily:{enabled:true,time:'18:30'},late:{enabled:false,time:'00:30'}};
+  const preferences={focusTerms:['scholarship','SOC 210'],daily:{enabled:true,time:'18:30'},late:{enabled:false,time:'00:30'},translateZh:true,englishSummary:false};
   const response=await worker.fetch(new Request(origin+'/api/profile',{method:'PATCH',headers:{Origin:origin,Cookie:'campus_session='+token,'Content-Type':'application/json'},body:JSON.stringify({mailPreferences:preferences})}),env);
   assert.equal(response.status,200);assert.deepEqual((await response.json()).mailPreferences,preferences);
   const profile=await worker.fetch(new Request(origin+'/api/profile',{headers:{Cookie:'campus_session='+token}}),env);
   assert.deepEqual((await profile.json()).mailPreferences,preferences);
 });
 
+
+test('custom reminder presets are cleaned and saved with the reminder defaults',async()=>{
+  const env={DB:database()},origin='https://campus.example',token=random();
+  await env.DB.prepare("INSERT INTO users(id,email,password_hash,created) VALUES('presets','presets@example.com','unused',0)").run();
+  await env.DB.prepare('INSERT INTO sessions(id,expires,user_id) VALUES(?,?,?)').bind(await hash(token),Date.now()+3600000,'presets').run();
+  const patch=data=>worker.fetch(new Request(origin+'/api/profile',{method:'PATCH',headers:{Origin:origin,Cookie:'campus_session='+token,'Content-Type':'application/json'},body:JSON.stringify(data)}),env);
+  const saved=await patch({reminders:{presets:[90,90,1440,'x',360]}});
+  assert.equal(saved.status,200);
+  assert.deepEqual((await saved.json()).reminders.presets,[360,90]);
+  // saving only offsets keeps the presets that were saved before
+  assert.equal((await patch({reminders:{offsets:[1440,90]}})).status,200);
+  const profile=await (await worker.fetch(new Request(origin+'/api/profile',{headers:{Cookie:'campus_session='+token}}),env)).json();
+  assert.deepEqual(profile.reminders.presets,[360,90]);
+  assert.deepEqual(profile.reminders.offsets,[1440,90]);
+  // offsets that a task would reject are refused here too
+  assert.equal((await patch({reminders:{offsets:[1.5]}})).status,400);
+});
 
 test('digest history is visible only to the account that received it',async()=>{
   const env={DB:database()},origin='https://campus.example',firstToken=random(),secondToken=random();
@@ -280,4 +313,98 @@ test('digest history is visible only to the account that received it',async()=>{
   const first=await (await get(firstToken)).json(),second=await (await get(secondToken)).json();
   assert.equal(first.length,1);assert.equal(first[0].title,'First digest');
   assert.equal(second.length,1);assert.equal(second[0].title,'Second digest');
+});
+
+test('mail suggestions are private, deduplicated and require explicit confirmation',async()=>{
+ const {saveMailSuggestion,listMailSuggestions,reviewMailSuggestion}=await import('../src/suggestions.js');
+ const env={DB:database()},a={assignment:true,title:'Assignment',action:'Submit report',due:Date.now()+86400000,evidence:{deadline:'tomorrow'}};
+ await saveMailSuggestion(env,'one','message',a);await saveMailSuggestion(env,'one','message',a);
+ assert.equal((await listMailSuggestions(env,'two')).length,0);
+ assert.equal((await env.DB.prepare('SELECT count(*) n FROM tasks').first()).n,0);
+ const rows=await listMailSuggestions(env,'one');assert.equal(rows.length,1);
+ await assert.rejects(()=>reviewMailSuggestion(env,'two',rows[0].id,{decision:'confirm'}));
+ await reviewMailSuggestion(env,'one',rows[0].id,{decision:'confirm',title:'Reviewed title',due:null});
+ const task=await env.DB.prepare('SELECT * FROM tasks').first();assert.equal(task.title,'Reviewed title');assert.equal(task.due,null);assert.equal(task.user_id,'one');
+ await assert.rejects(()=>reviewMailSuggestion(env,'one',rows[0].id,{decision:'confirm'}));
+ assert.equal((await env.DB.prepare('SELECT count(*) n FROM tasks').first()).n,1);
+});
+
+test('group ownership transfer and leaving enforce ownership and assignment rules',async()=>{
+ const {manageMember}=await import('../src/collaboration.js');const env={DB:database()};
+ await env.DB.prepare("INSERT INTO groups(id,name,owner_user_id,created,updated) VALUES('g','Team','a',0,0)").run();
+ await env.DB.prepare("INSERT INTO group_members(group_id,user_id,role,joined) VALUES('g','a','owner',0),('g','b','member',0)").run();
+ await assert.rejects(()=>manageMember(env,'a','g',{action:'remove',userId:'a'}));
+ await assert.rejects(()=>manageMember(env,'b','g',{action:'transfer',userId:'a'}));
+ await manageMember(env,'a','g',{action:'transfer',userId:'b'});
+ assert.equal((await env.DB.prepare("SELECT owner_user_id FROM groups WHERE id='g'").first()).owner_user_id,'b');
+ await manageMember(env,'a','g',{action:'remove',userId:'a'});
+ assert.equal((await env.DB.prepare("SELECT COUNT(*) n FROM group_members WHERE group_id='g'").first()).n,1);
+});
+
+test('preferred Chinese name is stored and messages list is paginated without blocking',async()=>{
+  const env={DB:database()},origin='https://campus.example',token=random();
+  await env.DB.prepare("INSERT INTO users(id,email,password_hash,created,locale) VALUES('echo','echo@example.com','unused',0,'zh-CN')").run();
+  await env.DB.prepare('INSERT INTO sessions(id,expires,user_id) VALUES(?,?,?)').bind(await hash(token),Date.now()+3600000,'echo').run();
+  const patch=await worker.fetch(new Request(origin+'/api/profile',{method:'PATCH',headers:{Origin:origin,Cookie:'campus_session='+token,'Content-Type':'application/json'},body:JSON.stringify({preferredZhName:'马艺恺',mailPreferences:{translateZh:true,englishSummary:false,daily:{enabled:true,time:'20:00'},late:{enabled:true,time:'00:00'},focusTerms:[]}})}),env);
+  assert.equal(patch.status,200);
+  assert.equal((await patch.json()).preferredZhName,'马艺恺');
+  const now=Date.now();
+  for(let i=0;i<3;i++)await env.DB.prepare('INSERT INTO messages(id,subject,received,sender,origin,category,summary,action,url,quality,user_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)').bind('m'+i,'Subject '+i,now-i, 's','o',2,'用户马毅凯请留意','无需操作','','test','echo').run();
+  const list=await (await worker.fetch(new Request(origin+'/api/messages?limit=2',{headers:{Cookie:'campus_session='+token}}),env)).json();
+  assert.equal(list.messages.length,2);
+  assert.ok(list.nextBefore);
+  assert.match(list.messages[0].summary,/马艺恺/);
+  assert.doesNotMatch(list.messages[0].summary,/马毅凯/);
+  const detail=await (await worker.fetch(new Request(origin+'/api/messages/m0',{headers:{Cookie:'campus_session='+token}}),env)).json();
+  assert.equal(detail.id,'m0');
+  assert.ok(detail.chinese||detail.display);
+  assert.ok(detail.english);
+});
+
+test('user-defined name aliases persist, rewrite senders, and mail search filters by query',async()=>{
+  const env={DB:database()},origin='https://campus.example',token=random();
+  await env.DB.prepare("INSERT INTO users(id,email,password_hash,created,locale) VALUES('a2','alias@example.com','unused',0,'zh-CN')").run();
+  await env.DB.prepare('INSERT INTO sessions(id,expires,user_id) VALUES(?,?,?)').bind(await hash(token),Date.now()+3600000,'a2').run();
+  const auth={Origin:origin,Cookie:'campus_session='+token,'Content-Type':'application/json'};
+  const patch=await worker.fetch(new Request(origin+'/api/profile',{method:'PATCH',headers:auth,body:JSON.stringify({nameAliases:[{alias:'MA Yikai',zhName:'马艺恺'},{alias:'YIKAI MA',zhName:'馬藝愷'}]})}),env);
+  assert.equal(patch.status,200);
+  const profile=await (await worker.fetch(new Request(origin+'/api/profile',{headers:{Cookie:'campus_session='+token}}),env)).json();
+  assert.equal(profile.nameAliases.length,2);
+  assert.ok(profile.nameAliases.some(a=>a.alias==='MA Yikai'&&a.zhName==='马艺恺'));
+  await env.DB.prepare('INSERT INTO messages(id,subject,received,sender,origin,category,summary,action,url,quality,user_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)').bind('ma1','Assignment 2 deadline','100','Yikai Ma <yikaima@ln.edu.hk>','o',2,'请在截止前提交','无','','t','a2').run();
+  await env.DB.prepare('INSERT INTO messages(id,subject,received,sender,origin,category,summary,action,url,quality,user_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)').bind('ma2','Party invite','200','MA Yikai <mayikai@ln.edu.hk>','o',3,'周六活动','无','','t','a2').run();
+  await env.DB.prepare('INSERT INTO messages(id,subject,received,sender,origin,category,summary,action,url,quality,user_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)').bind('ma3','Course news','300','Zhang Wei <zw@ln.edu.hk>','o',4,'无关邮件','无','','t','a2').run();
+  const all=await (await worker.fetch(new Request(origin+'/api/messages',{headers:{Cookie:'campus_session='+token}}),env)).json();
+  const byId=new Map(all.messages.map(m=>[m.id,m]));
+  assert.match(byId.get('ma1').sender,/马艺恺/);
+  assert.doesNotMatch(byId.get('ma1').sender,/Yikai Ma/);
+  assert.match(byId.get('ma2').sender,/马艺恺/);
+  assert.doesNotMatch(byId.get('ma2').sender,/MA Yikai/);
+  assert.match(byId.get('ma3').sender,/Zhang Wei/);
+  const bySubject=await (await worker.fetch(new Request(origin+'/api/messages?q=deadline',{headers:{Cookie:'campus_session='+token}}),env)).json();
+  assert.equal(bySubject.messages.length,1);
+  assert.equal(bySubject.messages[0].id,'ma1');
+  const bySender=await (await worker.fetch(new Request(origin+'/api/messages?q=zw@ln.edu.hk',{headers:{Cookie:'campus_session='+token}}),env)).json();
+  assert.equal(bySender.messages.length,1);
+  assert.equal(bySender.messages[0].id,'ma3');
+  const none=await (await worker.fetch(new Request(origin+'/api/messages?q='+encodeURIComponent('不存在的关键词'),{headers:{Cookie:'campus_session='+token}}),env)).json();
+  assert.equal(none.messages.length,0);
+  assert.equal(none.nextBefore,null);
+  const sug=await (await worker.fetch(new Request(origin+'/api/name-alias-suggestions',{headers:{Cookie:'campus_session='+token}}),env)).json();
+  assert.ok(Array.isArray(sug.suggestions));
+  assert.ok(sug.suggestions.some(s=>/yikai ma/i.test(s.variant)&&s.zhName==='马艺恺'));
+  // invalid alias shape is rejected without touching saved rows
+  const bad=await worker.fetch(new Request(origin+'/api/profile',{method:'PATCH',headers:auth,body:JSON.stringify({nameAliases:[{alias:'',zhName:'马艺恺'}]})}),env);
+  assert.equal(bad.status,400);
+  const kept=await (await worker.fetch(new Request(origin+'/api/profile',{headers:{Cookie:'campus_session='+token}}),env)).json();
+  assert.equal(kept.nameAliases.length,2);
+});
+
+test('brief generation is account scoped and unavailable AI is reported without fabricating a summary',async()=>{
+ const env={DB:database()},origin='https://campus.example',token=random();
+ await env.DB.prepare("INSERT INTO users(id,email,password_hash,created) VALUES('brief-a','a@example.com','unused',0),('brief-b','b@example.com','unused',0)").run();
+ await env.DB.prepare('INSERT INTO sessions(id,expires,user_id) VALUES(?,?,?)').bind(await hash(token),Date.now()+3600000,'brief-a').run();
+ await env.DB.prepare("INSERT INTO messages(id,subject,received,sender,origin,category,summary,action,url,quality,user_id) VALUES('own','FW: One',1,'s','o',2,'s','a','','q','brief-a'),('other','FW: Two',1,'s','o',2,'s','a','','q','brief-b')").run();
+ const response=await worker.fetch(new Request(origin+'/api/mail/briefs',{method:'POST',headers:{Cookie:'campus_session='+token,Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({ids:['own','other']})}),env);
+ assert.equal(response.status,200);assert.deepEqual((await response.json()).results,[{id:'own',error:true}]);
 });

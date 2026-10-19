@@ -1,6 +1,7 @@
 import { CollaborationError } from './collaboration.js';
 import { AvailabilityCalendar,MeetingPlanner } from './meeting-planner.js';
 import { taskJobRows } from './jobs.js';
+import { meetingTask } from './display.js';
 
 const text=(value,label,max)=>{const result=String(value??'').trim();if(!result||result.length>max)throw new CollaborationError(`${label}需为 1–${max} 个字符`);return result;};
 
@@ -31,14 +32,15 @@ export async function submitAvailability(env,actorId,pollId,input){
   const calendar=new AvailabilityCalendar(input.intervals,{rangeStart:poll.range_start,rangeEnd:poll.range_end});
   const avoid=new AvailabilityCalendar(input.avoidIntervals||[],{rangeStart:poll.range_start,rangeEnd:poll.range_end});
   const now=Date.now();
-  await env.DB.prepare('INSERT INTO meeting_availability(poll_id,user_id,intervals,avoid_intervals,updated) VALUES(?,?,?,?,?) ON CONFLICT(poll_id,user_id) DO UPDATE SET intervals=excluded.intervals,avoid_intervals=excluded.avoid_intervals,updated=excluded.updated').bind(pollId,actorId,JSON.stringify(calendar.intervals),JSON.stringify(avoid.intervals),now).run();
+  const changed=await env.DB.prepare("INSERT INTO meeting_availability(poll_id,user_id,intervals,avoid_intervals,updated) SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM meeting_polls WHERE id=? AND status='open' AND phase='collecting' AND revision=?) ON CONFLICT(poll_id,user_id) DO UPDATE SET intervals=excluded.intervals,avoid_intervals=excluded.avoid_intervals,updated=excluded.updated").bind(pollId,actorId,JSON.stringify(calendar.intervals),JSON.stringify(avoid.intervals),now,pollId,poll.revision).run();
+  if(!changed.meta.changes)throw new CollaborationError('会议已更新，请刷新后重试',409);
   return {pollId,userId:actorId,intervals:calendar.intervals,avoidIntervals:avoid.intervals,updated:now};
 }
 
 export async function meetingPollSnapshot(env,actorId,pollId){
   const poll=await pollAccess(env,pollId,actorId);
   const currentMembers=(await env.DB.prepare('SELECT user_id FROM group_members WHERE group_id=? ORDER BY joined').bind(poll.group_id).all()).results.map(row=>String(row.user_id));
-  const frozenMembers=JSON.parse(poll.eligible_user_ids||'[]'),members=poll.phase==='collecting'?currentMembers:frozenMembers;
+  const frozenMembers=JSON.parse(poll.eligible_user_ids||'[]'),members=poll.phase==='collecting'||poll.status==='closed'?currentMembers:frozenMembers;
   const submissions=(await env.DB.prepare('SELECT user_id,intervals,avoid_intervals,updated FROM meeting_availability WHERE poll_id=?').bind(pollId).all()).results.map(row=>({userId:String(row.user_id),intervals:JSON.parse(row.intervals),avoidIntervals:JSON.parse(row.avoid_intervals),updated:row.updated}));
   const submitted=new Set(submissions.map(item=>item.userId)),memberStatuses=members.map(userId=>({userId,submitted:submitted.has(userId)}));
   const result=plannerFor(poll).recommend(members,submissions),options=poll.phase==='voting'||poll.status==='confirmed'?JSON.parse(poll.proposal_options||'[]'):[];
@@ -56,7 +58,7 @@ export async function openMeetingVote(env,actorId,pollId){
   const options=snapshot.result.proposals.filter(proposal=>proposal.allAvailable);
   if(!options.length)throw new CollaborationError('当前没有全员可参加的候选时间',409);
   const eligibleUserIds=snapshot.memberStatuses.map(item=>item.userId);
-  const changed=await env.DB.prepare("UPDATE meeting_polls SET phase='voting',proposal_options=?,eligible_user_ids=?,updated=? WHERE id=? AND status='open' AND phase='collecting' RETURNING id").bind(JSON.stringify(options),JSON.stringify(eligibleUserIds),Date.now(),pollId).first();
+  const changed=await env.DB.prepare("UPDATE meeting_polls SET phase='voting',revision=revision+1,proposal_options=?,eligible_user_ids=?,updated=? WHERE id=? AND status='open' AND phase='collecting' AND revision=? RETURNING id").bind(JSON.stringify(options),JSON.stringify(eligibleUserIds),Date.now(),pollId,poll.revision).first();
   if(!changed)throw new CollaborationError('会议投票已经开启或结束',409);
   return {pollId,phase:'voting',options};
 }
@@ -67,7 +69,7 @@ export async function voteMeetingProposal(env,actorId,pollId,start){
   if(!JSON.parse(poll.eligible_user_ids||'[]').map(String).includes(String(actorId)))throw new CollaborationError('你不在本次会议的投票名单中',403);
   const selected=JSON.parse(poll.proposal_options||'[]').find(option=>Number(option.start)===Number(start));
   if(!selected)throw new CollaborationError('该时间不在投票选项中',400);
-  const changed=await env.DB.prepare("INSERT INTO meeting_votes(poll_id,user_id,proposal_start,updated) SELECT ?,?,?,? WHERE EXISTS (SELECT 1 FROM meeting_polls WHERE id=? AND status='open' AND phase='voting') ON CONFLICT(poll_id,user_id) DO UPDATE SET proposal_start=excluded.proposal_start,updated=excluded.updated").bind(pollId,actorId,selected.start,Date.now(),pollId).run();
+  const changed=await env.DB.prepare("INSERT INTO meeting_votes(poll_id,user_id,proposal_start,updated) SELECT ?,?,?,? WHERE EXISTS (SELECT 1 FROM meeting_polls WHERE id=? AND status='open' AND phase='voting' AND revision=?) ON CONFLICT(poll_id,user_id) DO UPDATE SET proposal_start=excluded.proposal_start,updated=excluded.updated").bind(pollId,actorId,selected.start,Date.now(),pollId,poll.revision).run();
   if(!changed.meta.changes)throw new CollaborationError('会议投票已经结束',409);
   return {pollId,userId:actorId,start:selected.start};
 }
@@ -81,15 +83,44 @@ export async function confirmMeetingProposal(env,actorId,pollId,start){
   if(!selected||selected.count!==highest)throw new CollaborationError('只能确认当前得票最高的时间',409);
   const members=JSON.parse(poll.eligible_user_ids||'[]').map(String),claimToken=crypto.randomUUID();
   const now=Date.now(),reminders={offsets:[1440,60,15],exact:[],repeat:0,maxCount:0,start:'08:00',end:'23:00',days:[0,1,2,3,4,5,6],push:true,email:false};
-  const tasks=members.map(userId=>({id:crypto.randomUUID(),userId,title:'参加会议：'+poll.name,notes:`小组会议已由全员投票确定。\n时间：${new Date(selected.start).toLocaleString('zh-CN',{timeZone:'Asia/Hong_Kong',hour12:false})}`,due:selected.start}));
+  // Each member's generated task and note follow that member's interface
+  // language, so a confirmed meeting never shows Simplified Chinese wording
+  // to an English or Traditional (Hong Kong) user.
+  const localeRows=members.length?(await env.DB.prepare(`SELECT id,locale FROM users WHERE id IN (${members.map(()=>'?').join(',')})`).bind(...members).all()).results:[];
+  const localeByUser=new Map(localeRows.map(row=>[String(row.id),row.locale||'zh-CN']));
+  const plainDue=new Date(selected.start).toLocaleString('zh-CN',{timeZone:'Asia/Hong_Kong',hour12:false});
+  const tasks=members.map(userId=>{
+    const base={id:crypto.randomUUID(),userId,title:'参加会议：'+poll.name,notes:`小组会议已由全员投票确定。\n时间：${plainDue}`,due:selected.start};
+    const localized=meetingTask(base,{name:poll.name},localeByUser.get(userId)||'zh-CN');
+    return {...base,title:localized.title,notes:localized.notes};
+  });
   const announcement={id:crypto.randomUUID(),title:'会议时间已确认：'+poll.name,body:`${new Date(selected.start).toLocaleString('zh-CN',{timeZone:'Asia/Hong_Kong',hour12:false})}，时长 ${poll.duration_minutes} 分钟。`};
   const jobRows=(await Promise.all(tasks.map(task=>taskJobRows(env,{...task,user_id:task.userId,completed:0,acceptance_status:'accepted',version:1,reminders},now)))).flat();
   let results;try{results=await env.DB.batch([
-    env.DB.prepare("UPDATE meeting_polls SET status='confirmed',phase='confirmed',confirmed_start=?,confirmed_end=?,confirmation_token=?,updated=? WHERE id=? AND status='open' AND phase='voting' AND NOT EXISTS (SELECT 1 FROM json_each(meeting_polls.eligible_user_ids) eligible WHERE NOT EXISTS (SELECT 1 FROM meeting_votes required_vote WHERE required_vote.poll_id=meeting_polls.id AND required_vote.user_id=CAST(eligible.value AS TEXT))) AND NOT EXISTS (SELECT proposal_start FROM meeting_votes rival WHERE rival.poll_id=meeting_polls.id GROUP BY proposal_start HAVING COUNT(*)>(SELECT COUNT(*) FROM meeting_votes chosen WHERE chosen.poll_id=meeting_polls.id AND chosen.proposal_start=?))").bind(selected.start,selected.end,claimToken,now,pollId,selected.start),
+    env.DB.prepare("UPDATE meeting_polls SET status='confirmed',phase='confirmed',revision=revision+1,confirmed_start=?,confirmed_end=?,confirmation_token=?,updated=? WHERE id=? AND status='open' AND phase='voting' AND revision=? AND NOT EXISTS (SELECT 1 FROM json_each(meeting_polls.eligible_user_ids) eligible WHERE NOT EXISTS (SELECT 1 FROM meeting_votes required_vote WHERE required_vote.poll_id=meeting_polls.id AND required_vote.user_id=CAST(eligible.value AS TEXT))) AND NOT EXISTS (SELECT proposal_start FROM meeting_votes rival WHERE rival.poll_id=meeting_polls.id GROUP BY proposal_start HAVING COUNT(*)>(SELECT COUNT(*) FROM meeting_votes chosen WHERE chosen.poll_id=meeting_polls.id AND chosen.proposal_start=?))").bind(selected.start,selected.end,claimToken,now,pollId,poll.revision,selected.start),
     ...tasks.map(task=>env.DB.prepare("INSERT INTO tasks(id,title,notes,due,priority,completed,source,source_id,reminders,version,created,updated,user_id,group_id,assigned_by,acceptance_status,candidate_id) SELECT ?,?,?,?,?,0,'meeting',?,?,1,?,?,?,?,?,'accepted',NULL WHERE EXISTS (SELECT 1 FROM meeting_polls WHERE id=? AND confirmation_token=?)").bind(task.id,task.title,task.notes,task.due,2,pollId,JSON.stringify(reminders),now,now,task.userId,poll.group_id,actorId,pollId,claimToken)),
     env.DB.prepare("INSERT INTO group_announcements(id,group_id,kind,title,body,source_id,created_by,created) SELECT ?,?,'meeting',?,?,?,?,? WHERE EXISTS (SELECT 1 FROM meeting_polls WHERE id=? AND confirmation_token=?)").bind(announcement.id,poll.group_id,announcement.title,announcement.body,pollId,actorId,now,pollId,claimToken),
     ...jobRows.map(job=>env.DB.prepare("INSERT OR IGNORE INTO jobs(id,task_id,version,at,channel,payload,user_id) SELECT ?,?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM tasks WHERE id=? AND source='meeting' AND source_id=? AND user_id=?)").bind(job.id,job.taskId,job.version,job.at,job.channel,job.payload,job.userId,job.taskId,pollId,job.userId))
   ]);}catch(error){if(/UNIQUE|constraint/i.test(String(error)))throw new CollaborationError('会议时间已经处理',409);throw error;}
   if(!results[0]?.meta?.changes)throw new CollaborationError('投票结果已变化或会议时间已经处理，请刷新后重试',409);
   return {...selected,status:'confirmed',tasksCreated:tasks.length,announcement};
+}
+
+export async function changeMeeting(env,actorId,pollId,input){
+ const poll=await pollAccess(env,pollId,actorId);
+ if(poll.role!=='owner')throw new CollaborationError('只有组长可以取消或改期',403);
+ if(!['cancel','reopen'].includes(input.action))throw new CollaborationError('操作无效');
+ if(Number(input.revision)!==poll.revision)throw new CollaborationError('会议已更新，请刷新后重试',409);
+ const planner=input.action==='reopen'?new MeetingPlanner({...input,durationMinutes:input.durationMinutes??poll.duration_minutes,slotMinutes:poll.slot_minutes,bufferMinutes:input.bufferMinutes??poll.buffer_minutes}):null;
+ const token=crypto.randomUUID();
+ const results=await env.DB.batch([
+ env.DB.prepare("UPDATE meeting_polls SET status=?,phase=?,range_start=?,range_end=?,duration_minutes=?,buffer_minutes=?,confirmed_start=NULL,confirmed_end=NULL,proposal_options='[]',eligible_user_ids='[]',confirmation_token=?,revision=revision+1,updated=? WHERE id=? AND revision=?").bind(planner?'open':'closed',planner?'collecting':'closed',planner?.rangeStart??poll.range_start,planner?.rangeEnd??poll.range_end,planner?.durationMinutes??poll.duration_minutes,planner?.bufferMinutes??poll.buffer_minutes,token,Date.now(),pollId,poll.revision),
+ env.DB.prepare("UPDATE jobs SET state='cancelled' WHERE task_id IN (SELECT id FROM tasks WHERE source='meeting' AND source_id=?) AND state IN ('pending','sending') AND EXISTS(SELECT 1 FROM meeting_polls WHERE id=? AND confirmation_token=?)").bind(pollId,pollId,token),
+ env.DB.prepare("DELETE FROM tasks WHERE source='meeting' AND source_id=? AND EXISTS(SELECT 1 FROM meeting_polls WHERE id=? AND confirmation_token=?)").bind(pollId,pollId,token),
+ ...['meeting_votes','meeting_availability'].map(table=>env.DB.prepare(`DELETE FROM ${table} WHERE poll_id=? AND EXISTS(SELECT 1 FROM meeting_polls WHERE id=? AND confirmation_token=?)`).bind(pollId,pollId,token)),
+ env.DB.prepare("DELETE FROM group_announcements WHERE kind='meeting' AND source_id=? AND EXISTS(SELECT 1 FROM meeting_polls WHERE id=? AND confirmation_token=?)").bind(pollId,pollId,token),
+ env.DB.prepare("INSERT INTO group_announcements(id,group_id,kind,title,body,source_id,created_by,created) SELECT ?,?,'meeting-change',?,?,NULL,?,? WHERE EXISTS(SELECT 1 FROM meeting_polls WHERE id=? AND confirmation_token=?)").bind(crypto.randomUUID(),poll.group_id,poll.name,input.action,actorId,Date.now(),pollId,token)
+ ]);
+ if(!results[0].meta.changes)throw new CollaborationError('会议已更新，请刷新后重试',409);
+ return {ok:true};
 }

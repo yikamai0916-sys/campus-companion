@@ -1,0 +1,19 @@
+<!doctype html><title>Mail reader checks</title><h1>Running</h1><div id="result"></div><script type="module">
+import {renderMailBody} from '../public/mail-reader.js';
+const checks=[];
+const assert=(name,ok)=>{checks.push(name+': '+(ok?'PASS':'FAIL'));if(!ok)throw Error(name);};
+try{
+const el=renderMailBody({html:'<style>body{display:none}</style><script>alert(1)<\/script><div onclick="alert(1)"><p><b>From:</b> Staff</p><p><b>Sent:</b> Monday</p><p><b>To:</b> Reader</p><p><b>Subject:</b> Event</p><p style="height:900px">Join us.</p><img src="cid:poster" onerror="alert(1)"><a href="javascript:alert(1)">Link</a><p>&nbsp;</p></div>',images:{poster:'data:image/png;base64,iVBORw0KGgo='}});
+assert('Remove executable markup',!el.querySelector('script,style,[onclick],[onerror],[style]'));
+assert('Keep body and remove leading header',el.textContent.includes('Join us.')&&!el.textContent.includes('From:'));
+assert('Resolve embedded image',el.querySelector('img')?.getAttribute('src').startsWith('data:image/png'));
+assert('Reject unsafe link',!el.querySelector('a').hasAttribute('href'));
+assert('Remove empty paragraphs',[...el.querySelectorAll('p')].every(p=>p.textContent.trim()));
+const quoted=renderMailBody({html:'<p>Hello team</p><p>From: A</p><p>Sent: Monday</p><p>To: B</p><p>Subject: History</p><p>Important context</p>'});
+assert('Preserve text before quoted history',quoted.textContent.includes('Hello team'));
+const inline=renderMailBody({html:'<hr><b>From:</b> Staff<br><b>Sent:</b> Monday<br><b>To:</b> Reader<br><b>Subject:</b> Event<br><div>Actual body</div>'});
+assert('Remove inline forwarding header',inline.textContent==='Actual body');
+document.querySelector('h1').textContent='All checks passed';
+}catch(e){document.querySelector('h1').textContent='Check failed: '+e.message;}
+document.querySelector('#result').textContent=checks.join('\n');
+</script>
