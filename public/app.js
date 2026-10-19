@@ -261,7 +261,12 @@ async function prepareBriefs(rows,onUpdate,isCurrent,opts={}){
   };
   await Promise.all(Array.from({length:Math.max(1,opts.concurrency||1)},worker));
 }
-function briefFallback(m){return m.briefError?`<p class="quality">${local('详细摘要暂未生成，请确认邮箱连接后刷新重试。可点击邮件查看原文。','詳細摘要暫未產生，請確認電郵連接後重新整理。可點擊郵件查看原文。','Detailed summary unavailable. Check your mailbox connection and refresh to retry. Open the email to read the original.')}</p>`:briefContent(m);}
+function briefFallback(m){
+  if(m.briefError)return `<p class="quality">${local('详细摘要暂未生成，请确认邮箱连接后刷新重试。可点击邮件查看原文。','詳細摘要暫未產生，請確認電郵連接後重新整理。可點擊郵件查看原文。','Detailed summary unavailable. Check your mailbox connection and refresh to retry. Open the email to read the original.')}</p>`;
+  // 如果有本地化摘要，先显示它，而不是卡在"正在整理"
+  if(m.summary)return `<p class="mail-summary-preview" data-user-content>${esc(m.summary)}</p>`;
+  return briefContent(m);
+}
 function mailCard(m){
   return `<article class="mail-card" data-open-mail="${encodeURIComponent(m.id)}" tabindex="0" role="button"><div class="mail-card-head"><div class="meta"><span class="badge ${m.category===1?'high':''}">${esc(m.brief?.topic||local('待整理','待整理','Pending summary'))}</span><span>${esc(fmt(m.received))}</span></div><button class="icon-delete" data-delete-mail="${encodeURIComponent(m.id)}" aria-label="${esc(tx('deleteMail'))}">${esc(tx('delete'))}</button></div><h2>${esc(m.brief?.title||m.subject.replace(/^(?:(?:fw|fwd|re)\s*:\s*)+/i,''))}</h2><div class="sender">${esc(tx('originalSender'))} ${esc(m.sender)}<br>${esc(tx('source'))} ${esc(m.origin)}</div>${m.brief?briefContent(m):briefFallback(m)}</article>`;
 }
@@ -272,6 +277,140 @@ function bindMailList(root){
   });
   root.querySelectorAll('[data-delete-mail]').forEach(b=>b.onclick=async e=>{e.stopPropagation();if(!confirm(tx('confirmDeleteMail')))return;b.disabled=true;try{await api('messages/'+b.dataset.deleteMail,{method:'DELETE',body:{}});await loadMail();toast(tx('mailDeleted'));}catch(err){toast(err.message);b.disabled=false;}});
 }
+// ---------- 邮件正文清理与美化 ----------
+// 1. 去掉 "Click here<...> if you cannot see the image"，把图片直接渲染出来
+// 2. 把 [描述<url>] 或 描述<url> 转为超链接
+// 3. 裸 URL 转为简洁超链接
+function cleanMailBody(body){
+  if(!body) return '';
+  let html = String(body);
+  // 先转义 HTML，防止 XSS（后续我们会有意插入的标签用占位符保护）
+  const placeholders = [];
+  const protect = (s) => { placeholders.push(s); return `\u0000${placeholders.length-1}\u0000`; };
+
+  // 1. 处理 "Click here<url> if you cannot see the image." → 直接渲染图片
+  //    匹配: Click here<https://...> if you cannot see the image.
+  html = html.replace(/Click here<([^>]+)>\s*if you cannot see the image\.?/gi, (m, url) => {
+    url = url.trim();
+    if (/\.(png|jpe?g|gif|webp|svg)(\?|#|$)/i.test(url)) {
+      return protect(`<img src="${url}" alt="邮件图片" class="mail-body-img" loading="lazy" />`);
+    }
+    return protect(`<a href="${url}" target="_blank" rel="noopener">查看图片</a>`);
+  });
+
+  // 2. 处理 [描述<url>] 格式 → 超链接（描述为文本，url 为 href）
+  html = html.replace(/\[([^\]<]+)<(https?:\/\/[^>]+)>\]/g, (m, desc, url) => {
+    desc = desc.trim(); url = url.trim();
+    // 如果描述本身就是 URL，则用简化显示
+    const display = /^https?:\/\//.test(desc) ? shortenUrl(desc) : desc;
+    return protect(`<a href="${url}" target="_blank" rel="noopener">${display}</a>`);
+  });
+
+  // 3. 处理 描述<url> 格式（无方括号）→ 超链接
+  //    注意：避免匹配到已经处理过的，以及 email 地址
+  html = html.replace(/([^\s<>\[\]]+?)<(https?:\/\/[^>\s]+)>/g, (m, desc, url) => {
+    desc = desc.trim(); url = url.trim();
+    if (/^https?:\/\//.test(desc)) return m; // 描述本身是 URL，跳过（后面统一处理）
+    // 如果描述是 email 地址，保留原样
+    if (/^[^@\s]+@[^@\s]+$/.test(desc)) return m;
+    return protect(`<a href="${url}" target="_blank" rel="noopener">${desc}</a>`);
+  });
+
+  // 4. 转义剩余的 HTML
+  html = esc(html);
+
+  // 5. 恢复占位符（我们插入的安全 HTML）
+  html = html.replace(/\u0000(\d+)\u0000/g, (m, i) => placeholders[parseInt(i)]);
+
+  // 6. 处理剩余的裸 URL → 简洁超链接（带 data-bare-link 标记，后续异步增强）
+  //    先保护已有的 <a> 标签，避免重复处理
+  const linkPlaceholders = [];
+  html = html.replace(/<a\s[^>]*>.*?<\/a>/gs, (m) => {
+    linkPlaceholders.push(m);
+    return `\u0001${linkPlaceholders.length-1}\u0001`;
+  });
+  html = html.replace(/(https?:\/\/[^\s<>"']+)/g, (url) => {
+    // 跳过图片 URL（已在步骤1处理）
+    if (/\.(png|jpe?g|gif|webp|svg)(\?|#|$)/i.test(url)) {
+      return `<img src="${url}" alt="邮件图片" class="mail-body-img" loading="lazy" />`;
+    }
+    // 标记为裸链接，前端会异步获取 AI 总结替换显示文本
+    return `<a href="${url}" target="_blank" rel="noopener" data-bare-link="${esc(url)}">${shortenUrl(url)}</a>`;
+  });
+  html = html.replace(/\u0001(\d+)\u0001/g, (m, i) => linkPlaceholders[parseInt(i)]);
+
+  // 7. 换行转 <br>，段落之间保留空行
+  html = html.replace(/\n{3,}/g, '\n\n');
+  html = html.replace(/\n/g, '<br>');
+
+  return html;
+}
+
+function shortenUrl(url){
+  try{
+    const u = new URL(url);
+    let path = u.pathname;
+    // 太长的路径截断
+    if (path.length > 30) path = path.slice(0, 27) + '…';
+    // 去掉追踪参数
+    return u.hostname.replace(/^www\./, '') + (path === '/' ? '' : path);
+  }catch{
+    return url.length > 40 ? url.slice(0, 37) + '…' : url;
+  }
+}
+
+// 异步增强裸链接：用 AI 总结替换显示文本
+// 只处理没有描述文字的裸 URL（data-bare-link 标记的）
+const linkSummaryCache = new Map();
+async function enhanceBareLinks(container){
+  if(!container) return;
+  const links = container.querySelectorAll('a[data-bare-link]');
+  for(const link of links){
+    const url = link.dataset.bareLink;
+    if(!url || link.dataset.enhanced) continue;
+    link.dataset.enhanced = '1';
+    try{
+      if(linkSummaryCache.has(url)){
+        const summary = linkSummaryCache.get(url);
+        if(summary) link.textContent = summary;
+        continue;
+      }
+      const result = await api('mail/link-summary', {method: 'POST', body: {url}});
+      if(result?.summary){
+        linkSummaryCache.set(url, result.summary);
+        link.textContent = result.summary;
+      }
+    }catch{
+      // 失败则保留原来的简化 URL 显示
+    }
+  }
+}
+
+// 直观的发件/收件显示：从哪个部门 → 到谁
+function formatMailFromTo(detail){
+  const zh = detail.chinese || detail.display || {};
+  const en = detail.english || {};
+  // 发件人：优先用本地化的部门名
+  const fromDept = zh.sender || '';
+  // 收件人：用后端返回的 recipients
+  let toText = '';
+  const recipients = en.recipients || [];
+  if(recipients.length){
+    // 如果收件人很多，显示"全体"或数量
+    if(recipients.length > 3){
+      toText = local(`全体收件人（${recipients.length}人）`,`全體收件人（${recipients.length}人）`,`All recipients (${recipients.length})`);
+    }else{
+      toText = recipients.map(r => r.name || r.address).join('、');
+    }
+  }else{
+    // fallback：从正文 To: 头解析
+    const body = en.body || '';
+    const toMatch = String(body).match(/^To:\s*(.+)$/mi);
+    if(toMatch) toText = toMatch[1].trim();
+  }
+  return { from: fromDept, to: toText };
+}
+
 async function openMailDetail(id){
   const dialog=$('#mail-detail-dialog');if(!dialog)return;
   $('#mail-detail-title').textContent=tx('mailDetail');
@@ -283,20 +422,32 @@ async function openMailDetail(id){
     const zh=detail.chinese||detail.display;
     $('#mail-detail-meta').innerHTML=`<span class="badge">${esc(tx(categoryKey(detail.category)))}</span><span>${esc(fmt(detail.received))}</span>`;
     if(detail.translationEnabled&&zh){
-      $('#mail-detail-zh').innerHTML=`<h3 data-user-content>${esc(detail.display?.brief?.title||zh.subject)}</h3><p class="sender">${esc(tx('originalSender'))} ${esc(zh.sender)}<br>${esc(tx('source'))} ${esc(zh.origin)}</p>${detail.display?.brief?briefContent(detail.display):`<p data-user-content>${esc(zh.summary)}</p><p>${esc(zh.action||'')}</p>`}`;
+      // 中文页：显示英文原文的完整逐句翻译（非摘要）
+      const fullBody = zh.fullBody || '';
+      const fromTo = formatMailFromTo(detail);
+      const fromToHtml = (fromTo.from || fromTo.to) ?
+        `<p class="mail-fromto"><span class="mail-from">${esc(fromTo.from || '')}</span>${fromTo.from && fromTo.to ? '<span class="mail-arrow">→</span>' : ''}<span class="mail-to">${esc(fromTo.to || '')}</span></p>` : '';
+      $('#mail-detail-zh').innerHTML=`<h3 data-user-content>${esc(detail.display?.brief?.title||zh.subject)}</h3>${fromToHtml}${fullBody?`<div class="mail-body" data-user-content>${cleanMailBody(fullBody)}</div>`:`<p data-user-content>${esc(zh.summary)}</p><p>${esc(zh.action||'')}</p>`}`;
       $$('[data-mail-pane]').forEach(b=>b.classList.toggle('hidden',false));
     }else{
       $('#mail-detail-zh').innerHTML=`<h3 data-user-content>${esc(detail.display?.brief?.title||detail.display?.subject||detail.english?.subject||'')}</h3>${detail.display?.brief?briefContent(detail.display):`<p data-user-content>${esc(detail.display?.summary||'')}</p>`}`;
       const zhTab=document.querySelector('[data-mail-pane="zh"]');if(zhTab)zhTab.classList.add('hidden');
     }
     const en=detail.english||{};
-    $('#mail-detail-en').innerHTML=`<h3 data-user-content>${esc(en.subject||'')}</h3><p data-user-content>${esc(en.body||'')}</p>${detail.englishSummaryEnabled&&en.summary?`<p class="quality">${esc(en.summary)}</p>`:''}`;
+    // 英文页：清理正文（去图片提示、渲染图片、美化链接），直观显示发件/收件
+    const fromTo = formatMailFromTo(detail);
+    const fromToHtml = (fromTo.from || fromTo.to) ?
+      `<p class="mail-fromto"><span class="mail-from">${esc(fromTo.from || '')}</span>${fromTo.from && fromTo.to ? '<span class="mail-arrow">→</span>' : ''}<span class="mail-to">${esc(fromTo.to || '')}</span></p>` : '';
+    $('#mail-detail-en').innerHTML=`<h3 data-user-content>${esc(en.subject||'')}</h3>${fromToHtml}<div class="mail-body" data-user-content>${cleanMailBody(en.body||'')}</div>${detail.englishSummaryEnabled&&en.summary?`<p class="quality">${esc(en.summary)}</p>`:''}`;
     const link=$('#mail-detail-outlook');
     if(link){if(/^https:\/\/(?:outlook\.live\.com|outlook\.office\.com|outlook\.office365\.com)\//.test(detail.url||'')){link.hidden=false;link.href=detail.url;link.textContent=tx('viewOriginal');}else{link.hidden=true;link.removeAttribute('href');}}
     const showZh=detail.translationEnabled!==false&&!!detail.chinese;
     document.querySelectorAll('[data-mail-pane]').forEach(b=>b.classList.toggle('selected',b.dataset.mailPane===(showZh?'zh':'en')));
     $('#mail-detail-zh').classList.toggle('hidden',!showZh);
     $('#mail-detail-en').classList.toggle('hidden',showZh);
+    // 异步增强裸链接：用 AI 总结替换无描述链接的显示文本
+    enhanceBareLinks($('#mail-detail-zh')).catch(()=>{});
+    enhanceBareLinks($('#mail-detail-en')).catch(()=>{});
   }catch(e){$('#mail-detail-zh').textContent=e.message;}
 }
 let currentMailQuery='';

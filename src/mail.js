@@ -400,17 +400,112 @@ export {plain as plainBody};
 export async function fetchMessageOriginal(env,userId,messageId){
   const row=await env.DB.prepare('SELECT * FROM messages WHERE id=? AND user_id=?').bind(messageId,userId).first();
   if(!row)return null;
-  let englishSubject=row.subject,englishBody='',originalAvailable=false;
+  let englishSubject=row.subject,englishBody='',originalAvailable=false,recipients=[];
   if(!String(messageId).startsWith('shortcut:')&&await outlookConnection(env,userId)){
     try{
-      const m=await graph(env,userId,'me/messages/'+encodeURIComponent(messageId)+'?$select=id,subject,body,bodyPreview,webLink');
+      const m=await graph(env,userId,'me/messages/'+encodeURIComponent(messageId)+'?$select=id,subject,body,bodyPreview,webLink,toRecipients,from,sender');
       englishSubject=m.subject||englishSubject;
       englishBody=plain(m).slice(0,12000);originalAvailable=!!englishBody;
+      // 提取收件人信息，用于直观显示
+      recipients=(m.toRecipients||[]).map(r=>({
+        name:r.emailAddress?.name||'',
+        address:r.emailAddress?.address||''
+      })).filter(r=>r.address);
       if(m.webLink&&!row.url)await env.DB.prepare('UPDATE messages SET url=? WHERE id=? AND user_id=?').bind(m.webLink,messageId,userId).run();
       row.url=m.webLink||row.url;
     }catch{englishBody=englishBody||'';}
   }
   if(!englishBody)englishBody=String(row.summary||'');
-  return {row,englishSubject,englishBody,originalAvailable};
+  return {row,englishSubject,englishBody,originalAvailable,recipients};
+}
+
+// 链接总结：抓取 URL 内容，用 AI 总结这个链接是干什么的
+// 用于邮件中没有描述文字的裸链接
+export async function summarizeLink(env, locale, url){
+  if(!url || !/^https?:\/\//.test(url)) return null;
+  // 只允许 http/https，防 SSRF：禁止内网地址
+  try{
+    const u = new URL(url);
+    const host = u.hostname.toLowerCase();
+    if(host === 'localhost' || host.startsWith('127.') || host.startsWith('10.') ||
+       host.startsWith('192.168.') || /^172\.(1[6-9]|2[0-9]|3[01])\./.test(host) ||
+       host === '[::1]') return null;
+  }catch{ return null; }
+
+  const cacheKey = `linksum:v1:${locale}:${await hash(url)}`;
+  try{
+    const cached = await getKV(env, cacheKey);
+    if(cached) return cached;
+  }catch{}
+
+  if(env.ENABLE_AI !== 'true' || !env.AI) return null;
+
+  try{
+    // 抓取页面（只取前 8KB，避免大文件）
+    const resp = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CampusCompanion/1.0)' },
+      signal: AbortSignal.timeout(15000)
+    });
+    if(!resp.ok) return null;
+    const contentType = resp.headers.get('content-type') || '';
+    if(!contentType.includes('text/html') && !contentType.includes('text/plain')) return null;
+
+    const html = await resp.text();
+    // 提取 title 和 meta description，以及正文前 2000 字符
+    const title = (html.match(/<title[^>]*>([^<]+)<\/title>/i) || [])[1] || '';
+    const desc = (html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i) || [])[1] || '';
+    const body = html.replace(/<script[\s\S]*?<\/script>/gi, '')
+                     .replace(/<style[\s\S]*?<\/style>/gi, '')
+                     .replace(/<[^>]+>/g, ' ')
+                     .replace(/\s+/g, ' ')
+                     .trim()
+                     .slice(0, 2000);
+
+    const language = locale === 'zh-TW' ? '繁體中文' : locale === 'en' ? 'English' : '简体中文';
+    const out = await env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
+      messages: [
+        {role: 'system', content: `用${language}一句话（不超过30字）说明这个网页是干什么的。只返回这一句话，不要解释。`},
+        {role: 'user', content: `标题：${title}\n描述：${desc}\n正文：${body.slice(0,1000)}`}
+      ],
+      max_tokens: 200
+    });
+    const summary = typeof out.response === 'string' ? out.response.trim() : '';
+    if(summary){
+      await setKV(env, cacheKey, summary);
+      return summary;
+    }
+  }catch(e){
+    console.warn('link-summary-failed', e.message?.slice(0,100));
+  }
+  return null;
+}
+
+// 全文逐句翻译：把英文正文完整翻译成中文（非摘要）
+export async function translateFullBody(env,userId,locale,messageId,englishBody){
+  if(!englishBody||!englishBody.trim())return null;
+  const cacheKey=`fulltrans:v1:${locale}:${userId}:${await hash(messageId)}`;
+  try{
+    const cached=await getKV(env,cacheKey);
+    if(cached)return cached;
+  }catch{}
+  if(env.ENABLE_AI!=='true'||!env.AI)return null;
+  const language=locale==='zh-TW'?'Traditional Chinese (繁體中文)':'Simplified Chinese (简体中文)';
+  const scriptNote=locale==='zh-TW'
+    ?'必须使用繁體中文（香港/台灣用法），例如：學、會、們、這、個、來、時。绝对不要使用简体字。'
+    :'必须使用简体中文（大陆用法），例如：学、会、们、这、个、来、时。绝对不要使用繁體字。';
+  try{
+    const out=await env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast',{messages:[
+      {role:'system',content:`Translate the following email body into ${language}. ${scriptNote} Translate faithfully sentence by sentence, preserving paragraphs and structure. Do NOT summarize or omit content. Keep person names, institution names, dates, email addresses and URLs unchanged. Return only the translation, no explanations.`},
+      {role:'user',content:englishBody.slice(0,12000)}
+    ],max_tokens:4000});
+    const translation=typeof out.response==='string'?out.response.trim():JSON.stringify(out.response);
+    if(translation){
+      await setKV(env,cacheKey,translation);
+      return translation;
+    }
+  }catch(e){
+    console.warn('full-translation-failed', e.message?.slice(0,100));
+  }
+  return null;
 }
 

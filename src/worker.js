@@ -6,7 +6,7 @@ import { listMailSuggestions,reviewMailSuggestion } from './suggestions.js';
 import { validateTask } from './domain.js';
 import { normalizePresets } from '../public/reminder-logic.js';
 import { random,hash,verifyPassword,makePasswordHash,makeAnswerHash,verifyAnswer } from './security.js';
-import { getKV,setKV,startOAuth,finishOAuth,syncMail,reprocessMail,ingestForwardedEmail,ingestShortcutEmail,localizeMessages,outlookConnection,outlookConfigProblems,fetchMessageOriginal } from './mail.js';
+import { getKV,setKV,startOAuth,finishOAuth,syncMail,reprocessMail,ingestForwardedEmail,ingestShortcutEmail,localizeMessages,outlookConnection,outlookConfigProblems,fetchMessageOriginal,translateFullBody,summarizeLink } from './mail.js';
 import { applyPreferredNameToFields } from './names.js';
 import { normalizeDigestRecord } from './digest-format.js';
 import { scheduleTask,repeatTasks,deliver,makeDigest,enqueue } from './jobs.js';
@@ -241,18 +241,23 @@ async function routes(request,env){
     const aliasRules=await nameAliasRules(env,account.user_id,profile?.preferred_zh_name||'');
     const fetched=await fetchMessageOriginal(env,account.user_id,id);
     if(!fetched)return json({error:serverMessage('邮件不存在',uiLocale)},404);
-    const {row,englishSubject,englishBody}=fetched;
+    const {row,englishSubject,englishBody,recipients}=fetched;
     const wantZh=locale.startsWith('zh')&&prefs.translateZh!==false;
     const localizedRows=await localizeMessages(env,account.user_id,locale,[row],{allowAi:env.ENABLE_AI==='true',translate:wantZh||locale==='en',nameAliases:aliasRules});
     const localized=applyPreferredNameToFields(localizedRows[0]||row,aliasRules);
+    // 全文翻译：中文页显示英文原文的完整逐句翻译
+    let fullTranslation=null;
+    if(wantZh&&englishBody){
+      try{fullTranslation=await translateFullBody(env,account.user_id,locale,id,englishBody);}catch{}
+    }
     return json({
       id:row.id,
       received:row.received,
       category:row.category,
       url:row.url||'',
       quality:localized.quality||row.quality,
-      chinese:wantZh?{subject:localized.subject,sender:localized.sender,origin:localized.origin,summary:localized.summary,action:localized.action}:null,
-      english:{subject:englishSubject,body:englishBody,summary:prefs.englishSummary&&locale.startsWith('zh')?String(row.summary||''):undefined},
+      chinese:wantZh?{subject:localized.subject,sender:localized.sender,origin:localized.origin,summary:localized.summary,action:localized.action,fullBody:fullTranslation}:null,
+      english:{subject:englishSubject,body:englishBody,recipients:recipients||[],summary:prefs.englishSummary&&locale.startsWith('zh')?String(row.summary||''):undefined},
       display:{...localized,brief:await readBrief(env,account.user_id,locale,id)},
       translationEnabled:wantZh,
       englishSummaryEnabled:prefs.englishSummary===true&&locale.startsWith('zh')
@@ -260,6 +265,13 @@ async function routes(request,env){
   }
   if(messageId&&method==='DELETE'){await env.DB.batch([env.DB.prepare('DELETE FROM messages WHERE id=? AND user_id=?').bind(decodeURIComponent(messageId),account.user_id),env.DB.prepare('DELETE FROM mail_suggestions WHERE message_id=? AND user_id=?').bind(decodeURIComponent(messageId),account.user_id)]);return json({ok:true});}
   if(path==='/api/mail/reprocess'&&method==='POST')return json(await reprocessMail(env,account.user_id,2));
+  if(path==='/api/mail/link-summary'&&method==='POST'){
+    const data=await body(request),url=String(data.url||'').trim();
+    if(!url||!/^https?:\/\//.test(url))return json({error:'无效链接'},400);
+    const profile=await env.DB.prepare('SELECT locale FROM users WHERE id=?').bind(account.user_id).first();
+    const summary=await summarizeLink(env,profile?.locale||'zh-CN',url);
+    return json({summary:summary||null});
+  }
   if(path==='/api/digests'){
     const prefix='digest:'+account.user_id+':%';
     const rows=(await env.DB.prepare("SELECT value FROM kv WHERE key LIKE ? AND value!='quiet' ORDER BY key DESC LIMIT 30").bind(prefix).all()).results;
