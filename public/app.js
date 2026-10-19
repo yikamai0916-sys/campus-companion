@@ -666,7 +666,6 @@ async function loadSettingsProfile(){
             <span class="qq-name" id="qq-name-display" data-user-content>${esc(displayName)}</span>
             <button type="button" class="qq-edit-btn" id="qq-name-edit-btn" aria-label="${esc(local('修改昵称','修改暱稱','Edit nickname'))}">🖊️</button>
           </div>
-          <p class="qq-id">ID: ${esc(String(status.account.userCode||'').toLowerCase()||'--')}</p>
         </div>
       </div>
       <form id="profile-form" class="qq-profile-form">
