@@ -390,8 +390,10 @@ async function enhanceBareLinks(container){
 function formatMailFromTo(detail){
   const zh = detail.chinese || detail.display || {};
   const en = detail.english || {};
-  // 发件人：优先用本地化的部门名
-  const fromDept = zh.sender || '';
+  // 发件人：优先用本地化的部门名，去掉 <email> 部分
+  let fromDept = zh.sender || '';
+  // "职业新闻 <career@ln.edu.hk>" → "职业新闻"
+  fromDept = fromDept.replace(/\s*<[^>]+>\s*/g, '').trim();
   // 收件人：用后端返回的 recipients
   let toText = '';
   const recipients = en.recipients || [];
