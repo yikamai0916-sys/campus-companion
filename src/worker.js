@@ -239,9 +239,9 @@ async function routes(request,env){
     const prefs=parseMailPreferences(profile?.mail_preferences);
     const locale=profile?.locale||'zh-CN';
     const aliasRules=await nameAliasRules(env,account.user_id,profile?.preferred_zh_name||'');
-    const fetched=await fetchMessageOriginal(env,account.user_id,id);
+    const fetched=await fetchMessageOriginal(env,account.user_id,id,{rich:true});
     if(!fetched)return json({error:serverMessage('邮件不存在',uiLocale)},404);
-    const {row,englishSubject,englishBody}=fetched;
+    const {row,englishSubject,englishBody,englishHtml,images}=fetched;
     const wantZh=locale.startsWith('zh')&&prefs.translateZh!==false;
     const localizedRows=await localizeMessages(env,account.user_id,locale,[row],{allowAi:env.ENABLE_AI==='true',translate:wantZh||locale==='en',nameAliases:aliasRules});
     const localized=applyPreferredNameToFields(localizedRows[0]||row,aliasRules);
@@ -252,7 +252,7 @@ async function routes(request,env){
       url:row.url||'',
       quality:localized.quality||row.quality,
       chinese:wantZh?{subject:localized.subject,sender:localized.sender,origin:localized.origin,summary:localized.summary,action:localized.action}:null,
-      english:{subject:englishSubject,body:englishBody,summary:prefs.englishSummary&&locale.startsWith('zh')?String(row.summary||''):undefined},
+      english:{subject:englishSubject,body:englishBody,html:englishHtml,images,summary:prefs.englishSummary&&locale.startsWith('zh')?String(row.summary||''):undefined},
       display:{...localized,brief:await readBrief(env,account.user_id,locale,id)},
       translationEnabled:wantZh,
       englishSummaryEnabled:prefs.englishSummary===true&&locale.startsWith('zh')
@@ -313,7 +313,7 @@ export default {
   async fetch(request,env){
     const uiLocale=normalizeLocale(request.headers.get('X-Locale'));
     let response;try{response=await routes(request,env);}catch(error){response=json({error:serverMessage(error.message||'暂时无法处理，请重试',uiLocale)},Number(error.status)||400);}
-    const h=new Headers(response.headers);h.set('X-Content-Type-Options','nosniff');h.set('Referrer-Policy','same-origin');h.set('X-Frame-Options','DENY');h.set('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+    const h=new Headers(response.headers);h.set('X-Content-Type-Options','nosniff');h.set('Referrer-Policy','same-origin');h.set('X-Frame-Options','DENY');h.set('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     if(new URL(request.url).pathname.startsWith('/api/'))h.set('Cache-Control','no-store');
     return new Response(response.body,{status:response.status,headers:h});
   },
