@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {cleanSubject,validateBrief,attachBriefs} from '../src/mail-briefs.js';
+import {cleanSubject,validateBrief,attachBriefs,parseBriefResponse} from '../src/mail-briefs.js';
 test('forward and reply chains are removed, internal colons preserved',()=>{
  assert.equal(cleanSubject('FW: Re: Fwd: Budget: update'),'Budget: update');
 });
@@ -16,4 +16,8 @@ test('brief cache is scoped to account and language',async()=>{
  await attachBriefs(env,'bob','en',[{id:'same',subject:'FW: update'}]);
  await attachBriefs(env,'alice','zh-CN',[{id:'same',subject:'FW: update'}]);
  assert.equal(new Set(keys).size,3);
+});
+
+test('AI responses support structured objects and fenced JSON',()=>{
+ const value={title:'Update'};assert.equal(parseBriefResponse(value),value);assert.deepEqual(parseBriefResponse('```json\n'+JSON.stringify(value)+'\n```'),value);
 });

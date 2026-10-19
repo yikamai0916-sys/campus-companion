@@ -213,7 +213,7 @@ function briefContent(m,compact=false){
   const b=m.brief;
   if(!b)return `<p class="quality">${esc(local('正在依据原文整理详细要点；若未生成，可稍后重试。','正在依據原文整理詳細重點；若未產生，可稍後重試。','Preparing detailed notes from the original email. Retry later if unavailable.'))}</p>`;
   const points=compact?b.points.slice(0,2):b.points;
-  return `<ul class="mail-points">${points.map(p=>`<li data-user-content>${esc(p.text)}</li>`).join('')}</ul>${b.actions.length?`<div class="brief-actions"><strong>${local('需要处理','需要處理','Action needed')}</strong><ul>${b.actions.map(p=>`<li data-user-content>${esc(p.text)}</li>`).join('')}</ul></div>`:''}`;
+  return `<ul class="mail-points">${points.map(p=>`<li data-user-content>${esc(p.text)}</li>`).join('')}</ul>${b.actions.length?`<div class="brief-actions"><strong>${local('邮件中的请求','郵件中的請求','Requests in this email')}</strong><ul>${b.actions.map(p=>`<li data-user-content>${esc(p.text)}</li>`).join('')}</ul></div>`:''}`;
 }
 async function prepareBriefs(rows,onUpdate,isCurrent){
   const missing=rows.filter(m=>!m.brief);
@@ -328,7 +328,7 @@ async function loadDigests(opts={}){
       const items=Array.isArray(d.items)?d.items:[];
       const actionCount=items.filter(m=>m.brief?.actions?.length).length;
       const pendingCount=items.filter(m=>!m.brief).length;
-      const overview=`<p class="digest-overview">${local('本时段收到','本時段收到','Received')} <strong>${items.length}</strong> ${local('封邮件','封郵件','emails')} · ${local('需要处理','需要處理','Action needed')} <strong>${actionCount}</strong>${pendingCount?` · ${pendingCount} ${local('封待整理','封待整理','awaiting summary')}`:''}</p>`;
+      const overview=`<p class="digest-overview">${local('本时段收到','本時段收到','Received')} <strong>${items.length}</strong> ${local('封邮件','封郵件','emails')} · ${local('邮件中的请求','郵件中的請求','Requests in this email')} <strong>${actionCount}</strong>${pendingCount?` · ${pendingCount} ${local('封待整理','封待整理','awaiting summary')}`:''}</p>`;
       const ordered=[...items].sort((a,b)=>Number(!!b.brief?.actions?.length)-Number(!!a.brief?.actions?.length));
       const list=items.length?`<div class="digest-day">${ordered.map(digestItemButton).join('')}</div>`:`<p class="body-text" data-user-content>${esc(d.body||tx('noDigestItems'))}</p>`;
       return `<article class="mail-card digest-card"><div class="meta"><span class="badge">${esc(fmt(d.created))}</span><span>${items.length||0} ${local('封','封','mails')}</span></div><h2>${esc(d.title)}</h2>${overview}<details class="digest-expand" open><summary>${esc(local('展开摘要','展開摘要','Read summary'))}<span aria-hidden="true">＋</span></summary>${list}</details></article>`;
