@@ -15,26 +15,26 @@ const tx=key=>I18N[locale]?.[key]||I18N['zh-CN'][key]||key;
 Object.assign(I18N['zh-CN'],{
   originalSender:'原始发件人：',source:'来源：',viewOriginal:'查看原邮件 ↗',deleteMail:'删除邮件记录',confirmDeleteMail:'确定删除这条邮件摘要吗？原 Outlook 邮件不会被删除。',mailDeleted:'已删除邮件摘要',mailEmptyTitle:'邮件摘要会在这里汇合',mailEmptyText:'连接 Outlook 后，学校转发邮件会自动进入这里。成功提交回执和纯宗教内容会自动略过。',
   cat1:'奖学金 / 金钱 / ITSC',cat2:'课程与作业',cat3:'学校活动',cat4:'课程与 ILP 推荐',
-  outlookMail:'关联邮箱',schoolEmail:'学校邮箱',synced:'同步完成',outlookNotConnected:'尚未连接 Outlook',reconnect:'重新连接',connectOutlook:'连接 Outlook',accountSecurity:'账号安全',currentPassword:'当前密码',newPassword:'新密码（至少 12 个字符）',changePassword:'修改密码',customQuestion:'自定义问题',answer:'答案',saveSecurity:'保存密保',signOutHere:'退出账号',signOutHint:'退出后会返回主页。再次访问网站需要重新登录，分享链接也不会显示你的私人页面。',
+  outlookMail:'关联邮箱',schoolEmail:'学校邮箱',synced:'同步完成',outlookNotConnected:'尚未连接 Outlook',reconnect:'重新连接',connectOutlook:'连接 Outlook',accountSecurity:'账号安全',currentPassword:'当前密码',newPassword:'新密码（至少 12 个字符）',changePassword:'修改密码',customQuestion:'自定义问题',answer:'答案',saveSecurity:'保存密保',signOutHere:'退出账号',signOutHint:'退出当前账号并返回首页。',
   avatarType:'PNG、JPEG、WEBP 或 GIF',avatarPreview:'头像预览',profileSaved:'个人资料已保存',passwordSaved:'密码已更新',securitySaved:'密保问题已保存',avatarInvalid:'头像必须是 PNG、JPEG、WEBP 或 GIF',
   taskAdded:'添加待办',taskEdited:'编辑待办',taskTitle:'任务名称',taskSaved:'待办已保存',settingsTitle:'设置',settingsEyebrow:'管理你的账号与连接'
-  ,connectedAs:'已连接账号：',connectOutlookHint:'连接你接收学校转发邮件的个人 Outlook 邮箱。授权时请在 Microsoft 页面选择自己的账号；请勿连接学校邮箱。',outlookEmail:'要连接的 Outlook 邮箱',outlookSetupNeeded:'Outlook 授权尚未配置，请联系网站管理员。',disconnectOutlook:'断开 Outlook',disconnectOutlookHint:'断开后将停止读取此邮箱；已生成的邮件摘要和待办会保留。',confirmDisconnectOutlook:'确定断开此 Outlook 邮箱吗？之后可以随时重新连接。',outlookDisconnected:'Outlook 已断开',syncNow:'立即同步',syncing:'正在同步…',syncFinished:'同步完成：新增 {count} 封学校邮件',syncSchoolOnly:'仅导入学校转发邮件；直接发往个人 Outlook 的普通邮件不会显示。'
+  ,connectedAs:'已连接账号：',connectOutlookHint:'连接你接收学校转发邮件的个人 Outlook 邮箱。授权时请在 Microsoft 页面选择自己的账号；请勿连接学校邮箱。',outlookEmail:'要连接的 Outlook 邮箱',outlookSetupNeeded:'Outlook 授权尚未配置，请联系网站管理员。',disconnectOutlook:'断开 Outlook',disconnectOutlookHint:'断开连接不会删除已有摘要和待办。',confirmDisconnectOutlook:'确定断开此 Outlook 邮箱吗？之后可以随时重新连接。',outlookDisconnected:'Outlook 已断开',syncNow:'立即同步',syncing:'正在同步…',syncFinished:'同步完成：新增 {count} 封学校邮件',syncSchoolOnly:'当前同步范围：学校转发邮件。'
 });
 Object.assign(I18N['zh-TW'],{
   originalSender:'原始發件人：',source:'來源：',viewOriginal:'查看原郵件 ↗',deleteMail:'刪除郵件記錄',confirmDeleteMail:'確定刪除這則郵件摘要嗎？原 Outlook 郵件不會被刪除。',mailDeleted:'已刪除郵件摘要',mailEmptyTitle:'郵件摘要會在這裡匯合',mailEmptyText:'連接 Outlook 後，學校轉發郵件會自動進入這裡。成功提交回執和純宗教內容會自動略過。',
   cat1:'獎學金 / 金錢 / ITSC',cat2:'課程與作業',cat3:'學校活動',cat4:'課程與 ILP 推薦',
-  outlookMail:'關聯電郵',schoolEmail:'學校電郵',synced:'同步完成',outlookNotConnected:'尚未連接 Outlook',reconnect:'重新連接',connectOutlook:'連接 Outlook',accountSecurity:'帳號安全',currentPassword:'目前密碼',newPassword:'新密碼（至少 12 個字元）',changePassword:'修改密碼',customQuestion:'自訂問題',answer:'答案',saveSecurity:'儲存密保',signOutHere:'登出帳號',signOutHint:'登出後會返回主頁。再次存取網站需要重新登入，分享連結也不會顯示你的私人頁面。',
+  outlookMail:'關聯電郵',schoolEmail:'學校電郵',synced:'同步完成',outlookNotConnected:'尚未連接 Outlook',reconnect:'重新連接',connectOutlook:'連接 Outlook',accountSecurity:'帳號安全',currentPassword:'目前密碼',newPassword:'新密碼（至少 12 個字元）',changePassword:'修改密碼',customQuestion:'自訂問題',answer:'答案',saveSecurity:'儲存密保',signOutHere:'登出帳號',signOutHint:'登出目前帳號並返回首頁。',
   avatarType:'PNG、JPEG、WEBP 或 GIF',avatarPreview:'頭像預覽',profileSaved:'個人資料已儲存',passwordSaved:'密碼已更新',securitySaved:'密保問題已儲存',avatarInvalid:'頭像必須是 PNG、JPEG、WEBP 或 GIF',
   taskAdded:'新增待辦',taskEdited:'編輯待辦',taskTitle:'任務名稱',taskSaved:'待辦已儲存',settingsTitle:'設定',settingsEyebrow:'管理你的帳號與連接'
-  ,connectedAs:'已連接帳號：',connectOutlookHint:'連接你接收學校轉發郵件的個人 Outlook 電郵。授權時請在 Microsoft 頁面選擇自己的帳號；請勿連接學校電郵。',outlookEmail:'要連接的 Outlook 電郵',outlookSetupNeeded:'Outlook 授權尚未設定，請聯絡網站管理員。',disconnectOutlook:'中斷 Outlook 連接',disconnectOutlookHint:'中斷後將停止讀取此電郵；已產生的郵件摘要和待辦會保留。',confirmDisconnectOutlook:'確定中斷此 Outlook 電郵嗎？之後可以隨時重新連接。',outlookDisconnected:'Outlook 已中斷連接',syncNow:'立即同步',syncing:'正在同步…',syncFinished:'同步完成：新增 {count} 封學校郵件',syncSchoolOnly:'僅匯入學校轉發郵件；直接寄往個人 Outlook 的一般郵件不會顯示。'
+  ,connectedAs:'已連接帳號：',connectOutlookHint:'連接你接收學校轉發郵件的個人 Outlook 電郵。授權時請在 Microsoft 頁面選擇自己的帳號；請勿連接學校電郵。',outlookEmail:'要連接的 Outlook 電郵',outlookSetupNeeded:'Outlook 授權尚未設定，請聯絡網站管理員。',disconnectOutlook:'中斷 Outlook 連接',disconnectOutlookHint:'中斷連接不會刪除已有摘要和待辦。',confirmDisconnectOutlook:'確定中斷此 Outlook 電郵嗎？之後可以隨時重新連接。',outlookDisconnected:'Outlook 已中斷連接',syncNow:'立即同步',syncing:'正在同步…',syncFinished:'同步完成：新增 {count} 封學校郵件',syncSchoolOnly:'目前同步範圍：學校轉發郵件。'
 });
 Object.assign(I18N.en,{
   originalSender:'Original sender:',source:'Source:',viewOriginal:'View original mail ↗',deleteMail:'Delete mail record',confirmDeleteMail:'Delete this mail summary? The original Outlook email will not be deleted.',mailDeleted:'Mail summary deleted',mailEmptyTitle:'Mail summaries appear here',mailEmptyText:'Forwarded school mail appears here after Outlook is connected. Submission receipts and purely religious mail are skipped.',
   cat1:'Scholarships / money / ITSC',cat2:'Courses & assignments',cat3:'School activities',cat4:'Course & ILP recommendations',
-  outlookMail:'Connected email',schoolEmail:'School email',synced:'Synced',outlookNotConnected:'Outlook is not connected',reconnect:'Reconnect',connectOutlook:'Connect Outlook',accountSecurity:'Account security',currentPassword:'Current password',newPassword:'New password (12 characters minimum)',changePassword:'Change password',customQuestion:'Custom question',answer:'Answer',saveSecurity:'Save security question',signOutHere:'Sign out',signOutHint:'You will return to the home page. Signing in is required again, and shared links will not reveal your private pages.',
+  outlookMail:'Connected email',schoolEmail:'School email',synced:'Synced',outlookNotConnected:'Outlook is not connected',reconnect:'Reconnect',connectOutlook:'Connect Outlook',accountSecurity:'Account security',currentPassword:'Current password',newPassword:'New password (12 characters minimum)',changePassword:'Change password',customQuestion:'Custom question',answer:'Answer',saveSecurity:'Save security question',signOutHere:'Sign out',signOutHint:'Sign out of this account and return home.',
   avatarType:'PNG, JPEG, WEBP, or GIF',avatarPreview:'Avatar preview',profileSaved:'Profile saved',passwordSaved:'Password updated',securitySaved:'Security question saved',avatarInvalid:'Avatar must be PNG, JPEG, WEBP, or GIF',
   taskAdded:'Add task',taskEdited:'Edit task',taskTitle:'Task title',taskSaved:'Task saved',settingsTitle:'Settings',settingsEyebrow:'Manage your account and connections'
-  ,connectedAs:'Connected account:',connectOutlookHint:'Connect the personal Outlook mailbox that receives your forwarded school mail. Choose your own account on Microsoft’s page; do not connect your school mailbox.',outlookEmail:'Outlook email to connect',outlookSetupNeeded:'Outlook authorization is not configured. Please contact the site administrator.',disconnectOutlook:'Disconnect Outlook',disconnectOutlookHint:'Disconnecting stops reading this mailbox. Existing mail summaries and tasks remain.',confirmDisconnectOutlook:'Disconnect this Outlook mailbox? You can reconnect it at any time.',outlookDisconnected:'Outlook disconnected',syncNow:'Sync now',syncing:'Syncing…',syncFinished:'Sync complete: {count} new school email(s)',syncSchoolOnly:'Only school-forwarded email is imported. Ordinary personal email sent directly to Outlook is not shown.'
+  ,connectedAs:'Connected account:',connectOutlookHint:'Connect the personal Outlook mailbox that receives your forwarded school mail. Choose your own account on Microsoft’s page; do not connect your school mailbox.',outlookEmail:'Outlook email to connect',outlookSetupNeeded:'Outlook authorization is not configured. Please contact the site administrator.',disconnectOutlook:'Disconnect Outlook',disconnectOutlookHint:'Existing summaries and tasks are kept when you disconnect.',confirmDisconnectOutlook:'Disconnect this Outlook mailbox? You can reconnect it at any time.',outlookDisconnected:'Outlook disconnected',syncNow:'Sync now',syncing:'Syncing…',syncFinished:'Sync complete: {count} new school email(s)',syncSchoolOnly:'Sync scope: school-forwarded email.'
 });
 
 
@@ -45,12 +45,12 @@ Object.assign(I18N['zh-CN'],{outlookMissing:'当前缺少：',outlookSetupHelp:'
 Object.assign(I18N['zh-TW'],{outlookMissing:'目前缺少：',outlookSetupHelp:'連接器程式已就緒；部署者需依 docs/OUTLOOK_SETUP.md 註冊 Microsoft 應用程式並設定這些變數。'});
 Object.assign(I18N.en,{outlookMissing:'Missing configuration:',outlookSetupHelp:'The connector is implemented. The deployer must register a Microsoft app and configure these values using docs/OUTLOOK_SETUP.md.'});
 
-Object.assign(I18N['zh-CN'],{digests:'日报与提醒',digestEyebrow:'按你的关注词筛选',focusTerms:'关注词或主题',focusTermsHelp:'每行一个关注词。留空表示接收全部学校邮件；填写后，日报和晚间补充只提醒包含这些词的邮件。',digestHistoryEmpty:'尚未生成日报或晚间补充',digestHistoryHelp:'到设置中开启日报或晚间补充后，发送过的总结会保留在这里。'});
-Object.assign(I18N['zh-TW'],{digests:'日報與提醒',digestEyebrow:'依你的關注詞篩選',focusTerms:'關注詞或主題',focusTermsHelp:'每行一個關注詞。留空代表接收全部學校郵件；填寫後，日報和晚間補充只提醒包含這些詞的郵件。',digestHistoryEmpty:'尚未產生日報或晚間補充',digestHistoryHelp:'到設定中開啟日報或晚間補充後，已發送的總結會保留在這裡。'});
-Object.assign(I18N.en,{digests:'Daily digests & reminders',digestEyebrow:'Filtered by your focus terms',focusTerms:'Focus terms or topics',focusTermsHelp:'One term per line. Leave blank to receive all school mail. With terms entered, digests only notify you about matching mail.',digestHistoryEmpty:'No daily digests or evening additions yet',digestHistoryHelp:'Turn on a daily digest or evening addition in Settings. Sent summaries will appear here.'});
-Object.assign(I18N['zh-CN'],{preferredZhName:'偏好中文译名',preferredZhNameHelp:'用于邮件摘要与翻译中的你的中文姓名。留空则沿用自动翻译。',mailTranslateZh:'提供邮件中文翻译',mailEnglishSummary:'提供英文摘要',mailTranslateHelp:'仅中文界面显示。关闭翻译后，详情页不再生成中文正文翻译。',mailDetail:'邮件详情',mailChinese:'中文翻译',mailEnglish:'英文原文',openMail:'查看邮件',loadMoreMail:'加载更多邮件',noDigestItems:'这份日报没有可展示的邮件条目。'});
-Object.assign(I18N['zh-TW'],{preferredZhName:'偏好中文譯名',preferredZhNameHelp:'用於郵件摘要與翻譯中的你的中文姓名。留空則沿用自動翻譯。',mailTranslateZh:'提供郵件中文翻譯',mailEnglishSummary:'提供英文摘要',mailTranslateHelp:'僅中文介面顯示。關閉翻譯後，詳情頁不再生成中文正文翻譯。',mailDetail:'郵件詳情',mailChinese:'中文翻譯',mailEnglish:'英文原文',openMail:'查看郵件',loadMoreMail:'載入更多郵件',noDigestItems:'這份日報沒有可展示的郵件條目。'});
-Object.assign(I18N.en,{preferredZhName:'Preferred Chinese name',preferredZhNameHelp:'Used when digests mention you in Chinese.',mailTranslateZh:'Chinese translation for mail',mailEnglishSummary:'English summary',mailTranslateHelp:'Chinese UI only.',mailDetail:'Mail detail',mailChinese:'Chinese',mailEnglish:'English original',openMail:'Open mail',loadMoreMail:'Load more mail',noDigestItems:'No mail items in this digest.'});
+Object.assign(I18N['zh-CN'],{digests:'日报与提醒',digestEyebrow:'按你的关注词筛选',focusTerms:'关注词或主题',focusTermsHelp:'输入你关心的关键词，每行一个。留空则不筛选。',digestHistoryEmpty:'尚未生成日报或晚间补充',digestHistoryHelp:'到设置中开启日报或晚间补充后，发送过的总结会保留在这里。'});
+Object.assign(I18N['zh-TW'],{digests:'日報與提醒',digestEyebrow:'依你的關注詞篩選',focusTerms:'關注詞或主題',focusTermsHelp:'輸入你關心的關鍵詞，每行一個。留空則不篩選。',digestHistoryEmpty:'尚未產生日報或晚間補充',digestHistoryHelp:'到設定中開啟日報或晚間補充後，已發送的總結會保留在這裡。'});
+Object.assign(I18N.en,{digests:'Daily digests & reminders',digestEyebrow:'Filtered by your focus terms',focusTerms:'Focus terms or topics',focusTermsHelp:'Add one keyword per line. Leave blank to include all imported mail.',digestHistoryEmpty:'No daily digests or evening additions yet',digestHistoryHelp:'Turn on a daily digest or evening addition in Settings. Sent summaries will appear here.'});
+Object.assign(I18N['zh-CN'],{preferredZhName:'偏好中文译名',preferredZhNameHelp:'用于邮件摘要与翻译中的你的中文姓名。留空则沿用自动翻译。',mailTranslateZh:'提供邮件中文翻译',mailEnglishSummary:'提供英文摘要',mailTranslateHelp:'按需选择邮件的阅读语言。',mailDetail:'邮件详情',mailChinese:'中文翻译',mailEnglish:'英文原文',openMail:'查看邮件',loadMoreMail:'加载更多邮件',noDigestItems:'这份日报没有可展示的邮件条目。'});
+Object.assign(I18N['zh-TW'],{preferredZhName:'偏好中文譯名',preferredZhNameHelp:'用於郵件摘要與翻譯中的你的中文姓名。留空則沿用自動翻譯。',mailTranslateZh:'提供郵件中文翻譯',mailEnglishSummary:'提供英文摘要',mailTranslateHelp:'按需要選擇郵件的閱讀語言。',mailDetail:'郵件詳情',mailChinese:'中文翻譯',mailEnglish:'英文原文',openMail:'查看郵件',loadMoreMail:'載入更多郵件',noDigestItems:'這份日報沒有可展示的郵件條目。'});
+Object.assign(I18N.en,{preferredZhName:'Preferred Chinese name',preferredZhNameHelp:'Used when digests mention you in Chinese.',mailTranslateZh:'Chinese translation for mail',mailEnglishSummary:'English summary',mailTranslateHelp:'Choose your preferred reading options.',mailDetail:'Mail detail',mailChinese:'Chinese',mailEnglish:'English original',openMail:'Open mail',loadMoreMail:'Load more mail',noDigestItems:'No mail items in this digest.'});
 
 
 
@@ -208,8 +208,33 @@ $('#task-form').onsubmit=async event=>{
 };
 let mailNextBefore=null,mailLoadingMore=false;
 const categoryKey=c=>({1:'cat1',2:'cat2',3:'cat3',4:'cat4'}[c]||'cat3');
+const briefRequests=new Map();
+function briefContent(m,compact=false){
+  const b=m.brief;
+  if(!b)return `<p class="quality">${esc(local('正在依据原文整理详细要点；若未生成，可稍后重试。','正在依據原文整理詳細重點；若未產生，可稍後重試。','Preparing detailed notes from the original email. Retry later if unavailable.'))}</p>`;
+  const points=compact?b.points.slice(0,2):b.points;
+  return `<ul class="mail-points">${points.map(p=>`<li data-user-content>${esc(p.text)}</li>`).join('')}</ul>${b.actions.length?`<div class="brief-actions"><strong>${local('需要处理','需要處理','Action needed')}</strong><ul>${b.actions.map(p=>`<li data-user-content>${esc(p.text)}</li>`).join('')}</ul></div>`:''}`;
+}
+async function prepareBriefs(rows,onUpdate,isCurrent){
+  const missing=rows.filter(m=>!m.brief);
+  for(let i=0;i<missing.length;i+=2){
+    if(!isCurrent())break;
+    const batch=missing.slice(i,i+2),ids=batch.map(m=>m.id).filter(Boolean);
+    if(!ids.length)continue;
+    const key=locale+':'+ids.join('|');
+    try{
+      if(!briefRequests.has(key))briefRequests.set(key,api('mail/briefs',{method:'POST',body:{ids}}));
+      const result=await briefRequests.get(key);
+      for(const item of result.results||[]){const row=rows.find(m=>m.id===item.id);if(row){row.brief=item.brief;row.briefError=!!item.error;}}
+      if(isCurrent())await onUpdate();
+      if((result.results||[]).length&&result.results.every(r=>r.error)){toast(local('摘要暂不可用，请确认邮箱连接后重试。','摘要暫不可用，請確認電郵連接後重試。','Summaries are unavailable. Check your mailbox connection and retry.'));break;}
+    }catch{for(const row of batch)row.briefError=true;if(isCurrent())await onUpdate();break;}
+    finally{briefRequests.delete(key);}
+  }
+}
+function briefFallback(m){return m.briefError?`<p class="quality">${local('详细摘要暂未生成，请确认邮箱连接后刷新重试。可点击邮件查看原文。','詳細摘要暫未產生，請確認電郵連接後重新整理。可點擊郵件查看原文。','Detailed summary unavailable. Check your mailbox connection and refresh to retry. Open the email to read the original.')}</p>`:briefContent(m);}
 function mailCard(m){
-  return `<article class="mail-card" data-open-mail="${encodeURIComponent(m.id)}" tabindex="0" role="button"><div class="mail-card-head"><div class="meta"><span class="badge ${m.category===1?'high':''}">${esc(tx(categoryKey(m.category)))}</span><span>${esc(fmt(m.received))}</span></div><button class="icon-delete" data-delete-mail="${encodeURIComponent(m.id)}" aria-label="${esc(tx('deleteMail'))}">${esc(tx('delete'))}</button></div><h2>${esc(m.subject)}</h2><div class="sender">${esc(tx('originalSender'))} ${esc(m.sender)}<br>${esc(tx('source'))} ${esc(m.origin)}</div><p class="body-text" data-user-content>${esc(m.summary)}</p><p>${esc(m.action)}</p><div class="quality">${esc(m.quality)}</div></article>`;
+  return `<article class="mail-card" data-open-mail="${encodeURIComponent(m.id)}" tabindex="0" role="button"><div class="mail-card-head"><div class="meta"><span class="badge ${m.category===1?'high':''}">${esc(m.brief?.topic||local('待整理','待整理','Pending summary'))}</span><span>${esc(fmt(m.received))}</span></div><button class="icon-delete" data-delete-mail="${encodeURIComponent(m.id)}" aria-label="${esc(tx('deleteMail'))}">${esc(tx('delete'))}</button></div><h2>${esc(m.brief?.title||m.subject.replace(/^(?:(?:fw|fwd|re)\s*:\s*)+/i,''))}</h2><div class="sender">${esc(tx('originalSender'))} ${esc(m.sender)}<br>${esc(tx('source'))} ${esc(m.origin)}</div>${m.brief?briefContent(m):briefFallback(m)}</article>`;
 }
 function bindMailList(root){
   root.querySelectorAll('[data-open-mail]').forEach(card=>{
@@ -229,10 +254,10 @@ async function openMailDetail(id){
     const zh=detail.chinese||detail.display;
     $('#mail-detail-meta').innerHTML=`<span class="badge">${esc(tx(categoryKey(detail.category)))}</span><span>${esc(fmt(detail.received))}</span>`;
     if(detail.translationEnabled&&zh){
-      $('#mail-detail-zh').innerHTML=`<h3 data-user-content>${esc(zh.subject)}</h3><p class="sender">${esc(tx('originalSender'))} ${esc(zh.sender)}<br>${esc(tx('source'))} ${esc(zh.origin)}</p><p data-user-content>${esc(zh.summary)}</p><p>${esc(zh.action||'')}</p>`;
+      $('#mail-detail-zh').innerHTML=`<h3 data-user-content>${esc(detail.display?.brief?.title||zh.subject)}</h3><p class="sender">${esc(tx('originalSender'))} ${esc(zh.sender)}<br>${esc(tx('source'))} ${esc(zh.origin)}</p>${detail.display?.brief?briefContent(detail.display):`<p data-user-content>${esc(zh.summary)}</p><p>${esc(zh.action||'')}</p>`}`;
       $$('[data-mail-pane]').forEach(b=>b.classList.toggle('hidden',false));
     }else{
-      $('#mail-detail-zh').innerHTML=`<h3 data-user-content>${esc(detail.display?.subject||detail.english?.subject||'')}</h3><p data-user-content>${esc(detail.display?.summary||'')}</p>`;
+      $('#mail-detail-zh').innerHTML=`<h3 data-user-content>${esc(detail.display?.brief?.title||detail.display?.subject||detail.english?.subject||'')}</h3>${detail.display?.brief?briefContent(detail.display):`<p data-user-content>${esc(detail.display?.summary||'')}</p>`}`;
       const zhTab=document.querySelector('[data-mail-pane="zh"]');if(zhTab)zhTab.classList.add('hidden');
     }
     const en=detail.english||{};
@@ -250,7 +275,7 @@ async function loadMail(opts={}){
   try{
     const append=!!opts.append;
     if(!append){mailNextBefore=null;$('#mail-list').innerHTML=`<div class="empty"><span class="empty-mark">▤</span><h2>${esc(local('加载中…','載入中…','Loading…'))}</h2></div>`;}
-    await renderMailSuggestions();
+    await renderMailSuggestions().catch(()=>{});
     const q=String(opts.q===undefined?currentMailQuery:opts.q).trim();
     const params=new URLSearchParams({limit:'40'});if(mailNextBefore)params.set('before',String(mailNextBefore));if(q)params.set('q',q);
     const payload=await api('messages?'+params.toString());
@@ -269,6 +294,12 @@ async function loadMail(opts={}){
       $('#mail-list').appendChild(btn);
     }
     bindMailList($('#mail-list'));
+    const activeLocale=locale;
+    void prepareBriefs(messages,()=>{
+      for(const card of $$('#mail-list .mail-card[data-open-mail]')){const row=messages.find(m=>encodeURIComponent(m.id)===card.dataset.openMail);if(row)card.outerHTML=mailCard(row);}
+      bindMailList($('#mail-list'));
+    },()=>locale===activeLocale&&!$('#mail-view').classList.contains('hidden'));
+
     const focusId=new URLSearchParams(location.search).get('message');
     if(focusId&&!append)openMailDetail(focusId);
   }catch(e){$('#global-error').textContent=e.message;}
@@ -287,17 +318,22 @@ function wireMailSearch(){
 }
 function digestItemButton(item){
   const open=item.id?`data-open-mail="${encodeURIComponent(item.id)}"`:'';
-  return `<button type="button" class="digest-item" ${open}><div class="meta">${item.category?`<span class="badge">${esc(tx(categoryKey(item.category)))}</span>`:''}${item.received?`<span>${esc(fmt(item.received))}</span>`:''}</div><h3 data-user-content>${esc(item.subject)}</h3><p data-user-content>${esc(item.summary||'')}</p>${item.action?`<p class="digest-action">${esc(item.action)}</p>`:''}</button>`;
+  return `<button type="button" class="digest-item" ${open}><div class="meta">${item.category?`<span class="badge">${esc(item.brief?.topic||local('待整理','待整理','Pending summary'))}</span>`:''}${item.received?`<span>${esc(fmt(item.received))}</span>`:''}</div><h3 data-user-content>${esc(item.brief?.title||item.subject)}</h3>${item.brief?briefContent(item,true):briefFallback(item)}</button>`;
 }
-async function loadDigests(){
+async function loadDigests(opts={}){
   try{
     const digests=await api('digests');
     const stacked=digests.length>1;
     $('#digest-list').innerHTML=digests.length?(stacked?`<button type="button" class="stack-toggle chip-button" aria-expanded="false"></button><div class="card-stack">`:'')+digests.map(d=>{
       const items=Array.isArray(d.items)?d.items:[];
-      const list=items.length?`<div class="digest-day">${items.map(digestItemButton).join('')}</div>`:`<p class="body-text" data-user-content>${esc(d.body||tx('noDigestItems'))}</p>`;
-      return `<article class="mail-card digest-card"><div class="meta"><span class="badge">${esc(fmt(d.created))}</span><span>${items.length||0} ${local('封','封','mails')}</span></div><h2>${esc(d.title)}</h2><details class="digest-expand" open><summary>${esc(local('展开摘要','展開摘要','Read summary'))}<span aria-hidden="true">＋</span></summary>${list}</details></article>`;
+      const actionCount=items.filter(m=>m.brief?.actions?.length).length;
+      const pendingCount=items.filter(m=>!m.brief).length;
+      const overview=`<p class="digest-overview">${local('本时段收到','本時段收到','Received')} <strong>${items.length}</strong> ${local('封邮件','封郵件','emails')} · ${local('需要处理','需要處理','Action needed')} <strong>${actionCount}</strong>${pendingCount?` · ${pendingCount} ${local('封待整理','封待整理','awaiting summary')}`:''}</p>`;
+      const ordered=[...items].sort((a,b)=>Number(!!b.brief?.actions?.length)-Number(!!a.brief?.actions?.length));
+      const list=items.length?`<div class="digest-day">${ordered.map(digestItemButton).join('')}</div>`:`<p class="body-text" data-user-content>${esc(d.body||tx('noDigestItems'))}</p>`;
+      return `<article class="mail-card digest-card"><div class="meta"><span class="badge">${esc(fmt(d.created))}</span><span>${items.length||0} ${local('封','封','mails')}</span></div><h2>${esc(d.title)}</h2>${overview}<details class="digest-expand" open><summary>${esc(local('展开摘要','展開摘要','Read summary'))}<span aria-hidden="true">＋</span></summary>${list}</details></article>`;
     }).join('')+(stacked?'</div>':''):`<div class="empty"><span class="empty-mark">◷</span><h2>${esc(tx('digestHistoryEmpty'))}</h2><p>${esc(tx('digestHistoryHelp'))}</p></div>`;
+    if(opts.generate!==false){const activeLocale=locale;void prepareBriefs(digests.flatMap(d=>d.items||[]),()=>loadDigests({generate:false}),()=>locale===activeLocale&&!$('#digests-view').classList.contains('hidden'));}
     if(stacked)setupCardStack($('#digest-list .card-stack'),$('#digest-list .stack-toggle'),{open:local(`展开全部 ${digests.length} 份日报`,`展開全部 ${digests.length} 份日報`,`Show all ${digests.length} digests`),close:local('收起','收起','Collapse')});
     $('#digest-list').querySelectorAll('[data-open-mail]').forEach(btn=>btn.onclick=()=>{const id=decodeURIComponent(btn.dataset.openMail);history.replaceState(null,'','/?view=mail&message='+encodeURIComponent(id));view('mail');openMailDetail(id);});
   }catch(e){$('#global-error').textContent=e.message;}

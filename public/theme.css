@@ -334,3 +334,8 @@ button.pending::before{content:'';display:inline-block;width:13px;height:13px;ma
 .zh-only-settings input[type=checkbox]{width:18px;height:18px;flex:0 0 18px;margin:0}
 .zh-only-settings{margin-bottom:20px;gap:16px}
 @media(max-width:480px){.profile-identity{gap:12px}.profile-identity input[type=file]{font-size:12px}.profile-identity input:not([type=file]){padding:12px}}
+
+.mail-points{padding-left:1.25em;margin:16px 0;line-height:1.75;font-weight:400;color:var(--ink)}
+.mail-points li+li{margin-top:9px}.brief-actions{padding:16px;border-left:3px solid var(--ink);background:var(--surface-2);border-radius:0 14px 14px 0;margin-top:16px;font-size:15px;line-height:1.7}
+.brief-actions ul{padding-left:1.25em;margin-bottom:0}.digest-overview{padding:18px 0;border-bottom:1px solid var(--surface-3);font-size:16px;font-weight:400}
+.digest-item .mail-points{font-size:15px;font-weight:400}.digest-item h3{font-size:20px;line-height:1.4}.digest-item{cursor:pointer;text-align:left}

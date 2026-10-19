@@ -399,3 +399,12 @@ test('user-defined name aliases persist, rewrite senders, and mail search filter
   const kept=await (await worker.fetch(new Request(origin+'/api/profile',{headers:{Cookie:'campus_session='+token}}),env)).json();
   assert.equal(kept.nameAliases.length,2);
 });
+
+test('brief generation is account scoped and unavailable AI is reported without fabricating a summary',async()=>{
+ const env={DB:database()},origin='https://campus.example',token=random();
+ await env.DB.prepare("INSERT INTO users(id,email,password_hash,created) VALUES('brief-a','a@example.com','unused',0),('brief-b','b@example.com','unused',0)").run();
+ await env.DB.prepare('INSERT INTO sessions(id,expires,user_id) VALUES(?,?,?)').bind(await hash(token),Date.now()+3600000,'brief-a').run();
+ await env.DB.prepare("INSERT INTO messages(id,subject,received,sender,origin,category,summary,action,url,quality,user_id) VALUES('own','FW: One',1,'s','o',2,'s','a','','q','brief-a'),('other','FW: Two',1,'s','o',2,'s','a','','q','brief-b')").run();
+ const response=await worker.fetch(new Request(origin+'/api/mail/briefs',{method:'POST',headers:{Cookie:'campus_session='+token,Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({ids:['own','other']})}),env);
+ assert.equal(response.status,200);assert.deepEqual((await response.json()).results,[{id:'own',error:true}]);
+});

@@ -1,3 +1,4 @@
+import {attachBriefs,generateBrief,readBrief} from './mail-briefs.js';
 import { meetingTask,wording } from './display.js';
 import { serverMessage,normalizeLocale } from './errors.js';
 import { buildAliasRules,normalizeName,suggestAliasVariants } from './names.js';
@@ -219,7 +220,17 @@ async function routes(request,env){
     const locale=profile?.locale||'zh-CN';
     const aliasRules=await nameAliasRules(env,account.user_id,profile?.preferred_zh_name||'');
     const localized=await localizeMessages(env,account.user_id,locale,messages,{allowAi:false,translate:locale==='en'?true:prefs.translateZh!==false,nameAliases:aliasRules});
-    return json({messages:localized,nextBefore:messages.length===limit?messages[messages.length-1].received:null});
+    return json({messages:await attachBriefs(env,account.user_id,locale,localized),nextBefore:messages.length===limit?messages[messages.length-1].received:null});
+  }
+  if(path==='/api/mail/briefs'&&method==='POST'){
+    const data=await body(request),ids=[...new Set(Array.isArray(data.ids)?data.ids:[])].filter(id=>typeof id==='string').slice(0,2);
+    const profile=await env.DB.prepare('SELECT locale FROM users WHERE id=?').bind(account.user_id).first();
+    const results=[];
+    for(const id of ids){
+      if(!await env.DB.prepare('SELECT id FROM messages WHERE id=? AND user_id=?').bind(id,account.user_id).first())continue;
+      try{results.push({id,brief:await generateBrief(env,account.user_id,profile?.locale||'zh-CN',id)})}catch(error){console.warn('brief-failure',error.name, /Ungrounded|supported|language|JSON|Original|AI summary/.test(error.message)?error.message.slice(0,100):'generation failed');results.push({id,error:true})}
+    }
+    return json({results});
   }
   const messageId=path.match(/^\/api\/messages\/(.+)$/)?.[1];
   if(messageId&&method==='GET'){
@@ -242,7 +253,7 @@ async function routes(request,env){
       quality:localized.quality||row.quality,
       chinese:wantZh?{subject:localized.subject,sender:localized.sender,origin:localized.origin,summary:localized.summary,action:localized.action}:null,
       english:{subject:englishSubject,body:englishBody,summary:prefs.englishSummary&&locale.startsWith('zh')?String(row.summary||''):undefined},
-      display:localized,
+      display:{...localized,brief:await readBrief(env,account.user_id,locale,id)},
       translationEnabled:wantZh,
       englishSummaryEnabled:prefs.englishSummary===true&&locale.startsWith('zh')
     });
@@ -253,13 +264,15 @@ async function routes(request,env){
     const prefix='digest:'+account.user_id+':%';
     const rows=(await env.DB.prepare("SELECT value FROM kv WHERE key LIKE ? AND value!='quiet' ORDER BY key DESC LIMIT 30").bind(prefix).all()).results;
     const aliasRules=await nameAliasRules(env,account.user_id,(await env.DB.prepare('SELECT preferred_zh_name FROM users WHERE id=?').bind(account.user_id).first())?.preferred_zh_name||'');
-    return json(rows.flatMap(row=>{try{
+    const records=rows.flatMap(row=>{try{
       const normalized=normalizeDigestRecord(JSON.parse(row.value));
       if(!normalized)return [];
       if(aliasRules.length&&normalized.items)normalized.items=normalized.items.map(item=>applyPreferredNameToFields(item,aliasRules));
       if(aliasRules.length)normalized.body=applyPreferredNameToFields({body:normalized.body},aliasRules).body;
       return [normalized];
-    }catch{return []}}));
+    }catch{return []}});
+    for(const record of records)record.items=await attachBriefs(env,account.user_id,account.locale||'zh-CN',record.items||[]);
+    return json(records);
   }
   if(path==='/api/outlook/start'&&method==='GET'){
     const requestedEmail=emailOf(url.searchParams.get('email'));

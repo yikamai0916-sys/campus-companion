@@ -400,17 +400,17 @@ export {plain as plainBody};
 export async function fetchMessageOriginal(env,userId,messageId){
   const row=await env.DB.prepare('SELECT * FROM messages WHERE id=? AND user_id=?').bind(messageId,userId).first();
   if(!row)return null;
-  let englishSubject=row.subject,englishBody='';
+  let englishSubject=row.subject,englishBody='',originalAvailable=false;
   if(!String(messageId).startsWith('shortcut:')&&await outlookConnection(env,userId)){
     try{
       const m=await graph(env,userId,'me/messages/'+encodeURIComponent(messageId)+'?$select=id,subject,body,bodyPreview,webLink');
       englishSubject=m.subject||englishSubject;
-      englishBody=plain(m).slice(0,12000);
+      englishBody=plain(m).slice(0,12000);originalAvailable=!!englishBody;
       if(m.webLink&&!row.url)await env.DB.prepare('UPDATE messages SET url=? WHERE id=? AND user_id=?').bind(m.webLink,messageId,userId).run();
       row.url=m.webLink||row.url;
     }catch{englishBody=englishBody||'';}
   }
   if(!englishBody)englishBody=String(row.summary||'');
-  return {row,englishSubject,englishBody};
+  return {row,englishSubject,englishBody,originalAvailable};
 }
 
