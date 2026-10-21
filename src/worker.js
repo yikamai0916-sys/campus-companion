@@ -298,16 +298,16 @@ async function routes(request,env,ctx){
   }
   if(path==='/api/outlook/callback'&&method==='GET'){
     await finishOAuth(env,url,account);
-    try{const result=await syncMail(env,account.user_id);if(result.importedIds?.length){const task=preGenerateMailTranslations(env,account.user_id,result.importedIds).catch(()=>{});if(ctx?.waitUntil)ctx.waitUntil(task);else await task;}}catch(error){await env.DB.prepare('UPDATE outlook_connections SET status=? WHERE user_id=?').bind(String(error.message).slice(0,300),account.user_id).run();}
+    try{const result=await syncMail(env,account.user_id);if(result.importedIds?.length){const translations=preGenerateMailTranslations(env,account.user_id,result.importedIds).catch(()=>{});if(ctx?.waitUntil)ctx.waitUntil(translations);else await translations;}}catch(error){await env.DB.prepare('UPDATE outlook_connections SET status=? WHERE user_id=?').bind(String(error.message).slice(0,300),account.user_id).run();}
     // 后台预生成新邮件的 AI 摘要（不阻塞跳转）
-    try{preGenerateBriefs(env,account.user_id).catch(()=>{});}catch{}
+    try{const briefs=preGenerateBriefs(env,account.user_id).catch(()=>{});if(ctx?.waitUntil)ctx.waitUntil(briefs);}catch{}
     return Response.redirect(url.origin+'/?view=settings');
   }
   if(path==='/api/outlook/sync'&&method==='POST'){
     const result=await syncMail(env,account.user_id);
-    // 后台预生成新邮件的 AI 摘要（不阻塞响应）
-    try{preGenerateBriefs(env,account.user_id).catch(()=>{});}catch{}
-    if(result.importedIds?.length)try{const task=preGenerateMailTranslations(env,account.user_id,result.importedIds).catch(()=>{});if(ctx?.waitUntil)ctx.waitUntil(task);else await task;}catch{}
+    // 后台预生成摘要和全文翻译，不阻塞同步响应。
+    try{const briefs=preGenerateBriefs(env,account.user_id).catch(()=>{});if(ctx?.waitUntil)ctx.waitUntil(briefs);}catch{}
+    if(result.importedIds?.length)try{const translations=preGenerateMailTranslations(env,account.user_id,result.importedIds).catch(()=>{});if(ctx?.waitUntil)ctx.waitUntil(translations);else await translations;}catch{}
     return json({imported:result.imported||0,pages:result.pages||0,more:!!result.more});
   }
   if(path==='/api/outlook'&&method==='DELETE'){
