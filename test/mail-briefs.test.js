@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {cleanSubject,validateBrief,attachBriefs,parseBriefResponse} from '../src/mail-briefs.js';
+import {cleanSubject,validateBrief,attachBriefs,parseBriefResponse,isEnglishBrief} from '../src/mail-briefs.js';
 test('forward and reply chains are removed, internal colons preserved',()=>{
  assert.equal(cleanSubject('FW: Re: Fwd: Budget: update'),'Budget: update');
 });
@@ -20,4 +20,11 @@ test('brief cache is scoped to account and language',async()=>{
 
 test('AI responses support structured objects and fenced JSON',()=>{
  const value={title:'Update'};assert.equal(parseBriefResponse(value),value);assert.deepEqual(parseBriefResponse('```json\n'+JSON.stringify(value)+'\n```'),value);
+});
+
+test('English brief cache rejects Chinese content',()=>{
+ const valid={title:'Registration closes Friday',topic:'Registration',points:[{text:'Submit the form by Friday.'}],actions:[]};
+ assert.equal(isEnglishBrief(valid),true);
+ assert.equal(isEnglishBrief({...valid,title:'报名周五截止'}),false);
+ assert.equal(isEnglishBrief({...valid,points:[{text:'请周五前提交。'}]}),false);
 });

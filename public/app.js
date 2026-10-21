@@ -211,6 +211,8 @@ $('#task-form').onsubmit=async event=>{
 let mailNextBefore=null,mailLoadingMore=false;
 const categoryKey=c=>({1:'cat1',2:'cat2',3:'cat3',4:'cat4'}[c]||'cat3');
 const briefRequests=new Map();
+const containsCjk=value=>/[\u3400-\u9fff]/.test(String(value||''));
+const englishBriefIsUsable=brief=>!!brief&&![brief.title,brief.topic,...(brief.points||[]).map(p=>p.text),...(brief.actions||[]).map(p=>p.text)].some(containsCjk);
 function briefContent(m,compact=false){
   const b=m.brief;
   if(!b)return `<p class="quality">${esc(local('正在依据原文整理详细要点；若未生成，可稍后重试。','正在依據原文整理詳細重點；若未產生，可稍後重試。','Preparing detailed notes from the original email. Retry later if unavailable.'))}</p>`;
@@ -269,7 +271,11 @@ function briefFallback(m){
   return briefContent(m);
 }
 function mailCard(m){
-  return `<article class="mail-card" data-open-mail="${encodeURIComponent(m.id)}" tabindex="0" role="button"><div class="mail-card-head"><div class="meta"><span class="badge ${m.category===1?'high':''}">${esc(m.brief?.topic||local('待整理','待整理','Pending summary'))}</span><span>${esc(fmt(m.received))}</span></div><button class="icon-delete" data-delete-mail="${encodeURIComponent(m.id)}" aria-label="${esc(tx('deleteMail'))}">${esc(tx('delete'))}</button></div><h2>${esc(m.brief?.title||m.subject.replace(/^(?:(?:fw|fwd|re)\s*:\s*)+/i,''))}</h2><div class="sender">${esc(tx('originalSender'))} ${esc(m.sender)}<br>${esc(tx('source'))} ${esc(m.origin)}</div>${m.brief?briefContent(m):briefFallback(m)}</article>`;
+  const english=locale==='en',brief=english&&!englishBriefIsUsable(m.brief)?null:m.brief;
+  const safe=(value,fallback)=>english&&containsCjk(value)?fallback:value;
+  const subject=safe(String(m.subject||'').replace(/^(?:(?:fw|fwd|re)\s*:\s*)+/i,''),'Email summary unavailable');
+  const sender=safe(m.sender,'Sender unavailable'),origin=safe(m.origin,'Source not identified');
+  return `<article class="mail-card" data-open-mail="${encodeURIComponent(m.id)}" tabindex="0" role="button"><div class="mail-card-head"><div class="meta"><span class="badge ${m.category===1?'high':''}">${esc(safe(brief?.topic,'Email'))||esc(local('待整理','待整理','Pending summary'))}</span><span>${esc(fmt(m.received))}</span></div><button class="icon-delete" data-delete-mail="${encodeURIComponent(m.id)}" aria-label="${esc(tx('deleteMail'))}">${esc(tx('delete'))}</button></div><h2>${esc(brief?.title||subject)}</h2><div class="sender">${esc(tx('originalSender'))} ${esc(sender)}<br>${esc(tx('source'))} ${esc(origin)}</div>${brief?briefContent({...m,brief}):briefFallback({...m,brief:null,summary:safe(m.summary,'')})}</article>`;
 }
 function bindMailList(root){
   root.querySelectorAll('[data-open-mail]').forEach(card=>{
@@ -428,22 +434,28 @@ async function openMailDetail(id,{push=true}={}){
   $('#mail-detail-title').focus();$('#mail-detail-meta').textContent='';
   $('#mail-detail-zh').textContent='';$('#mail-detail-en').textContent='';$('#mail-detail-outlook').hidden=true;
   const summaryTab=page.querySelector('[data-mail-pane="zh"]'),originalTab=page.querySelector('[data-mail-pane="en"]');
+  const englishUi=locale==='en';
+  page.querySelector('.mail-detail-tabs').classList.toggle('hidden',englishUi);
+  summaryTab.hidden=englishUi;
   summaryTab.textContent=local('中文','中文','Summary');originalTab.textContent=local('原文','原文','Original');
   const selectPane=name=>{for(const tab of [summaryTab,originalTab]){const selected=tab.dataset.mailPane===name;tab.classList.toggle('selected',selected);tab.setAttribute('aria-selected',String(selected));}$('#mail-detail-zh').classList.toggle('hidden',name!=='zh');$('#mail-detail-en').classList.toggle('hidden',name!=='en');};
-  selectPane('zh');summaryTab.onclick=()=>selectPane('zh');originalTab.onclick=()=>selectPane('en');
+  selectPane(englishUi?'en':'zh');summaryTab.onclick=()=>selectPane('zh');originalTab.onclick=()=>selectPane('en');
   try{
     const detail=await api('messages/'+encodeURIComponent(id));if(request!==readerRequest)return;
-    const display=detail.display||detail.chinese||{};
-    $('#mail-detail-title').textContent=display.brief?.title||String(display.subject||detail.english?.subject||'').replace(/^(?:(?:fw|fwd|re)\s*:\s*)+/i,'');
-    $('#mail-detail-meta').innerHTML=`<span class="badge">${esc(display.brief?.topic||tx(categoryKey(detail.category)))}</span><span>${esc(display.sender||'')}</span><span>${esc(display.origin||'')}</span><time>${esc(fmt(detail.received))}</time>`;
-    $('#mail-detail-zh').innerHTML=display.brief?briefContent(display):`<p data-user-content>${esc(display.summary||'')}</p>`;
+    const display=detail.display||detail.chinese||{},englishBrief=englishUi&&!englishBriefIsUsable(display.brief)?null:display.brief;
+    const safe=(value,fallback)=>englishUi&&containsCjk(value)?fallback:value;
+    const subject=String(detail.english?.subject||display.subject||'').replace(/^(?:(?:fw|fwd|re)\s*:\s*)+/i,'');
+    $('#mail-detail-title').textContent=englishBrief?.title||safe(subject,'Original email');
+    $('#mail-detail-meta').innerHTML=`<span class="badge">${esc(safe(englishBrief?.topic||tx(categoryKey(detail.category)),'Email'))}</span><span>${esc(safe(display.sender,'Sender unavailable'))}</span><span>${esc(safe(display.origin,'Source not identified'))}</span><time>${esc(fmt(detail.received))}</time>`;
+    $('#mail-detail-zh').innerHTML=englishUi?'':display.brief?briefContent(display):`<p data-user-content>${esc(display.summary||'')}</p>`;
+    $('#mail-detail-zh').classList.toggle('hidden',englishUi);
     const original=renderMailBody(detail.english||{});
     $('#mail-detail-en').replaceChildren(original);
-    if(detail.chinese?.fullBody){
+    if(!englishUi&&detail.chinese?.fullBody){
       const translated=renderMailBody({body:detail.chinese.fullBody});
       $('#mail-detail-zh').replaceChildren(translated);
       for(const img of original.querySelectorAll('img'))if(![...translated.querySelectorAll('img')].some(i=>i.src===img.src))$('#mail-detail-zh').append(img.cloneNode(true));
-    }else if(detail.translationEnabled){
+    }else if(!englishUi&&detail.translationEnabled){
       if(!display.brief){
         const summary=String(display.summary||'').trim();
         $('#mail-detail-zh').replaceChildren();

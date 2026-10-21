@@ -244,7 +244,7 @@ async function routes(request,env,ctx){
     const {row,englishSubject,englishBody,recipients}=fetched;
     const wantZh=locale.startsWith('zh')&&prefs.translateZh!==false;
     const localizedRows=await localizeMessages(env,account.user_id,locale,[row],{allowAi:env.ENABLE_AI==='true',translate:wantZh||locale==='en',nameAliases:aliasRules});
-    const localized=applyPreferredNameToFields(localizedRows[0]||row,aliasRules);
+    const localized=locale==='en'?(localizedRows[0]||row):applyPreferredNameToFields(localizedRows[0]||row,aliasRules);
     // 全文翻译：中文页显示英文原文的完整逐句翻译
     // 获取用户偏好中文名，确保翻译中使用正确的名字（如马艺恺而非 AI 猜测）
     let fullTranslation=null,translationStatus='disabled';
@@ -260,6 +260,7 @@ async function routes(request,env,ctx){
     }
     return json({
       id:row.id,
+      locale,
       received:row.received,
       category:row.category,
       url:row.url||'',

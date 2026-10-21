@@ -1,7 +1,8 @@
 import {buildAliasRules,applyNameAliases} from './names.js';
 import {hash} from './security.js';
 import {getKV,setKV,fetchMessageOriginal} from './mail.js';
-const version='brief-v4';
+const version='brief-v5';
+export const isEnglishBrief=brief=>!!brief&&[brief.title,brief.topic,...(brief.points||[]).map(p=>p.text),...(brief.actions||[]).map(p=>p.text)].every(value=>typeof value==='string'&&!/[\u3400-\u9fff]/.test(value));
 // 常见繁体字（简体中不使用）：用于检测 AI 是否输出了错误的繁简体
 const TRADITIONAL_CHARS='學會們這裏個來時過還說話門問廣廠寫軍農遠運連進道達適應麼龍龜體國語義習眾會發點開關時動華萬與專業業叢絲丟兩嚴喪亂臨為麗舉麼義習習眾';
 const hasTraditional=s=>[...String(s||'')].some(c=>TRADITIONAL_CHARS.includes(c));
@@ -14,7 +15,9 @@ const compact=s=>String(s||'').normalize('NFKC').replace(/[‘’]/g,"'").replac
 const key=async(user,locale,id)=>`${version}:${user}:${locale}:${await hash(id)}`;
 export async function readBrief(env,user,locale,id){try{
  const brief=JSON.parse(await getKV(env,await key(user,locale,id))||'null');
- if(!brief||!locale.startsWith('zh'))return brief;
+ if(!brief)return null;
+ if(locale==='en'&&!isEnglishBrief(brief))return null;
+ if(!locale.startsWith('zh'))return brief;
  const {results}=await env.DB.prepare('SELECT alias,zh_name AS zhName FROM name_aliases WHERE user_id=? ORDER BY created').bind(user).all();
  const profile=await env.DB.prepare('SELECT preferred_zh_name FROM users WHERE id=?').bind(user).first();
  const rules=buildAliasRules(results||[],profile?.preferred_zh_name||'');
@@ -53,6 +56,7 @@ export async function generateBrief(env,user,locale,id){
    // 如果全是简体字但需要繁体，也报错（混合情况放过，避免误杀）
    throw new Error('Wrong script: expected Traditional Chinese but got Simplified');
  }
+ if(locale==='en'&&!isEnglishBrief(brief))throw new Error('Wrong output language: expected English');
  if(locale!=='en'&&!/[\u4e00-\u9fff]/.test(brief.title)){
    const translated=await env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast',{messages:[{role:'system',content:`把 JSON 中 title、topic 和所有 text 字段翻译成${language}。证据 evidence/titleEvidence 必须保持原文不变。不增删事实。只返回 JSON。`},{role:'user',content:JSON.stringify(raw)}],max_tokens:3600});
    brief=validateBrief(parseBriefResponse(translated.response),source);
