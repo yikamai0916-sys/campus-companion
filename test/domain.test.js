@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { defaults,assignmentReminders,validateTask,initialTimes,nextAllowed,allowed,digestWindow,originalSender,classify } from '../src/domain.js';
-import { explicitDeadline,plain } from '../src/mail.js';
+import { explicitDeadline,plain,translateFullBody } from '../src/mail.js';
 test('deadline offsets respect Hong Kong quiet hours',()=>{
   const due=Date.parse('2026-10-05T09:00:00+08:00'),now=Date.parse('2026-10-01T00:00:00+08:00');
   const t=validateTask({title:'作业',due});const times=initialTimes(t,now);
@@ -41,6 +41,26 @@ test('message text preserves angle-bracket email addresses',()=>{
   assert.match(html,/Teacher <teacher@example.edu>/);
   const text=plain({body:{contentType:'text',content:'From: Teacher <teacher@example.edu>'}});
   assert.equal(text,'From: Teacher <teacher@example.edu>');
+});
+test('full email translation is cached under the refreshed translation version',async()=>{
+  const values=new Map();let calls=0,systemPrompt='';
+  const DB={
+    prepare(sql){
+      return {
+        bind(...args){
+          return {
+            first:async()=>sql.startsWith('SELECT value FROM kv')?{value:values.get(args[0])}:null,
+            run:async()=>{if(sql.startsWith('INSERT INTO kv'))values.set(args[0],args[1]);}
+          };
+        }
+      };
+    }
+  };
+  const env={ENABLE_AI:'true',DB,AI:{run:async(_model,{messages})=>{calls++;systemPrompt=messages[0].content;return {response:'中文正文译文'};}}};
+  const first=await translateFullBody(env,'user','zh-CN','mail-1','From: Staff\\nSent: Monday\\nTo: Student\\nSubject: Notice\\n\\nActual message','马艺恺');
+  const second=await translateFullBody(env,'user','zh-CN','mail-1','Different body','马艺恺');
+  assert.equal(first,'中文正文译文');assert.equal(second,first);assert.equal(calls,1);
+  assert.match(systemPrompt,/omit that block/);assert.ok([...values.keys()].some(key=>key.startsWith('fulltrans:v3:')));
 });
 test('receipt ignored but resubmission and scholarships retained',()=>{
   assert.equal(classify('Moodle','you have successfully submitted assignment'),6);

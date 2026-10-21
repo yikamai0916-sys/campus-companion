@@ -6,7 +6,7 @@ import { listMailSuggestions,reviewMailSuggestion } from './suggestions.js';
 import { validateTask } from './domain.js';
 import { normalizePresets } from '../public/reminder-logic.js';
 import { random,hash,verifyPassword,makePasswordHash,makeAnswerHash,verifyAnswer } from './security.js';
-import { getKV,setKV,startOAuth,finishOAuth,syncMail,reprocessMail,ingestForwardedEmail,ingestShortcutEmail,localizeMessages,outlookConnection,outlookConfigProblems,fetchMessageOriginal,translateFullBody,summarizeLink } from './mail.js';
+import { getKV,setKV,startOAuth,finishOAuth,syncMail,preGenerateMailTranslations,reprocessMail,ingestForwardedEmail,ingestShortcutEmail,localizeMessages,outlookConnection,outlookConfigProblems,fetchMessageOriginal,translateFullBody,summarizeLink } from './mail.js';
 import { applyNameAliases,applyPreferredNameToFields } from './names.js';
 import { normalizeDigestRecord } from './digest-format.js';
 import { scheduleTask,repeatTasks,deliver,makeDigest,enqueue } from './jobs.js';
@@ -38,7 +38,7 @@ async function createTask(env,data,source='manual',sourceId=null,userId=null){
   await env.DB.prepare('INSERT INTO tasks(id,title,notes,due,priority,completed,source,source_id,reminders,version,created,updated,user_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(t.id,t.title,t.notes,t.due,t.priority,t.completed,t.source,t.source_id,JSON.stringify(t.reminders),t.version,t.created,t.updated,t.user_id).run();
   await scheduleTask(env,t);return t;
 }
-async function routes(request,env){
+async function routes(request,env,ctx){
   const url=new URL(request.url),path=url.pathname,method=request.method;
   const uiLocale=normalizeLocale(request.headers.get('X-Locale'));
   const shortcutIngest=path==='/api/mail/shortcut'&&method==='POST';
@@ -298,7 +298,7 @@ async function routes(request,env){
   }
   if(path==='/api/outlook/callback'&&method==='GET'){
     await finishOAuth(env,url,account);
-    try{await syncMail(env,account.user_id);}catch(error){await env.DB.prepare('UPDATE outlook_connections SET status=? WHERE user_id=?').bind(String(error.message).slice(0,300),account.user_id).run();}
+    try{const result=await syncMail(env,account.user_id);if(result.importedIds?.length){const task=preGenerateMailTranslations(env,account.user_id,result.importedIds).catch(()=>{});if(ctx?.waitUntil)ctx.waitUntil(task);else await task;}}catch(error){await env.DB.prepare('UPDATE outlook_connections SET status=? WHERE user_id=?').bind(String(error.message).slice(0,300),account.user_id).run();}
     // 后台预生成新邮件的 AI 摘要（不阻塞跳转）
     try{preGenerateBriefs(env,account.user_id).catch(()=>{});}catch{}
     return Response.redirect(url.origin+'/?view=settings');
@@ -307,7 +307,8 @@ async function routes(request,env){
     const result=await syncMail(env,account.user_id);
     // 后台预生成新邮件的 AI 摘要（不阻塞响应）
     try{preGenerateBriefs(env,account.user_id).catch(()=>{});}catch{}
-    return json(result||{imported:0,pages:0,more:false});
+    if(result.importedIds?.length)try{const task=preGenerateMailTranslations(env,account.user_id,result.importedIds).catch(()=>{});if(ctx?.waitUntil)ctx.waitUntil(task);else await task;}catch{}
+    return json({imported:result.imported||0,pages:result.pages||0,more:!!result.more});
   }
   if(path==='/api/outlook'&&method==='DELETE'){
     const connection=await outlookConnection(env,account.user_id);if(!connection)return json({error:serverMessage('尚未连接 Outlook',uiLocale)},404);
@@ -331,9 +332,9 @@ async function routes(request,env){
   return json({error:serverMessage('页面不存在',uiLocale)},404);
 }
 export default {
-  async fetch(request,env){
+  async fetch(request,env,ctx){
     const uiLocale=normalizeLocale(request.headers.get('X-Locale'));
-    let response;try{response=await routes(request,env);}catch(error){response=json({error:serverMessage(error.message||'暂时无法处理，请重试',uiLocale)},Number(error.status)||400);}
+    let response;try{response=await routes(request,env,ctx);}catch(error){response=json({error:serverMessage(error.message||'暂时无法处理，请重试',uiLocale)},Number(error.status)||400);}
     const h=new Headers(response.headers);h.set('X-Content-Type-Options','nosniff');h.set('Referrer-Policy','same-origin');h.set('X-Frame-Options','DENY');h.set('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     if(new URL(request.url).pathname.startsWith('/api/'))h.set('Cache-Control','no-store');
     return new Response(response.body,{status:response.status,headers:h});
@@ -355,7 +356,8 @@ export default {
         for(const connection of connections){
           await env.DB.prepare('UPDATE outlook_connections SET last_attempt=? WHERE user_id=?').bind(now,connection.user_id).run();
           try{
-            await syncMail(env,connection.user_id);
+            const syncResult=await syncMail(env,connection.user_id);
+            if(syncResult.importedIds?.length)try{await preGenerateMailTranslations(env,connection.user_id,syncResult.importedIds);}catch{}
             // 定时任务中预生成摘要（等待完成，因为是后台任务）
             try{await preGenerateBriefs(env,connection.user_id,3);}catch{}
           }catch(error){await env.DB.prepare('UPDATE outlook_connections SET status=? WHERE user_id=?').bind(String(error.message).slice(0,300),connection.user_id).run();}

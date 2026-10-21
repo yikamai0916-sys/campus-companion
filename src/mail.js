@@ -222,7 +222,7 @@ export async function syncMail(env,userId) {
   if(!userId)throw new Error('主账号尚未初始化，请先登录网站');
   const schoolEmail=String(env.SCHOOL_EMAIL||'').trim().toLowerCase();
   if(!schoolEmail)throw new Error('同步配置缺少学校邮箱地址，请联系网站管理员');
-  const now=Date.now();let cursor=connection.cursor,cutoff=connection.cutoff,imported=0,pages=0;
+  const now=Date.now();let cursor=connection.cursor,cutoff=connection.cutoff,imported=0,pages=0;const importedIds=[];
   if(!cursor){
     cutoff=new Date(now).toISOString();
     const since=connection.since||new Date(now-86400000*2).toISOString();
@@ -245,13 +245,41 @@ export async function syncMail(env,userId) {
       const a=await analyze(env,m,body,await nameRulesFor(env,userId));
       await env.DB.prepare('INSERT OR IGNORE INTO messages(id,subject,received,sender,origin,category,summary,action,url,quality,user_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)').bind(m.id,m.subject||'无主题',Date.parse(m.receivedDateTime),a.sender,a.origin,a.category,a.summary,a.action,m.webLink||'',a.quality,userId).run();
   await saveMailSuggestion(env,userId,m.id,a);
-      imported++;
+      imported++;importedIds.push(m.id);
     }
     cursor=page['@odata.nextLink']||null;
   }
   if(cursor)await setConnection(env,userId,{cursor,status:'同步中',last_sync:now});
   else await setConnection(env,userId,{cursor:null,cutoff:null,since:cutoff,status:'同步完成',last_sync:now});
-  return {imported,pages,more:!!cursor};
+  return {imported,pages,more:!!cursor,importedIds};
+}
+
+// Precompute translations for newly synced mail so opening a message only reads cache.
+export async function preGenerateMailTranslations(env,userId,messageIds){
+  if(env.ENABLE_AI!=='true'||!env.AI||!messageIds?.length)return {translated:0};
+  const profile=await env.DB.prepare('SELECT locale,preferred_zh_name,mail_preferences FROM users WHERE id=?').bind(userId).first();
+  const locale=profile?.locale||'zh-CN';
+  let prefs={};try{prefs=JSON.parse(profile?.mail_preferences||'{}')}catch{}
+  if(!locale.startsWith('zh')||prefs.translateZh===false)return {translated:0};
+  const ids=[...new Set(messageIds)].slice(0,100);let translated=0;
+  const rules=await buildAliasRulesForUser(env,userId,profile?.preferred_zh_name||'');
+  for(let i=0;i<ids.length;i+=2){
+    await Promise.all(ids.slice(i,i+2).map(async id=>{
+      try{
+        const fetched=await fetchMessageOriginal(env,userId,id);
+        if(!fetched?.englishBody)return;
+        await translateFullBody(env,userId,locale,id,fetched.englishBody,profile?.preferred_zh_name||'');
+        await localizeMessages(env,userId,locale,[fetched.row],{allowAi:true,translate:true,nameAliases:rules});
+        translated++;
+      }catch(error){console.warn('mail-pretranslation-failed',String(id).slice(0,40),error.message?.slice(0,80));}
+    }));
+  }
+  return {translated};
+}
+
+async function buildAliasRulesForUser(env,userId,preferredName){
+  const {results=[]}=await env.DB.prepare('SELECT alias,zh_name AS zhName FROM name_aliases WHERE user_id=? ORDER BY created').bind(userId).all();
+  return buildAliasRules(results,preferredName);
 }
 
 export async function reprocessMail(env,userId,max=2) {
@@ -287,7 +315,7 @@ export async function reprocessMail(env,userId,max=2) {
 const validLocales=new Set(['zh-CN','zh-TW','en']);
 // Bump this whenever display-translation requirements change.  Older cached
 // translations remain in the database but are transparently regenerated.
-const localizationCacheVersion=2;
+const localizationCacheVersion=3;
 // Keep an established translation visible while a newer translator prompt is
 // rolled out.  A language switch must never leave the mail screen blank while
 // every historic message is translated again.
@@ -366,6 +394,7 @@ export async function localizeMessages(env,userId,requestedLocale,messages,optio
     const byId=new Map(messages.map(m=>[m.id,m]));
     for(const row of results||[]){
       const base=byId.get(row.message_id);if(!base)continue;
+      if(Number(row.cache_version)!==localizationCacheVersion)continue;
       cached.set(row.message_id,normalizeLocalized(locale,{...base,...row,id:row.message_id}));
     }
   }
@@ -494,7 +523,7 @@ export async function summarizeLink(env, locale, url){
 // 全文逐句翻译：把英文正文完整翻译成中文（非摘要）
 export async function translateFullBody(env,userId,locale,messageId,englishBody,preferredZhName=''){
   if(!englishBody||!englishBody.trim())return null;
-  const cacheKey=`fulltrans:v2:${locale}:${userId}:${await hash(messageId)}`;
+  const cacheKey=`fulltrans:v3:${locale}:${userId}:${await hash(messageId)}`;
   try{
     const cached=await getKV(env,cacheKey);
     if(cached)return cached;
@@ -508,7 +537,7 @@ export async function translateFullBody(env,userId,locale,messageId,englishBody,
   const nameNote=preferredZhName?` The reader's Chinese name is "${preferredZhName}" — when the English text refers to them (e.g. "MA Yikai", "Yikai MA", "MA, Yikai"), always translate it as "${preferredZhName}", never guess a different spelling.`:'';
   try{
     const out=await env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast',{messages:[
-      {role:'system',content:`Translate the following email body into ${language}. ${scriptNote}${nameNote} Translate faithfully sentence by sentence, preserving paragraphs and structure. Do NOT summarize or omit content. Keep person names, institution names, dates, email addresses and URLs unchanged. Return only the translation, no explanations.`},
+      {role:'system',content:`Translate the actual email message body into ${language}. ${scriptNote}${nameNote} The input may begin with a forwarded-message header block (From, Sent, To, Subject); omit that block because sender and time are shown separately in the interface. Translate the substantive message faithfully, preserving paragraphs, lists and structure. Do NOT summarize or omit message content. Keep personal names, institution names, dates, email addresses and URLs unchanged. Return only the translation, no explanations.`},
       {role:'user',content:englishBody.slice(0,12000)}
     ],max_tokens:4000});
     const translation=typeof out.response==='string'?out.response.trim():JSON.stringify(out.response);
