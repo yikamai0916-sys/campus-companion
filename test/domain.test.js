@@ -25,6 +25,7 @@ test('20:00 and midnight partition the Hong Kong day exactly',()=>{
 test('forwarding sender is not mistaken for original author',()=>{
   assert.equal(originalSender('From: Teacher <teacher@ln.edu.hk>\nTo: student@university.example','student@university.example','student@university.example'),'Teacher <teacher@ln.edu.hk>');
   assert.match(originalSender('no headers','student@university.example','student@university.example'),/无法确认/);
+  assert.equal(originalSender('no headers','student@outlook.com',undefined),'student@outlook.com');
 });
 test('nested self-forward identifies the author and keeps unrelated quotes out',()=>{
   const body='From: Me <me@example.com> On Behalf Of My Account <mine@example.com>\nTo: student@ln.hk\nSubject: Assignment\n---\nFrom: Dr. Wong <wong@example.edu>\nTo: student@ln.hk\nSubject: Assignment\nDear student, submit by 2 October 2026 at 11:59 PM.\nFrom: Old Author <old@example.org>';
