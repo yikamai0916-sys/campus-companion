@@ -526,6 +526,13 @@ function wireMailSearch(){
 let digestData=[],digestViews=[],digestFilter='all',digestBound=false,digestStackOpen=false;
 const digestOpen=new Set();
 const motionOk=()=>!matchMedia('(prefers-reduced-motion: reduce)').matches;
+const digestText=(value,fallback)=>locale==='en'&&containsCjk(value)?fallback:String(value||'');
+function digestTitle(title){
+  if(locale!=='en'||!containsCjk(title))return title;
+  const date=String(title||'').match(/\b20\d{2}-\d{2}-\d{2}\b/)?.[0];
+  const label=/晚间补充|晚間補充/.test(title)?'Evening digest':/学校邮件日报|學校郵件日報/.test(title)?'Daily mail digest':'Daily digest';
+  return date?`${date} ${label}`:label;
+}
 const tierLabel=t=>({act:local('需处理','需處理','Action'),upcoming:local('日程','日程','Dated'),info:local('资讯','資訊','Info')}[t]);
 function dayLabel(ts){
   const n=daysUntil(ts,Date.now()),date=new Date(ts).toLocaleDateString(dateLocale(),{timeZone:'Asia/Hong_Kong',month:'short',day:'numeric',weekday:'short'});
@@ -539,9 +546,10 @@ function digestLede(o){
   return local('这个时段只有资讯类邮件，没有需要处理的事项。','這個時段只有資訊類郵件，沒有需要處理的事項。','Only informational mail this time — nothing to act on.');
 }
 function digestBody(r,key){
-  const it=r.item,meta=[it.brief?.topic||(it.category?tx(categoryKey(it.category)):''),it.origin||it.sender,it.received?fmt(it.received):''].filter(Boolean);
+  const it=r.item,brief=locale==='en'&&!englishBriefIsUsable(it.brief)?null:it.brief;
+  const meta=[digestText(brief?.topic||(it.category?tx(categoryKey(it.category)):''),'Topic unavailable'),digestText(it.origin||it.sender,'Sender unavailable'),it.received?fmt(it.received):''].filter(Boolean);
   let html=meta.length?`<p class="dg-meta" data-user-content>${esc(meta.join(' · '))}</p>`:'';
-  if(it.brief)html+=digestBriefContent(it);
+  if(brief)html+=digestBriefContent({...it,brief});
   else if(it.briefLoading)html+=`<div class="dg-skel" role="status" aria-label="${esc(local('正在从原文整理要点','正在從原文整理重點','Reading the original email'))}"><span></span><span></span><span></span></div><p class="dg-note">${esc(local('正在从原文整理要点…','正在從原文整理重點…','Reading the original email…'))}</p>`;
   else{
     // 没有 AI 摘要时，先展示已有的速览（extractive summary），而不是一直"正在整理"。
@@ -565,7 +573,7 @@ function digestCard(d,di){
   const stats=[['act',c.act,local('需处理','需處理','Need action')],['upcoming',c.upcoming,local('日程提醒','日程提醒','Dates ahead')],['total',c.total,local('封邮件','封郵件','Emails')]].map(([k,v,label])=>`<div class="dg-stat is-${k}"><b data-count="${v}">${v}</b><span>${esc(label)}</span></div>`).join('');
   const chips=[['all',local('全部','全部','All'),c.total],['act',tierLabel('act'),c.act],['upcoming',tierLabel('upcoming'),c.upcoming],['info',tierLabel('info'),c.info]].map(([k,label,n])=>`<button type="button" data-dg-filter="${k}" class="${digestFilter===k?'selected':''}" aria-pressed="${digestFilter===k}"${k!=='all'&&!n?' disabled':''}>${esc(label)} <i>${n}</i></button>`).join('');
   const timeline=o.timeline.length?`<ol class="dg-timeline" aria-label="${esc(local('即将到来','即將到來','Coming up'))}">${o.timeline.map(r=>{const w=dayLabel(r.when),n=o.rows.indexOf(r);return `<li><button type="button" data-dg-jump="${di}:${n}"><time class="${w.soon?'soon':''}" title="${esc(w.title)}">${esc(w.text)}</time><span data-user-content>${esc(r.headline)}</span></button></li>`;}).join('')}</ol>`:'';
-  return `<article class="mail-card digest-card dg-card" data-dg-card="${di}"><div class="meta"><span class="badge">${esc(fmt(d.created))}</span></div><h2>${esc(d.title)}</h2><p class="dg-lede">${esc(digestLede(o))}</p><div class="dg-stats">${stats}</div>${timeline}<div class="dg-toolbar"><div class="dg-filter" role="group" aria-label="${esc(local('筛选','篩選','Filter'))}"><span class="dg-ind" aria-hidden="true"></span>${chips}</div><button type="button" class="dg-btn ghost" data-dg-all="${di}"></button></div><ul class="dg-list">${o.rows.map((r,n)=>digestRow(r,di,n)).join('')}</ul></article>`;
+  return `<article class="mail-card digest-card dg-card" data-dg-card="${di}"><div class="meta"><span class="badge">${esc(fmt(d.created))}</span></div><h2>${esc(digestTitle(d.title))}</h2><p class="dg-lede">${esc(digestLede(o))}</p><div class="dg-stats">${stats}</div>${timeline}<div class="dg-toolbar"><div class="dg-filter" role="group" aria-label="${esc(local('筛选','篩選','Filter'))}"><span class="dg-ind" aria-hidden="true"></span>${chips}</div><button type="button" class="dg-btn ghost" data-dg-all="${di}"></button></div><ul class="dg-list">${o.rows.map((r,n)=>digestRow(r,di,n)).join('')}</ul></article>`;
 }
 function moveIndicators(){
   $$('#digest-list .dg-filter').forEach(box=>{
@@ -606,8 +614,12 @@ function renderDigests(animate){
   const root=$('#digest-list');
   if(!digestData.length){root.innerHTML=`<div class="empty"><span class="empty-mark">◷</span><h2>${esc(tx('digestHistoryEmpty'))}</h2><p>${esc(tx('digestHistoryHelp'))}</p></div>`;return;}
   digestViews=digestData.map(d=>digestOverview(Array.isArray(d.items)?d.items:[],Date.now()));
+  if(locale==='en')for(const view of digestViews)for(const row of view.rows){
+    row.headline=digestText(row.headline,'Email summary unavailable');
+    if(containsCjk(row.gist.text))row.gist={...row.gist,text:'English summary unavailable. Open the email for details.'};
+  }
   const stacked=digestData.length>1;
-  const list=digestData.map((d,di)=>Array.isArray(d.items)&&d.items.length?digestCard(d,di):`<article class="mail-card digest-card dg-card"><div class="meta"><span class="badge">${esc(fmt(d.created))}</span></div><h2>${esc(d.title)}</h2><p class="body-text" data-user-content>${esc(d.body||tx('noDigestItems'))}</p></article>`).join('');
+  const list=digestData.map((d,di)=>Array.isArray(d.items)&&d.items.length?digestCard(d,di):`<article class="mail-card digest-card dg-card"><div class="meta"><span class="badge">${esc(fmt(d.created))}</span></div><h2>${esc(digestTitle(d.title))}</h2><p class="body-text" data-user-content>${esc(digestText(d.body||tx('noDigestItems'),'No mail items in this digest.'))}</p></article>`).join('');
   root.classList.toggle('dg-animate',!!animate&&motionOk());
   root.innerHTML=(stacked?`<button type="button" class="stack-toggle chip-button" aria-expanded="false"></button><div class="card-stack">`:'')+list+(stacked?'</div>':'');
   if(stacked)setupCardStack($('#digest-list .card-stack'),$('#digest-list .stack-toggle'),{open:local(`展开全部 ${digestData.length} 份日报`,`展開全部 ${digestData.length} 份日報`,`Show all ${digestData.length} digests`),close:local('收起','收起','Collapse')});
