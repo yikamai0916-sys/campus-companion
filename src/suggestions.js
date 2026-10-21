@@ -6,7 +6,7 @@ export async function saveMailSuggestion(env,userId,messageId,analysis){
  await env.DB.prepare("INSERT OR IGNORE INTO mail_suggestions(id,user_id,message_id,title,notes,due,evidence,created) VALUES(?,?,?,?,?,?,?,?)").bind(crypto.randomUUID(),userId,messageId,analysis.title,analysis.action||'',analysis.due??null,JSON.stringify(analysis.evidence||{}),Date.now()).run();
 }
 export async function listMailSuggestions(env,userId){
- return (await env.DB.prepare("SELECT * FROM mail_suggestions WHERE user_id=? AND status='pending' ORDER BY created DESC").bind(userId).all()).results.map(row=>({...row,evidence:JSON.parse(row.evidence)}));
+ return (await env.DB.prepare("SELECT s.*,m.subject AS message_subject FROM mail_suggestions s LEFT JOIN messages m ON m.id=s.message_id AND m.user_id=s.user_id WHERE s.user_id=? AND s.status='pending' ORDER BY s.created DESC").bind(userId).all()).results.map(row=>({...row,evidence:JSON.parse(row.evidence)}));
 }
 export async function reviewMailSuggestion(env,userId,id,input){
  const row=await env.DB.prepare("SELECT * FROM mail_suggestions WHERE id=? AND user_id=? AND status='pending'").bind(id,userId).first();
