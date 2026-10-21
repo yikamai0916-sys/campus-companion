@@ -247,13 +247,16 @@ async function routes(request,env,ctx){
     const localized=applyPreferredNameToFields(localizedRows[0]||row,aliasRules);
     // 全文翻译：中文页显示英文原文的完整逐句翻译
     // 获取用户偏好中文名，确保翻译中使用正确的名字（如马艺恺而非 AI 猜测）
-    let fullTranslation=null;
+    let fullTranslation=null,translationStatus='disabled';
     if(wantZh&&englishBody){
+      translationStatus='unavailable';
       try{
         const userProfile=await env.DB.prepare('SELECT preferred_zh_name FROM users WHERE id=?').bind(account.user_id).first();
         const preferredName=userProfile?.preferred_zh_name||'';
         fullTranslation=await translateFullBody(env,account.user_id,locale,id,englishBody,preferredName);
       }catch{}
+      if(fullTranslation)translationStatus='ready';
+      else if(env.ENABLE_AI==='true'&&env.AI&&Number(await getKV(env,'fulltrans:cooldown')||0)>Date.now())translationStatus='quota';
     }
     return json({
       id:row.id,
@@ -265,6 +268,7 @@ async function routes(request,env,ctx){
       english:{subject:englishSubject,body:englishBody,html:fetched.englishHtml,images:fetched.images,recipients:recipients||[],summary:prefs.englishSummary&&locale.startsWith('zh')?String(row.summary||''):undefined},
       display:{...localized,brief:await readBrief(env,account.user_id,locale,id)},
       translationEnabled:wantZh,
+      translationStatus,
       englishSummaryEnabled:prefs.englishSummary===true&&locale.startsWith('zh')
     });
   }

@@ -3,6 +3,7 @@ import { hash, random, seal, unseal } from './security.js';
 import { originalSender, classify } from './domain.js';
 import { applyNameAliases, applyPreferredNameToFields, buildAliasRules, preferredNamePromptHint } from './names.js';
 import { extractiveSummary } from './digest-format.js';
+import { compactPlainBody } from '../public/mail-reader.js';
 export const getKV=async(env,key)=> (await env.DB.prepare('SELECT value FROM kv WHERE key=?').bind(key).first())?.value;
 export const setKV=(env,key,value)=>env.DB.prepare('INSERT INTO kv(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').bind(key,value).run();
 const scope='offline_access User.Read Mail.Read';
@@ -80,6 +81,27 @@ export const plain = m=>{
   // Restrict removal to actual tag names: <person@example.edu> is mail data.
   return raw.replace(/<br\s*\/?>|<\/p>|<\/div>/gi,'\n').replace(/<\/?[A-Za-z][\w-]*(?:\s+[^>]*)?\/?>/g,'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&');
 };
+export function stripForwardedHeader(value=''){
+  const text=String(value).replace(/\r/g,'').trim();
+  if(!/^[_\-\s]*(?:(?:begin forwarded message:|forwarded message)\s*)?from\s*[:：]/i.test(text))return text;
+  const boundary=text.search(/\n\s*\n/);
+  const head=boundary<0?text:text.slice(0,boundary);
+  if(head.length>2500||!/(?:sent|date|发送|發送|寄件日期)\s*[:：]/i.test(head))return text;
+  if(boundary>=0)return text.slice(boundary).replace(/^\s+/,'').trim();
+  const subject=head.search(/(?:subject|主题|主旨)\s*[:：]/i);
+  const recipient=head.search(/(?:to|收件人|收件者)\s*[:：]/i);
+  const endField=[subject,recipient].filter(index=>index>=0).sort((a,b)=>b-a)[0];
+  if(endField===undefined)return text;
+  const end=head.indexOf('\n',endField);
+  return end<0?'':text.slice(end+1).trim();
+}
+export function htmlToPlainText(html=''){
+  return String(html).replace(/<!--[\s\S]*?-->/g,' ').replace(/<(script|style|head)[^>]*>[\s\S]*?<\/\1>/gi,' ')
+    .replace(/<(?:br|hr)\b[^>]*>/gi,'\n').replace(/<\/(?:p|div|tr|li|h[1-6]|table|td|th)\s*>/gi,'\n')
+    .replace(/<[^>]*>/g,' ').replace(/&nbsp;|&#160;|&#xA0;/gi,' ').replace(/&amp;/gi,'&').replace(/&lt;/gi,'<').replace(/&gt;/gi,'>')
+    .replace(/&#(\d+);/g,(_,n)=>String.fromCodePoint(Number(n))).replace(/&#x([\da-f]+);/gi,(_,n)=>String.fromCodePoint(parseInt(n,16)))
+    .replace(/[ \t]+\n/g,'\n').replace(/\n[ \t]+/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
+}
 export function explicitDeadline(body) {
   const months=['january','february','march','april','may','june','july','august','september','october','november','december'];
   const pattern=/\b(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+(20\d{2})\s+(?:at\s+)?(\d{1,2}):(\d{2})\s*(AM|PM)\b/gi;
@@ -266,7 +288,7 @@ export async function preGenerateMailTranslations(env,userId,messageIds){
   for(let i=0;i<ids.length;i+=2){
     await Promise.all(ids.slice(i,i+2).map(async id=>{
       try{
-        const fetched=await fetchMessageOriginal(env,userId,id);
+        const fetched=await fetchMessageOriginal(env,userId,id,{rich:true,includeImages:false});
         if(!fetched?.englishBody)return;
         await translateFullBody(env,userId,locale,id,fetched.englishBody,profile?.preferred_zh_name||'');
         await localizeMessages(env,userId,locale,[fetched.row],{allowAi:true,translate:true,nameAliases:rules});
@@ -428,7 +450,7 @@ export async function localizeMessages(env,userId,requestedLocale,messages,optio
 }
 
 export {plain as plainBody};
-export async function fetchMessageOriginal(env,userId,messageId,{rich=false}={}){
+export async function fetchMessageOriginal(env,userId,messageId,{rich=false,includeImages=true}={}){
   const row=await env.DB.prepare('SELECT * FROM messages WHERE id=? AND user_id=?').bind(messageId,userId).first();
   if(!row)return null;
   let englishSubject=row.subject,englishBody='',originalAvailable=false,englishHtml='',images={},recipients=[];
@@ -440,7 +462,7 @@ export async function fetchMessageOriginal(env,userId,messageId,{rich=false}={})
       if(rich&&m.body?.contentType?.toLowerCase()==='html'){
         englishHtml=String(m.body.content||'').slice(0,250000);
         const cids=[...englishHtml.matchAll(/cid:([^"'\s>]+)/gi)].map(x=>x[1]);
-        if(cids.length)try{
+        if(includeImages&&cids.length)try{
           const page=await graph(env,userId,'me/messages/'+encodeURIComponent(messageId)+'/attachments?$select=id,contentId,contentType,size,isInline');
           let total=0;
           for(const a of (page.value||[]).filter(a=>cids.includes(a.contentId)&&/^image\/(png|jpeg|gif|webp)$/i.test(a.contentType||'')).slice(0,12)){
@@ -450,7 +472,7 @@ export async function fetchMessageOriginal(env,userId,messageId,{rich=false}={})
           }
         }catch{}
       }
-      englishBody=plain(m).slice(0,12000);originalAvailable=!!englishBody;
+      englishBody=(englishHtml?htmlToPlainText(englishHtml):plain(m)).slice(0,12000);originalAvailable=!!englishBody;
       if(m.webLink&&!row.url)await env.DB.prepare('UPDATE messages SET url=? WHERE id=? AND user_id=?').bind(m.webLink,messageId,userId).run();
       row.url=m.webLink||row.url;
     }catch{englishBody=englishBody||'';}
@@ -523,7 +545,13 @@ export async function summarizeLink(env, locale, url){
 // 全文逐句翻译：把英文正文完整翻译成中文（非摘要）
 export async function translateFullBody(env,userId,locale,messageId,englishBody,preferredZhName=''){
   if(!englishBody||!englishBody.trim())return null;
-  const cacheKey=`fulltrans:v3:${locale}:${userId}:${await hash(messageId)}`;
+  const translationBody=stripForwardedHeader(compactPlainBody(englishBody));
+  if(!translationBody)return null;
+  const cooldownUntil=Number(await getKV(env,'fulltrans:cooldown')||0);
+  if(cooldownUntil>Date.now())return null;
+  // The same message can be returned as a truncated plain body and a complete
+  // HTML body by Graph. Never let a translation of one variant mask the other.
+  const cacheKey=`fulltrans:v6:${locale}:${userId}:${await hash(messageId)}:${await hash(translationBody)}`;
   try{
     const cached=await getKV(env,cacheKey);
     if(cached)return cached;
@@ -538,7 +566,7 @@ export async function translateFullBody(env,userId,locale,messageId,englishBody,
   try{
     const out=await env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast',{messages:[
       {role:'system',content:`Translate the actual email message body into ${language}. ${scriptNote}${nameNote} The input may begin with a forwarded-message header block (From, Sent, To, Subject); omit that block because sender and time are shown separately in the interface. Translate the substantive message faithfully, preserving paragraphs, lists and structure. Do NOT summarize or omit message content. Keep personal names, institution names, dates, email addresses and URLs unchanged. Return only the translation, no explanations.`},
-      {role:'user',content:englishBody.slice(0,12000)}
+      {role:'user',content:translationBody.slice(0,12000)}
     ],max_tokens:4000});
     const translation=typeof out.response==='string'?out.response.trim():JSON.stringify(out.response);
     if(translation){
@@ -546,6 +574,9 @@ export async function translateFullBody(env,userId,locale,messageId,englishBody,
       return translation;
     }
   }catch(e){
+    if(/daily free allocation|neurons|quota|rate.?limit/i.test(e.message||'')){
+      await setKV(env,'fulltrans:cooldown',String(Date.now()+6*60*60*1000)).catch(()=>{});
+    }
     console.warn('full-translation-failed', e.message?.slice(0,100));
   }
   return null;

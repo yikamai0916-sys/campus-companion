@@ -443,6 +443,17 @@ async function openMailDetail(id,{push=true}={}){
       const translated=renderMailBody({body:detail.chinese.fullBody});
       $('#mail-detail-zh').replaceChildren(translated);
       for(const img of original.querySelectorAll('img'))if(![...translated.querySelectorAll('img')].some(i=>i.src===img.src))$('#mail-detail-zh').append(img.cloneNode(true));
+    }else if(detail.translationEnabled){
+      if(!display.brief){
+        const summary=String(display.summary||'').trim();
+        $('#mail-detail-zh').replaceChildren();
+        if(summary&&!/^[_\-\s]*(?:From|发件人|寄件者)\s*[:：]/i.test(summary))$('#mail-detail-zh').append(Object.assign(document.createElement('p'),{textContent:summary}));
+      }
+      const notice=document.createElement('p');
+      notice.textContent=detail.translationStatus==='quota'
+        ?'全文翻译暂不可用：AI 服务今日用量已达上限。英文原文仍可查看，额度恢复后再次打开即可生成译文。'
+        :'全文翻译暂时无法生成，英文原文仍可在「原文」中查看，请稍后重试。';
+      $('#mail-detail-zh').append(notice);
     }
     if(!detail.translationEnabled)selectPane('en');
     const link=$('#mail-detail-outlook');
