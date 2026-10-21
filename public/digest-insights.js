@@ -69,6 +69,15 @@ export function cleanTitle(subject = '') {
   return String(subject).replace(/^(?:(?:\s*(?:fw|fwd|re|转发|轉寄|回复|回覆)\s*[:：])\s*)+/i, '').replace(/\s+/g, ' ').trim();
 }
 
+const containsCjk = value => /[\u3400-\u9fff]/.test(String(value || ''));
+export const digestTextForLocale = (value, locale, fallback) => locale === 'en' && containsCjk(value) ? fallback : String(value || '');
+export function digestTitleForLocale(title, locale) {
+  if (locale !== 'en' || !containsCjk(title)) return title;
+  const date = String(title || '').match(/\b20\d{2}-\d{2}-\d{2}\b/)?.[0];
+  const label = /晚间补充|晚間補充/.test(title) ? 'Evening digest' : /学校邮件日报|學校郵件日報/.test(title) ? 'Daily mail digest' : 'Daily digest';
+  return date ? `${date} ${label}` : label;
+}
+
 const norm = s => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
 const DEADLINE = /(deadline|due\b|apply by|register by|registration|rsvp|submit|submission|截止|逾期|報名|报名|申請|申请|提交|繳交|缴交|填寫|填写)/i;
 const GENERIC_ACTION = /^(请核对作业要求与截止时间|請核對作業要求與截止時間|请查看原邮件确认是否需要处理|請查看原郵件確認是否需要處理|无需操作|無需操作)$/;

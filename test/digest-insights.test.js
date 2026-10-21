@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractDates, daysUntil, hkDayStart, tierOf, nextDate, gistOf, headlineOf, cleanTitle, digestOverview } from '../public/digest-insights.js';
+import { extractDates, daysUntil, hkDayStart, tierOf, nextDate, gistOf, headlineOf, cleanTitle, digestOverview, digestTextForLocale, digestTitleForLocale } from '../public/digest-insights.js';
 
 const hk = (y, m, d, h = 0) => Date.UTC(y, m - 1, d, h) - 8 * 3600000; // HK wall-clock -> timestamp
 const NOW = hk(2026, 10, 18, 12); // Sun 18 Oct 2026, noon HK
@@ -51,6 +51,14 @@ test('headline strips forwarding prefixes and prefers the AI title', () => {
   assert.equal(cleanTitle('FW: Re:  Hello   world'), 'Hello world');
   assert.equal(headlineOf({ subject: 'FW: Raw subject', brief: { title: 'Clear title' } }), 'Clear title');
   assert.equal(headlineOf({ subject: '' }), '—');
+});
+
+test('English digest presentation localizes cached Chinese titles and text', () => {
+  assert.equal(digestTitleForLocale('2026-10-20 晚间补充', 'en'), '2026-10-20 Evening digest');
+  assert.equal(digestTitleForLocale('2026-10-20 学校邮件日报', 'en'), '2026-10-20 Daily mail digest');
+  assert.equal(digestTitleForLocale('2026-10-20 晚间补充', 'zh-CN'), '2026-10-20 晚间补充');
+  assert.equal(digestTextForLocale('最终投票队伍报名截止', 'en', 'English summary unavailable'), 'English summary unavailable');
+  assert.equal(digestTextForLocale('Registration closes Friday', 'en', 'English summary unavailable'), 'Registration closes Friday');
 });
 
 test('gist never just repeats the headline and is marked provisional without an AI brief', () => {

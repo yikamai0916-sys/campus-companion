@@ -155,7 +155,7 @@ async function loadTasks(){tasks=await api('tasks');renderTasks();translateTextN
 import { TaskReminderPicker } from './task-reminders.js';
 import { playButtonSuccess, resetSuccessButton, circularTransition, progressColor, setupCardStack } from './motion.js';
 import { watchTimeInputs } from './native-pickers.js';
-import { digestOverview, daysUntil } from './digest-insights.js';
+import { digestOverview, daysUntil, digestTextForLocale, digestTitleForLocale } from './digest-insights.js';
 
 // Every native date/time input (task form, groups, meetings, settings) becomes a wheel picker.
 watchTimeInputs();
@@ -526,13 +526,8 @@ function wireMailSearch(){
 let digestData=[],digestViews=[],digestFilter='all',digestBound=false,digestStackOpen=false;
 const digestOpen=new Set();
 const motionOk=()=>!matchMedia('(prefers-reduced-motion: reduce)').matches;
-const digestText=(value,fallback)=>locale==='en'&&containsCjk(value)?fallback:String(value||'');
-function digestTitle(title){
-  if(locale!=='en'||!containsCjk(title))return title;
-  const date=String(title||'').match(/\b20\d{2}-\d{2}-\d{2}\b/)?.[0];
-  const label=/晚间补充|晚間補充/.test(title)?'Evening digest':/学校邮件日报|學校郵件日報/.test(title)?'Daily mail digest':'Daily digest';
-  return date?`${date} ${label}`:label;
-}
+const digestText=(value,fallback)=>digestTextForLocale(value,locale,fallback);
+const digestTitle=title=>digestTitleForLocale(title,locale);
 const tierLabel=t=>({act:local('需处理','需處理','Action'),upcoming:local('日程','日程','Dated'),info:local('资讯','資訊','Info')}[t]);
 function dayLabel(ts){
   const n=daysUntil(ts,Date.now()),date=new Date(ts).toLocaleDateString(dateLocale(),{timeZone:'Asia/Hong_Kong',month:'short',day:'numeric',weekday:'short'});
