@@ -451,8 +451,8 @@ async function openMailDetail(id,{push=true}={}){
       }
       const notice=document.createElement('p');
       notice.textContent=detail.translationStatus==='quota'
-        ?'全文翻译暂不可用：AI 服务今日用量已达上限。英文原文仍可查看，额度恢复后再次打开即可生成译文。'
-        :'全文翻译暂时无法生成，英文原文仍可在「原文」中查看，请稍后重试。';
+        ?local('全文翻译暂不可用：AI 服务今日用量已达上限。英文原文仍可查看，额度恢复后再次打开即可生成译文。','全文翻譯暫不可用：AI 服務今日用量已達上限。英文原文仍可查看，額度恢復後再次開啟即可生成譯文。','Full translation is temporarily unavailable because the AI daily limit has been reached. The original is still available; reopen this email after the limit resets to generate a translation.')
+        :local('全文翻译暂时无法生成，英文原文仍可在「原文」中查看，请稍后重试。','全文翻譯暫時無法生成，英文原文仍可在「原文」中查看，請稍後重試。','The full translation could not be generated. The original is available in “Original”; please try again later.');
       $('#mail-detail-zh').append(notice);
     }
     if(!detail.translationEnabled)selectPane('en');
