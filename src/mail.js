@@ -220,6 +220,8 @@ export async function ingestShortcutEmail(env,data,userId) {
 export async function syncMail(env,userId) {
   const connection=await outlookConnection(env,userId);if(!connection)return {imported:0,pages:0,more:false};
   if(!userId)throw new Error('主账号尚未初始化，请先登录网站');
+  const schoolEmail=String(env.SCHOOL_EMAIL||'').trim().toLowerCase();
+  if(!schoolEmail)throw new Error('同步配置缺少学校邮箱地址，请联系网站管理员');
   const now=Date.now();let cursor=connection.cursor,cutoff=connection.cutoff,imported=0,pages=0;
   if(!cursor){
     cutoff=new Date(now).toISOString();
@@ -234,11 +236,11 @@ export async function syncMail(env,userId) {
     const page=await graph(env,userId,cursor);pages++;
     for(const m of page.value||[]){
       const body=plain(m),outer=m.sender?.emailAddress?.address||m.from?.emailAddress?.address||'';
-      const forwardedTo=body.split('\n').some(line=>/^\s*(?:To|收件人|收件者)\s*[:：]/i.test(line.replace(/\*/g,''))&&line.toLowerCase().includes(env.SCHOOL_EMAIL.toLowerCase()));
-      const schoolRecipient=(m.toRecipients||[]).some(x=>String(x.emailAddress?.address||'').toLowerCase()===env.SCHOOL_EMAIL.toLowerCase());
+      const forwardedTo=body.split('\n').some(line=>/^\s*(?:To|收件人|收件者)\s*[:：]/i.test(line.replace(/\*/g,''))&&line.toLowerCase().includes(schoolEmail));
+      const schoolRecipient=(m.toRecipients||[]).some(x=>String(x.emailAddress?.address||'').toLowerCase()===schoolEmail);
       // Do not silently import unrelated personal email. A message must be from
       // the school account or include the school's original recipient details.
-      if(outer.toLowerCase()!==env.SCHOOL_EMAIL.toLowerCase()&&!forwardedTo&&!schoolRecipient)continue;
+      if(outer.toLowerCase()!==schoolEmail&&!forwardedTo&&!schoolRecipient)continue;
       if(await env.DB.prepare('SELECT id FROM messages WHERE id=? AND user_id=?').bind(m.id,userId).first())continue;
       const a=await analyze(env,m,body,await nameRulesFor(env,userId));
       await env.DB.prepare('INSERT OR IGNORE INTO messages(id,subject,received,sender,origin,category,summary,action,url,quality,user_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)').bind(m.id,m.subject||'无主题',Date.parse(m.receivedDateTime),a.sender,a.origin,a.category,a.summary,a.action,m.webLink||'',a.quality,userId).run();
