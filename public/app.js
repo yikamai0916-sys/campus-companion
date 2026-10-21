@@ -1,3 +1,4 @@
+import {renderMailBody} from './mail-reader.js';
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const I18N={
@@ -413,46 +414,40 @@ function formatMailFromTo(detail){
   return { from: fromDept, to: toText };
 }
 
-async function openMailDetail(id){
-  const dialog=$('#mail-detail-dialog');if(!dialog)return;
-  $('#mail-detail-title').textContent=tx('mailDetail');
-  $('#mail-detail-zh').textContent=local('加载中…','載入中…','Loading…');
-  $('#mail-detail-en').textContent='';
-  // dialog 可能已打开（日报跳转与列表加载双链路），已打开时直接刷新内容
-  if(!dialog.open)dialog.showModal();
+let readerRequest=0;
+function hideMailReader(){
+  readerRequest++;$('#mail-detail-dialog').classList.add('hidden');document.body.classList.remove('reader-open');$('#app').inert=false;
+}
+async function openMailDetail(id,{push=true}={}){
+  const page=$('#mail-detail-dialog'),request=++readerRequest;
+  if(push&&new URLSearchParams(location.search).get('message')!==id)history.pushState({mailReader:true},'','/?view=mail&message='+encodeURIComponent(id));
+  page.classList.remove('hidden');document.body.classList.add('reader-open');$('#app').inert=true;page.scrollTop=0;
+  $('#close-mail-detail').textContent=local('← 返回','← 返回','← Back');
+  $('#mail-detail-label').textContent=tx('mailDetail');
+  $('#mail-detail-title').textContent=local('加载中…','載入中…','Loading…');
+  $('#mail-detail-title').focus();$('#mail-detail-meta').textContent='';
+  $('#mail-detail-zh').textContent='';$('#mail-detail-en').textContent='';$('#mail-detail-outlook').hidden=true;
+  const summaryTab=page.querySelector('[data-mail-pane="zh"]'),originalTab=page.querySelector('[data-mail-pane="en"]');
+  summaryTab.textContent=local('中文','中文','Summary');originalTab.textContent=local('原文','原文','Original');
+  const selectPane=name=>{for(const tab of [summaryTab,originalTab]){const selected=tab.dataset.mailPane===name;tab.classList.toggle('selected',selected);tab.setAttribute('aria-selected',String(selected));}$('#mail-detail-zh').classList.toggle('hidden',name!=='zh');$('#mail-detail-en').classList.toggle('hidden',name!=='en');};
+  selectPane('zh');summaryTab.onclick=()=>selectPane('zh');originalTab.onclick=()=>selectPane('en');
   try{
-    const detail=await api('messages/'+encodeURIComponent(id));
-    const zh=detail.chinese||detail.display;
-    $('#mail-detail-meta').innerHTML=`<span class="badge">${esc(tx(categoryKey(detail.category)))}</span><span>${esc(fmt(detail.received))}</span>`;
-    if(detail.translationEnabled&&zh){
-      // 中文页：显示英文原文的完整逐句翻译（非摘要）
-      const fullBody = zh.fullBody || '';
-      const fromTo = formatMailFromTo(detail);
-      const fromToHtml = (fromTo.from || fromTo.to) ?
-        `<p class="mail-fromto"><span class="mail-from">${esc(fromTo.from || '')}</span>${fromTo.from && fromTo.to ? '<span class="mail-arrow">→</span>' : ''}<span class="mail-to">${esc(fromTo.to || '')}</span></p>` : '';
-
-      $('#mail-detail-zh').innerHTML=`<h3 data-user-content>${esc(detail.display?.brief?.title||zh.subject)}</h3>${fromToHtml}${fullBody?`<div class="mail-body" data-user-content>${cleanMailBody(fullBody)}</div>`:`<p data-user-content>${esc(zh.summary)}</p><p>${esc(zh.action||'')}</p>`}`;
-      $$('[data-mail-pane]').forEach(b=>b.classList.toggle('hidden',false));
-    }else{
-      $('#mail-detail-zh').innerHTML=`<h3 data-user-content>${esc(detail.display?.brief?.title||detail.display?.subject||detail.english?.subject||'')}</h3>${detail.display?.brief?briefContent(detail.display):`<p data-user-content>${esc(detail.display?.summary||'')}</p>`}`;
-      const zhTab=document.querySelector('[data-mail-pane="zh"]');if(zhTab)zhTab.classList.add('hidden');
+    const detail=await api('messages/'+encodeURIComponent(id));if(request!==readerRequest)return;
+    const display=detail.display||detail.chinese||{};
+    $('#mail-detail-title').textContent=display.brief?.title||String(display.subject||detail.english?.subject||'').replace(/^(?:(?:fw|fwd|re)\s*:\s*)+/i,'');
+    $('#mail-detail-meta').innerHTML=`<span class="badge">${esc(display.brief?.topic||tx(categoryKey(detail.category)))}</span><span>${esc(display.sender||'')}</span><span>${esc(display.origin||'')}</span><time>${esc(fmt(detail.received))}</time>`;
+    $('#mail-detail-zh').innerHTML=display.brief?briefContent(display):`<p data-user-content>${esc(display.summary||'')}</p>`;
+    const original=renderMailBody(detail.english||{});
+    $('#mail-detail-en').replaceChildren(original);
+    if(detail.chinese?.fullBody){
+      const translated=renderMailBody({body:detail.chinese.fullBody});
+      $('#mail-detail-zh').replaceChildren(translated);
+      for(const img of original.querySelectorAll('img'))if(![...translated.querySelectorAll('img')].some(i=>i.src===img.src))$('#mail-detail-zh').append(img.cloneNode(true));
     }
-    const en=detail.english||{};
-    // 英文页：清理正文（去图片提示、渲染图片、美化链接），直观显示发件/收件
-    const fromTo = formatMailFromTo(detail);
-    const fromToHtml = (fromTo.from || fromTo.to) ?
-      `<p class="mail-fromto"><span class="mail-from">${esc(fromTo.from || '')}</span>${fromTo.from && fromTo.to ? '<span class="mail-arrow">→</span>' : ''}<span class="mail-to">${esc(fromTo.to || '')}</span></p>` : '';
-    $('#mail-detail-en').innerHTML=`<h3 data-user-content>${esc(en.subject||'')}</h3>${fromToHtml}<div class="mail-body" data-user-content>${cleanMailBody(en.body||'')}</div>${detail.englishSummaryEnabled&&en.summary?`<p class="quality">${esc(en.summary)}</p>`:''}`;
+    if(!detail.translationEnabled)selectPane('en');
     const link=$('#mail-detail-outlook');
-    if(link){if(/^https:\/\/(?:outlook\.live\.com|outlook\.office\.com|outlook\.office365\.com)\//.test(detail.url||'')){link.hidden=false;link.href=detail.url;link.textContent=tx('viewOriginal');}else{link.hidden=true;link.removeAttribute('href');}}
-    const showZh=detail.translationEnabled!==false&&!!detail.chinese;
-    document.querySelectorAll('[data-mail-pane]').forEach(b=>b.classList.toggle('selected',b.dataset.mailPane===(showZh?'zh':'en')));
-    $('#mail-detail-zh').classList.toggle('hidden',!showZh);
-    $('#mail-detail-en').classList.toggle('hidden',showZh);
-    // 异步增强裸链接：用 AI 总结替换无描述链接的显示文本
-    enhanceBareLinks($('#mail-detail-zh')).catch(()=>{});
-    enhanceBareLinks($('#mail-detail-en')).catch(()=>{});
-  }catch(e){$('#mail-detail-zh').textContent=e.message;}
+    if(/^https:\/\/(?:outlook\.live\.com|outlook\.office\.com|outlook\.office365\.com)\//.test(detail.url||'')){link.hidden=false;link.href=detail.url;link.textContent=tx('viewOriginal');}
+  }catch(e){if(request===readerRequest){$('#mail-detail-title').textContent=tx('mailDetail');$('#mail-detail-zh').textContent=e.message;}}
 }
 let currentMailQuery='';
 async function loadMail(opts={}){
@@ -487,7 +482,7 @@ async function loadMail(opts={}){
     },()=>locale===activeLocale&&!$('#mail-view').classList.contains('hidden'));
 
     const focusId=new URLSearchParams(location.search).get('message');
-    if(focusId&&!append)openMailDetail(focusId);
+
   }catch(e){$('#global-error').textContent=e.message;}
 }
 function wireMailSearch(){
@@ -619,8 +614,7 @@ function bindDigestEvents(){
         if(mailId){
           // 先切到邮件视图，再写 deep-link 参数：loadMail 加载完列表后会自动打开对应邮件；
           // 同时立即打开详情（带加载中提示），dialog.open 守卫保证两次调用不冲突
-          view('mail');
-          history.replaceState(null,'','/?view=mail&message='+encodeURIComponent(mailId));
+
           openMailDetail(mailId).catch(e=>console.warn('openMailDetail failed',e));
         }else{
           // 旧日报条目没有关联邮件 id：展开行内摘要，保证点击一定有反馈
@@ -775,7 +769,9 @@ $('#show-completed').onclick=()=>{showDone=true;$('#show-completed').classList.a
 $$('[data-view]').forEach(b=>b.onclick=event=>{if(b.dataset.view===activeView)view(b.dataset.view);else circularTransition(event,()=>view(b.dataset.view));});
 function wireMailDetail(){
   const dialog=$('#mail-detail-dialog');if(!dialog||dialog.dataset.wired)return;dialog.dataset.wired='1';
-  const close=()=>dialog.close();
+  const close=()=>{if(history.state?.mailReader)history.back();else{hideMailReader();view('mail');}};
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!dialog.classList.contains('hidden'))close();});
+  window.addEventListener('popstate',()=>{const id=new URLSearchParams(location.search).get('message');if(id)openMailDetail(id,{push:false});else hideMailReader();});
   $('#close-mail-detail')?.addEventListener('click',close);
   $('#mail-detail-done')?.addEventListener('click',close);
   dialog.querySelectorAll('[data-mail-pane]').forEach(btn=>btn.onclick=()=>{
@@ -784,7 +780,7 @@ function wireMailDetail(){
     $('#mail-detail-en').classList.toggle('hidden',btn.dataset.mailPane!=='en');
   });
 }
-async function boot(){wireMailDetail();wireMailSearch();try{status=await api('status');const profile=await api('profile');reminderDefaults=profile.reminders||reminderDefaults;applyLocale(status.account.locale||localStorage.getItem('campus-locale')||'zh-CN');localStorage.setItem('campus-locale',locale);$('#login').classList.add('hidden');$('#app').classList.remove('hidden');$('#account-label').textContent=accountLabel(status.account);setAvatar(status.account.avatar,accountLabel(status.account).slice(0,1).toUpperCase());$('#date-label').textContent=new Date().toLocaleDateString(dateLocale(),{timeZone:'Asia/Hong_Kong',year:'numeric',month:'long',day:'numeric',weekday:'long'});await loadTasks();const v=new URLSearchParams(location.search).get('view');view(['groups','mail','digests','settings'].includes(v)?v:'tasks');}catch(e){if(!$('#app').classList.contains('hidden'))$('#global-error').textContent=e.message;else showLogin();}}
+async function boot(){wireMailDetail();wireMailSearch();try{status=await api('status');const profile=await api('profile');reminderDefaults=profile.reminders||reminderDefaults;applyLocale(status.account.locale||localStorage.getItem('campus-locale')||'zh-CN');localStorage.setItem('campus-locale',locale);$('#login').classList.add('hidden');$('#app').classList.remove('hidden');$('#account-label').textContent=accountLabel(status.account);setAvatar(status.account.avatar,accountLabel(status.account).slice(0,1).toUpperCase());$('#date-label').textContent=new Date().toLocaleDateString(dateLocale(),{timeZone:'Asia/Hong_Kong',year:'numeric',month:'long',day:'numeric',weekday:'long'});await loadTasks();const params=new URLSearchParams(location.search),v=params.get('view'),message=params.get('message');view(['groups','mail','digests','settings'].includes(v)?v:'tasks');if(message){history.replaceState(null,'','/?view=mail&message='+encodeURIComponent(message));openMailDetail(message,{push:false});}}catch(e){if(!$('#app').classList.contains('hidden'))$('#global-error').textContent=e.message;else showLogin();}}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!$('#app').classList.contains('hidden'))loadTasks().catch(e=>toast(e.message));});
 
 function announcementText(item){if(item.kind==='meeting-change')return {title:item.title,body:item.body==='cancel'?local('会议已取消','會議已取消','Meeting cancelled'):local('会议已改期，请重新提交可用时间','會議已改期，請重新提交可用時間','Meeting rescheduled. Submit availability again.')};if(item.kind==='meeting'){const poll=groupState.meetingPolls.find(p=>p.id===item.source_id);if(poll)return {title:local('会议时间已确认：','會議時間已確認：','Meeting confirmed: ')+poll.name,body:fmt(poll.confirmed_start)+' · '+poll.duration_minutes+' '+local('分钟','分鐘','minutes')};}return item;}

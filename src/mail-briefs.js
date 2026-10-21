@@ -1,3 +1,4 @@
+import {buildAliasRules,applyNameAliases} from './names.js';
 import {hash} from './security.js';
 import {getKV,setKV,fetchMessageOriginal} from './mail.js';
 const version='brief-v4';
@@ -11,7 +12,16 @@ export const cleanSubject=(s='')=>String(s).replace(/^(?:(?:\s*(?:fw|fwd|re|转�
 export const parseBriefResponse=response=>typeof response==='object'&&response!==null?response:JSON.parse(String(response||'').replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,''));
 const compact=s=>String(s||'').normalize('NFKC').replace(/[‘’]/g,"'").replace(/[“”]/g,'"').replace(/\s+/g,' ').trim();
 const key=async(user,locale,id)=>`${version}:${user}:${locale}:${await hash(id)}`;
-export async function readBrief(env,user,locale,id){try{return JSON.parse(await getKV(env,await key(user,locale,id))||'null')}catch{return null}}
+export async function readBrief(env,user,locale,id){try{
+ const brief=JSON.parse(await getKV(env,await key(user,locale,id))||'null');
+ if(!brief||!locale.startsWith('zh'))return brief;
+ const {results}=await env.DB.prepare('SELECT alias,zh_name AS zhName FROM name_aliases WHERE user_id=? ORDER BY created').bind(user).all();
+ const profile=await env.DB.prepare('SELECT preferred_zh_name FROM users WHERE id=?').bind(user).first();
+ const rules=buildAliasRules(results||[],profile?.preferred_zh_name||'');
+ for(const field of ['title','topic'])if(brief[field])brief[field]=applyNameAliases(brief[field],rules);
+ for(const field of ['points','actions'])for(const item of brief[field]||[])item.text=applyNameAliases(item.text,rules);
+ return brief;
+ }catch{return null}}
 export async function attachBriefs(env,user,locale,rows){return Promise.all(rows.map(async row=>({...row,subject:cleanSubject(row.subject),brief:await readBrief(env,user,locale,row.id)})))}
 export function validateBrief(raw,source){
  const text=compact(source),supported=e=>typeof e==='string'&&compact(e).length>=5&&text.includes(compact(e));

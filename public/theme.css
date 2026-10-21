@@ -339,3 +339,30 @@ button.pending::before{content:'';display:inline-block;width:13px;height:13px;ma
 .mail-points li+li{margin-top:9px}.brief-actions{padding:16px;border-left:3px solid var(--ink);background:var(--surface-2);border-radius:0 14px 14px 0;margin-top:16px;font-size:15px;line-height:1.7}
 .brief-actions ul{padding-left:1.25em;margin-bottom:0}.digest-overview{padding:18px 0;border-bottom:1px solid var(--surface-3);font-size:16px;font-weight:400}
 .digest-item .mail-points{font-size:15px;font-weight:400}.digest-item h3{font-size:20px;line-height:1.4}.digest-item{cursor:pointer;text-align:left}
+
+.reader-open{overflow:hidden}
+.mail-reader{position:fixed;inset:0;z-index:1000;overflow:auto;background:#fff;color:var(--ink)}
+.reader-bar{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:16px;padding:14px 24px;border-bottom:1px solid var(--line);background:#fff}
+.reader-bar>span{flex:1;color:var(--muted);font-size:.9rem}
+.reader-bar .chip-button{padding:9px 14px;font-size:.9rem}
+.reader-content{max-width:1000px;margin:0 auto;padding:30px 32px 80px}
+.reader-content h1{font-size:clamp(1.5rem,3vw,2.25rem);line-height:1.35;margin:16px 0 22px;letter-spacing:-.025em}
+.mail-reader .mail-detail-meta{display:flex;align-items:center;gap:6px 12px;font-size:12px;line-height:1.5;margin:0;overflow-wrap:anywhere}
+.mail-reader .mail-detail-meta .badge{font-size:11px;padding:3px 8px}
+.mail-reader .mail-detail-tabs{border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:22px}
+.mail-reader .mail-detail-pane{white-space:normal;line-height:1.6;font-size:16px}
+.original-mail-body{overflow-wrap:anywhere}
+.original-mail-body p,.original-mail-body div,.original-mail-body blockquote{margin:0 0 .65em;padding:0}
+.original-mail-body br{line-height:1.3}
+.original-mail-body table{border-collapse:collapse;width:auto;max-width:100%;margin:.6em 0}
+.original-mail-body td,.original-mail-body th{padding:4px 8px;vertical-align:top;max-width:100%;height:auto}
+.original-mail-body img{display:block;max-width:100%;height:auto;margin:12px 0}
+.original-mail-body a{color:#2858a0;text-decoration:underline}
+.original-mail-body h1,.original-mail-body h2,.original-mail-body h3,.original-mail-body h4{font-size:1.15em;margin:.8em 0 .4em}
+.original-mail-body.plain-mail{white-space:pre-line}
+@media(max-width:600px){.reader-content{padding:22px 18px 60px}.reader-bar{padding:12px}.reader-bar>span{display:none}.reader-bar a{margin-left:auto}.profile-editor{grid-template-columns:1fr}.profile-picture,.profile-picture img{width:64px;height:64px}}
+.original-mail-body table{margin:0;border-spacing:0}
+.original-mail-body td,.original-mail-body th{padding:0 4px}
+.original-mail-body table table td,.original-mail-body table table th{padding:0}
+
+#mail-detail-zh>img{display:block;max-width:100%;height:auto;margin:16px auto}

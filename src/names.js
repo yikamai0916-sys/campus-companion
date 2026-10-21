@@ -72,7 +72,7 @@ export function buildAliasRules(aliasesOrPreferred='',preferredZhName=''){
     if(forms.size){for(const form of forms)groups.get(z).add(form);}
     else if(/[\u4e00-\u9fff]/.test(a))groups.get(z).add(a.toLowerCase()); // Chinese variant matches verbatim
   };
-  for(const row of list)add(row.alias,row.zhName);
+  for(const row of list){add(row.alias,row.zhName);for(const wrong of nameAliases(row.zhName))add(wrong,row.zhName);}
   if(preferred){for(const wrong of nameAliases(preferred))add(wrong,preferred);}
   return [...groups.entries()].map(([zhName,forms])=>({zhName,patterns:[...forms].sort((a,b)=>b.length-a.length)}));
 }
@@ -85,13 +85,10 @@ export function applyNameAliases(text,rules=[]){
   if(text==null||!rules.length)return text;
   const emails=[];
   const guarded=String(text).replace(/<[^<>]*@[^<>]*>/g,email=>{emails.push(email);return `\u0000${emails.length-1}\u0000`;});
-  let out=guarded;
-  for(const {zhName,patterns} of rules){
-    for(const pattern of patterns){
-      if(!pattern)continue;
-      out=out.replace(new RegExp(escapeRegExp(pattern),'ig'),zhName);
-    }
-  }
+  const replacements=new Map();
+  for(const {zhName,patterns} of rules)for(const pattern of patterns)if(pattern&&!replacements.has(pattern.toLowerCase()))replacements.set(pattern.toLowerCase(),zhName);
+  const pattern=[...replacements.keys()].sort((a,b)=>b.length-a.length).map(escapeRegExp).join('|');
+  const out=pattern?guarded.replace(new RegExp(pattern,'ig'),match=>replacements.get(match.toLowerCase())):guarded;
   return out.replace(/\u0000(\d+)\u0000/g,(_,i)=>emails[i]);
 }
 

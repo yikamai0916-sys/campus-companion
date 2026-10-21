@@ -397,26 +397,35 @@ export async function localizeMessages(env,userId,requestedLocale,messages,optio
 }
 
 export {plain as plainBody};
-export async function fetchMessageOriginal(env,userId,messageId){
+export async function fetchMessageOriginal(env,userId,messageId,{rich=false}={}){
   const row=await env.DB.prepare('SELECT * FROM messages WHERE id=? AND user_id=?').bind(messageId,userId).first();
   if(!row)return null;
-  let englishSubject=row.subject,englishBody='',originalAvailable=false,recipients=[];
+  let englishSubject=row.subject,englishBody='',originalAvailable=false,englishHtml='',images={},recipients=[];
   if(!String(messageId).startsWith('shortcut:')&&await outlookConnection(env,userId)){
     try{
-      const m=await graph(env,userId,'me/messages/'+encodeURIComponent(messageId)+'?$select=id,subject,body,bodyPreview,webLink,toRecipients,from,sender');
+      const m=await graph(env,userId,'me/messages/'+encodeURIComponent(messageId)+'?$select=id,subject,body,bodyPreview,webLink,toRecipients',rich?{headers:{Prefer:'outlook.body-content-type="html"'}}:{});
       englishSubject=m.subject||englishSubject;
+      recipients=(m.toRecipients||[]).map(r=>r.emailAddress||{});
+      if(rich&&m.body?.contentType?.toLowerCase()==='html'){
+        englishHtml=String(m.body.content||'').slice(0,250000);
+        const cids=[...englishHtml.matchAll(/cid:([^"'\s>]+)/gi)].map(x=>x[1]);
+        if(cids.length)try{
+          const page=await graph(env,userId,'me/messages/'+encodeURIComponent(messageId)+'/attachments?$select=id,contentId,contentType,size,isInline');
+          let total=0;
+          for(const a of (page.value||[]).filter(a=>cids.includes(a.contentId)&&/^image\/(png|jpeg|gif|webp)$/i.test(a.contentType||'')).slice(0,12)){
+            if(a.size>3000000||total+a.size>8000000)continue;
+            const file=await graph(env,userId,'me/messages/'+encodeURIComponent(messageId)+'/attachments/'+encodeURIComponent(a.id));
+            if(file.contentBytes&&file.contentBytes.length<4000000){images[a.contentId]='data:'+a.contentType+';base64,'+file.contentBytes;total+=a.size||0;}
+          }
+        }catch{}
+      }
       englishBody=plain(m).slice(0,12000);originalAvailable=!!englishBody;
-      // 提取收件人信息，用于直观显示
-      recipients=(m.toRecipients||[]).map(r=>({
-        name:r.emailAddress?.name||'',
-        address:r.emailAddress?.address||''
-      })).filter(r=>r.address);
       if(m.webLink&&!row.url)await env.DB.prepare('UPDATE messages SET url=? WHERE id=? AND user_id=?').bind(m.webLink,messageId,userId).run();
       row.url=m.webLink||row.url;
     }catch{englishBody=englishBody||'';}
   }
   if(!englishBody)englishBody=String(row.summary||'');
-  return {row,englishSubject,englishBody,originalAvailable,recipients};
+  return {row,englishSubject,englishBody,englishHtml,images,originalAvailable,recipients};
 }
 
 // 链接总结：抓取 URL 内容，用 AI 总结这个链接是干什么的
