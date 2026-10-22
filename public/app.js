@@ -1,4 +1,4 @@
-const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const $=(s,root=document)=>root.querySelector(s), $$=(s,root=document)=>[...root.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const I18N={
   'zh-CN':{appName:'校园清单',appDescription:'学校邮件、作业与日常待办，在一个清单里。',clearDue:'清除截止时间',mainNav:'主导航',taskStatus:'任务状态',remindBefore:'截止前提醒',exactReminders:'指定提醒时间（香港）',remindWindow:'允许提醒的时段（香港时间）',remindChannel:'提醒方式',mailZh:'中文',close:'关闭',mailSearch:'搜索邮件',mailSearchPlaceholder:'搜索邮件…',addAlias:'添加英文名变体',aliasSuggestionsLabel:'邮件里识别到的相似写法，点击即可添加：',aliasRemove:'移除这个变体',aliasPlaceholder:'输入英文名写法',aliasZhPlaceholder:'输入对应中文名',heroTitle:'把要紧的事<br>放在眼前。',heroSubtitle:'作业、提醒和学校邮件，随时回来查看。',login:'登录',register:'注册',loginEmail:'登录邮箱',registerEmail:'注册邮箱',password:'访问密码',setPassword:'设置密码（至少 12 个字符）',securityQuestion:'自定义密保问题',securityAnswer:'密保答案',openList:'打开我的清单',forgot:'忘记密码？',createAccount:'创建账号',standaloneLogin:'独立登录 · 不需要打开 ChatGPT',tasks:'我的待办',mail:'邮件',settings:'设置',personalAccount:'个人账号',hkTime:'香港时间 · UTC+8',tasksEyebrow:'留出时间，做好重要的事',mailEyebrow:'先看重要的，再看感兴趣的',settingsEyebrow:'管理你的账号与连接',mailNotice:'每日 20:00 日报 · 00:00 按需补充晚间新邮件。原始发件人会单独标出。',profile:'个人空间',logout:'退出登录',save:'保存',language:'界面语言',nickname:'昵称',avatar:'头像',linkedEmail:'关联邮箱',reminderDefaults:'默认提醒设置',offsets:'提前提醒分钟数（逗号分隔）',repeat:'截止后重复间隔（分钟）',start:'提醒开始时间',end:'提醒结束时间',defaultNickname:'用户'},
@@ -105,6 +105,22 @@ function translateCopy(value){
 Object.assign(TEXTS,{'全部待办完成率':['全部待辦完成率','All tasks completion rate'],'一点一点，完成重要的事':['一點一點，完成重要的事','One small step at a time'],'全部待办进度':['全部待辦進度','Your overall progress'],'每一个小小的完成，都算数。':['每一個小小的完成，都算數。','Every small finish counts.'],'展开摘要':['展開摘要','Read summary'],'收起摘要':['收起摘要','Close summary']});
 // Copy for the wheel pickers and reminder chips (zh-TW, en).
 Object.assign(TEXTS,{'点此选择截止时间':['點此選擇截止時間','Choose a due time'],'＋ 自定义':['＋ 自訂','＋ Custom'],'把当前选择设为新待办默认':['把目前選擇設為新待辦預設','Use this selection for new tasks'],'设置截止时间后，这些提醒才会生效。':['設定截止時間後，這些提醒才會生效。','These reminders start working once a due time is set.'],'指定提醒时间（香港）':['指定提醒時間（香港）','Specific reminder times (Hong Kong)'],'＋ 添加提醒时间':['＋ 新增提醒時間','＋ Add a reminder time'],'选择间隔':['選擇間隔','Choose interval']});
+Object.assign(TEXTS,{
+ '确认密码':['確認密碼','Confirm password'],'两次输入的密码不一致':['兩次輸入的密碼不一致','The passwords do not match'],
+ '显示密码':['顯示密碼','Show password'],'隐藏密码':['隱藏密碼','Hide password'],
+ '请输入完整邮箱地址，例如 name@outlook.com':['請輸入完整電郵地址，例如 name@outlook.com','Enter a complete email address, for example name@outlook.com'],
+ '服务返回了异常响应，请稍后重试':['服務回傳異常回應，請稍後重試','The server returned an unexpected response. Try again later.'],
+ '操作失败，请重试':['操作失敗，請重試','The operation failed. Please retry.'],
+ '请求超时，请先刷新确认操作结果，再决定是否重试':['請求逾時，請先重新整理確認操作結果，再決定是否重試','Request timed out. Refresh to check the result before retrying.'],
+ '无法连接服务器，请检查网络或本地服务，再重试':['無法連接伺服器，請檢查網絡或本機服務，再重試','Cannot reach the server. Check your network or local server, then retry.'],
+ '连接中断，操作结果尚未确认；请刷新检查后再重试':['連接中斷，操作結果尚未確認；請重新整理檢查後再重試','Connection lost. The result is unknown; refresh and check before retrying.'],
+ '登录已失效，请重新登录':['登入已失效，請重新登入','Your session expired. Please sign in again.'],
+ '重试':['重試','Retry'],'关闭提示':['關閉提示','Dismiss'],
+ '尚未完成 Outlook 授权，可重新连接':['尚未完成 Outlook 授權，可重新連接','Outlook authorization was cancelled. You can reconnect.'],
+ 'Outlook 连接未完成，请核对邮箱和应用配置后重试':['Outlook 連接未完成，請核對電郵和應用設定後重試','Outlook connection failed. Check the email and app configuration, then retry.'],
+ '头像不能超过 2 MB':['頭像不能超過 2 MB','Avatar must be no larger than 2 MB'],
+ '无法读取图片，请重新选择':['無法讀取圖片，請重新選擇','Cannot read this image. Please choose it again.']
+});
 function translateTextNodes(){
  const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);let node;
  while(node=walker.nextNode()){
@@ -124,26 +140,39 @@ const dateLocale=()=>locale==='zh-TW'?'zh-TW':locale==='en'?'en-GB':'zh-CN';
 const local=(cn,tw,en)=>locale==='zh-TW'?tw:locale==='en'?en:cn;
 const fmt=n=>n?new Date(Number(n)).toLocaleString(dateLocale(),{timeZone:'Asia/Hong_Kong',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}):locale==='en'?'Deadline to confirm':locale==='zh-TW'?'截止時間待確認':'截止时间待确认';
 const localDate=n=>n?new Date(Number(n)+8*3600000).toISOString().slice(0,16):'';
+const returnParams=new URLSearchParams(location.search);
+let oauthFeedback=returnParams.has('outlookError')?(returnParams.get('outlookError')==='cancelled'?'尚未完成 Outlook 授权，可重新连接':'Outlook 连接未完成，请核对邮箱和应用配置后重试'):'';
 let tasks=[],status={},editing=null,showDone=false,activeView='tasks';
 let toastTimer;
 function toast(s){$('#toast').textContent=translateCopy(s);$('#toast').classList.remove('hidden');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.add('hidden'),4500);}
 function accountLabel(account){const nickname=String(account?.nickname||'').trim();return nickname||`${tx('defaultNickname')} ${String(account?.userCode||'0000')}`;}
 function setAvatar(value,fallback='U'){const el=$('#avatar');el.textContent='';if(/^data:image\//.test(value||'')){const img=document.createElement('img');img.src=value;img.alt='';el.append(img);}else el.textContent=value||fallback;}
-async function api(path,options={}){const response=await fetch('/api/'+path,{...options,headers:{'Content-Type':'application/json','X-Locale':locale,...options.headers},body:options.body===undefined?undefined:JSON.stringify(options.body)});let data;try{data=await response.json();}catch{throw Error('服务暂时不可用，请稍后重试');}if(!response.ok){if(response.status===401&&!['login','register','recovery/question','recovery/reset'].includes(path))showLogin();throw Error(translateCopy(data.error||'操作失败'));}return data;}
+async function api(path,options={}){
+  const form=document.activeElement?.closest('form');
+  try{return await requestJSON('/api/'+path,{...options,headers:{'Content-Type':'application/json','X-Locale':locale,...options.headers},body:options.body===undefined?undefined:JSON.stringify(options.body)});}
+  catch(error){error.message=translateCopy(error.message);
+    if(error.code==='SESSION_EXPIRED'){const expired=!$('#app').classList.contains('hidden')||returnParams.has('authError');showLogin();if(expired)$('#login-error').textContent=translateCopy('登录已失效，请重新登录');}
+    else if(form)showFormError(form,error.message);
+    throw error;
+  }
+}
+function showFormError(form,message){let node=form.querySelector('.error');if(!node){node=document.createElement('p');node.className='error';node.setAttribute('role','alert');form.append(node);}node.textContent=message;}
+function loadError(selector,error,retry){const root=$(selector);root.innerHTML='';const box=document.createElement('div');box.className='load-error';box.setAttribute('role','alert');const message=document.createElement('p');message.textContent=error.message;const button=document.createElement('button');button.type='button';button.textContent=translateCopy('重试');button.onclick=async()=>{button.disabled=true;try{await retry();}catch(e){loadError(selector,e,retry);}finally{button.disabled=false;}};box.append(message,button);root.append(box);}
 function showLogin(){
+  for(const dialog of $$('dialog[open]'))dialog.close();
   $('#app').classList.add('hidden');$('#login').classList.remove('hidden');
   if(location.search)history.replaceState(null,'','/');
   applyLocale(localStorage.getItem('campus-locale')||detectLocale());
   $$('[data-login-locale]').forEach(b=>b.classList.toggle('selected',b.dataset.loginLocale===locale));
 }
-function view(name){activeView=name;for(const v of ['tasks','groups','mail','digests','settings'])$('#'+v+'-view').classList.toggle('hidden',v!==name);$$('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===name));history.replaceState(null,'','/?view='+name);if(name==='groups')loadGroups();if(name==='mail')loadMail().then(translateTextNodes);if(name==='digests')loadDigests().then(translateTextNodes);if(name==='settings')loadSettings();}
+function view(name){$('#global-error').textContent='';activeView=name;for(const v of ['tasks','groups','mail','digests','settings'])$('#'+v+'-view').classList.toggle('hidden',v!==name);$$('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===name));history.replaceState(null,'','/?view='+name);if(name==='tasks')loadTasks().catch(e=>loadError('#task-list',e,loadTasks));if(name==='groups')loadGroups();if(name==='mail')loadMail().then(translateTextNodes);if(name==='digests')loadDigests().then(translateTextNodes);if(name==='settings')loadSettings();}
 function renderTasks(){
   const now=Date.now(),pending=tasks.filter(t=>!t.completed);
   $('#pending').textContent=pending.length;$('#soon').textContent=pending.filter(t=>t.due&&t.due>now&&t.due<=now+3*86400000).length;$('#completed').textContent=tasks.length-pending.length;$('#nav-count').textContent=pending.length;$('#heading-count').textContent=pending.length?' / '+pending.length:'';
   updateProgress(tasks.length-pending.length,tasks.length);
   const visible=tasks.filter(t=>t.completed===showDone);
   $('#task-list').innerHTML=visible.length?visible.map(t=>{const overdue=t.due&&t.due<now&&!t.completed,soon=t.due&&t.due>=now&&t.due<=now+3*86400000&&!t.completed,source=t.source==='candidate'?'来自小组分工':t.source==='meeting'?'来自已确认的小组会议':t.source==='email'?'来自已确认的邮件建议':'自己添加';return `<article class="task ${t.completed?'done':''}"><input class="task-check" type="checkbox" aria-label="${esc(t.completed?local('重新打开','重新開啟','Reopen'):local('完成','完成','Complete'))} ${esc(t.title)}" data-check="${esc(t.id)}" ${t.completed?'checked':''}><div><h3 data-user-content>${esc(t.title)}</h3><div class="meta"><span class="${overdue||soon?'badge urgent':''}">${overdue?local('已逾期 · ','已逾期 · ','Overdue · '):soon?local('即将截止 · ','即將截止 · ','Due soon · '):''}${esc(fmt(t.due))}</span><span class="badge ${t.priority===1?'high':''}">${['','重要','普通','较低'][t.priority]}</span><span>${source}</span></div>${t.notes?`<details><summary class="task-note">查看备注</summary><p class="task-note">${esc(t.notes)}</p></details>`:''}</div><div class="task-actions"><button data-edit="${esc(t.id)}">编辑</button>${t.due?`<button data-calendar="${esc(t.id)}">日历</button>`:''}${t.completed?`<button class="danger-text" data-delete-task="${esc(t.id)}">删除</button>`:''}</div></article>`;}).join(''):`<div class="empty"><span class="empty-mark">✓</span><h2>${showDone?'还没有已完成任务':'清单里，留一点从容'}</h2><p>${showDone?'完成的任务会显示在这里，并可随时删除。':'先添加一项待办，或在小组中接受一项已经确认的分工。'}</p></div>`;
-  $$('[data-check]').forEach(c=>c.onchange=async()=>{const task=tasks.find(t=>t.id===c.dataset.check);c.disabled=true;try{const completed=c.checked;await api('tasks/'+task.id,{method:'PATCH',body:{version:task.version,completed}});if(completed){updateProgress(tasks.filter(t=>t.completed).length+1,tasks.length);await celebrateTask(c);}await loadTasks();toast(completed?'已完成，后续提醒已取消':'已重新打开待办');if(completed)offerUndo(task.id);}catch(e){c.checked=!c.checked;toast(e.message);c.disabled=false;}});
+  $$('[data-check]').forEach(c=>c.onchange=async()=>{const task=tasks.find(t=>t.id===c.dataset.check),completed=c.checked;c.disabled=true;let saved=false;try{await api('tasks/'+task.id,{method:'PATCH',body:{version:task.version,completed}});saved=true;if(completed){updateProgress(tasks.filter(t=>t.completed).length+1,tasks.length);await celebrateTask(c);}await loadTasks();toast(completed?'已完成，后续提醒已取消':'已重新打开待办');if(completed)offerUndo(task.id);}catch(e){if(saved)loadError('#task-list',new Error(local('操作已保存，但列表刷新失败。请重试加载。','操作已儲存，但清單更新失敗。請重試載入。','Saved, but the list could not refresh. Retry loading.')),loadTasks);else{c.checked=!completed;toast(e.message);}}finally{c.disabled=false;}});
   $$('[data-edit]').forEach(b=>b.onclick=()=>openForm(tasks.find(t=>t.id===b.dataset.edit)));
   $$('[data-calendar]').forEach(b=>b.onclick=()=>exportCalendar(tasks.find(t=>t.id===b.dataset.calendar)));
   $$('[data-delete-task]').forEach(b=>b.onclick=async()=>{if(!confirm(translateCopy('确定永久删除这项已完成任务吗？')))return;b.disabled=true;try{await api('tasks/'+b.dataset.deleteTask,{method:'DELETE',body:{}});await loadTasks();toast('已删除任务');}catch(e){toast(e.message);b.disabled=false;}});
@@ -151,6 +180,7 @@ function renderTasks(){
 async function loadTasks(){tasks=await api('tasks');renderTasks();translateTextNodes();}
 // ES module imports are hoisted, so these work even though they are not at the very top.
 // (They sit here because test/localization.test.js evaluates the top of this file as a plain script.)
+import { requestJSON, validEmail, enhanceForms } from './feedback.js';
 import { TaskReminderPicker } from './task-reminders.js';
 import { playButtonSuccess, resetSuccessButton, circularTransition, progressColor, setupCardStack } from './motion.js';
 import { watchTimeInputs } from './native-pickers.js';
@@ -202,11 +232,11 @@ $('#task-form').onsubmit=async event=>{
     await playButtonSuccess(save); // shrink → tick → particles (skipped with reduced motion)
     $('#task-dialog').close();
     resetSuccessButton(save);
-    await loadTasks();toast('待办已保存');
+    toast('待办已保存');await loadTasks().catch(e=>loadError('#task-list',e,loadTasks));
   }catch(e){resetSuccessButton(save);$('#form-error').textContent=e.message;}
   finally{save.disabled=false;}
 };
-let mailNextBefore=null,mailLoadingMore=false;
+let mailNextBefore=null,mailLoadingMore=false,mailRequest=0;
 const categoryKey=c=>({1:'cat1',2:'cat2',3:'cat3',4:'cat4'}[c]||'cat3');
 const briefRequests=new Map();
 function briefContent(m,compact=false){
@@ -268,17 +298,19 @@ async function openMailDetail(id){
     document.querySelectorAll('[data-mail-pane]').forEach(b=>b.classList.toggle('selected',b.dataset.mailPane===(showZh?'zh':'en')));
     $('#mail-detail-zh').classList.toggle('hidden',!showZh);
     $('#mail-detail-en').classList.toggle('hidden',showZh);
-  }catch(e){$('#mail-detail-zh').textContent=e.message;}
+  }catch(e){$('#mail-detail-zh').classList.remove('hidden');$('#mail-detail-en').classList.add('hidden');loadError('#mail-detail-zh',e,()=>openMailDetail(id));}
 }
 let currentMailQuery='';
 async function loadMail(opts={}){
+  const request=++mailRequest;
   try{
     const append=!!opts.append;
     if(!append){mailNextBefore=null;$('#mail-list').innerHTML=`<div class="empty"><span class="empty-mark">▤</span><h2>${esc(local('加载中…','載入中…','Loading…'))}</h2></div>`;}
-    await renderMailSuggestions().catch(()=>{});
+    await renderMailSuggestions().catch(error=>loadError('#mail-suggestions',error,renderMailSuggestions));
     const q=String(opts.q===undefined?currentMailQuery:opts.q).trim();
     const params=new URLSearchParams({limit:'40'});if(mailNextBefore)params.set('before',String(mailNextBefore));if(q)params.set('q',q);
     const payload=await api('messages?'+params.toString());
+    if(request!==mailRequest)return;
     const messages=Array.isArray(payload)?payload:(payload.messages||[]);
     mailNextBefore=Array.isArray(payload)?null:payload.nextBefore;
     const html=messages.map(mailCard).join('');
@@ -302,7 +334,7 @@ async function loadMail(opts={}){
 
     const focusId=new URLSearchParams(location.search).get('message');
     if(focusId&&!append)openMailDetail(focusId);
-  }catch(e){$('#global-error').textContent=e.message;}
+  }catch(e){if(request!==mailRequest)return;if(opts.append){toast(e.message);const more=$('#mail-load-more');if(more)more.disabled=false;}else loadError('#mail-list',e,()=>loadMail(opts));}
 }
 function wireMailSearch(){
   const toggle=$('#mail-search-toggle'),input=$('#mail-search');
@@ -336,7 +368,7 @@ async function loadDigests(opts={}){
     if(opts.generate!==false){const activeLocale=locale;void prepareBriefs(digests.flatMap(d=>d.items||[]),()=>loadDigests({generate:false}),()=>locale===activeLocale&&!$('#digests-view').classList.contains('hidden'));}
     if(stacked)setupCardStack($('#digest-list .card-stack'),$('#digest-list .stack-toggle'),{open:local(`展开全部 ${digests.length} 份日报`,`展開全部 ${digests.length} 份日報`,`Show all ${digests.length} digests`),close:local('收起','收起','Collapse')});
     $('#digest-list').querySelectorAll('[data-open-mail]').forEach(btn=>btn.onclick=()=>{const id=decodeURIComponent(btn.dataset.openMail);history.replaceState(null,'','/?view=mail&message='+encodeURIComponent(id));view('mail');openMailDetail(id);});
-  }catch(e){$('#global-error').textContent=e.message;}
+  }catch(e){loadError('#digest-list',e,()=>loadDigests(opts));}
 }
 
 let invitations=[],groups=[],selectedGroupId=null,groupState=null,activePoll=null;
@@ -417,20 +449,20 @@ function bindAvailabilityRemove(){$$('[data-remove-availability]').forEach(butto
 
 async function loadGroups(force=false,keepPoll=false){
   const root=$('#groups-content');if(!force&&!groups.length)root.innerHTML='<div class="group-loading"><span></span><span></span></div>';
-  try{[groups,invitations]=await Promise.all([api('groups'),api('invitations')]);if(selectedGroupId&&!groups.some(group=>group.id===selectedGroupId))selectedGroupId=null;if(!selectedGroupId)selectedGroupId=groups[0]?.id||null;groupState=selectedGroupId?await api(`groups/${selectedGroupId}`):null;if(!keepPoll)activePoll=null;renderGroups();bindUpgradeControls();}catch(error){root.innerHTML=`<p class="error">${esc(error.message)}</p>`;}
+  try{[groups,invitations]=await Promise.all([api('groups'),api('invitations')]);if(selectedGroupId&&!groups.some(group=>group.id===selectedGroupId))selectedGroupId=null;if(!selectedGroupId)selectedGroupId=groups[0]?.id||null;groupState=selectedGroupId?await api(`groups/${selectedGroupId}`):null;if(!keepPoll)activePoll=null;renderGroups();bindUpgradeControls();}catch(error){loadError('#groups-content',error,()=>loadGroups(true));}
 }
 
 async function loadSettings(){return loadSettingsProfile();}
-async function enablePush(){try{if(!('serviceWorker'in navigator)||!('PushManager'in window))throw Error('请从 iPhone 主屏幕打开，或使用支持通知的浏览器');const permission=await Notification.requestPermission();if(permission!=='granted')throw Error('通知权限尚未允许，请在系统设置中启用');const registration=await navigator.serviceWorker.register('/sw.js');await navigator.serviceWorker.ready;const raw=atob(status.vapid.replace(/-/g,'+').replace(/_/g,'/'));const applicationServerKey=Uint8Array.from(raw,c=>c.charCodeAt(0));const sub=await registration.pushManager.getSubscription()||await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey});await api('subscriptions',{method:'POST',body:sub.toJSON()});toast('此设备已启用通知');}catch(e){toast(e.message);}}
+async function enablePush(){try{if(!status.pushReady)throw Error(local('通知服务尚未配置，请先使用站内待办','通知服務尚未設定，請先使用站內待辦','Notifications are not configured. Use the task list for now.'));if(!('serviceWorker'in navigator)||!('PushManager'in window))throw Error('请从 iPhone 主屏幕打开，或使用支持通知的浏览器');const permission=await Notification.requestPermission();if(permission!=='granted')throw Error('通知权限尚未允许，请在系统设置中启用');const registration=await navigator.serviceWorker.register('/sw.js');await navigator.serviceWorker.ready;const raw=atob(status.vapid.replace(/-/g,'+').replace(/_/g,'/'));const applicationServerKey=Uint8Array.from(raw,c=>c.charCodeAt(0));const sub=await registration.pushManager.getSubscription()||await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey});await api('subscriptions',{method:'POST',body:sub.toJSON()});toast('此设备已启用通知');}catch(e){toast(e.message);}}
 function exportCalendar(t){if(!t.due)return;const quote=s=>String(s).replace(/\\/g,'\\\\').replace(/\r?\n/g,'\\n').replace(/,/g,'\\,').replace(/;/g,'\\;');const stamp=n=>new Date(n).toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z/,'Z');const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Campus Companion//Tasks//ZH','BEGIN:VEVENT','UID:'+t.id+'@campus-companion','DTSTAMP:'+stamp(Date.now()),'DTSTART:'+stamp(t.due),'DTEND:'+stamp(t.due+1800000),'SUMMARY:'+quote('截止：'+t.title),'DESCRIPTION:'+quote(t.notes+'\n一次性日历副本，完成或改期请在校园清单操作。'),'END:VEVENT','END:VCALENDAR'];const blob=new Blob([lines.join('\r\n')+'\r\n'],{type:'text/calendar;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='待办截止日期.ics';a.click();setTimeout(()=>URL.revokeObjectURL(url),5000);toast('已导出日历副本；它不会自动同步');}
-$('#login-form').onsubmit=async event=>{event.preventDefault();const form=event.currentTarget,b=form.querySelector('button');b.disabled=true;b.classList.add('pending');const original=b.textContent;b.textContent=local('提交中…','提交中…','Submitting…');try{await api('login',{method:'POST',body:{email:form.elements.email.value,password:form.elements.password.value}});form.reset();await boot();}catch(e){$('#login-error').textContent=e.message;}finally{b.disabled=false;b.classList.remove('pending');b.textContent=original;}};
+$('#login-form').onsubmit=async event=>{event.preventDefault();const form=event.currentTarget,b=form.querySelector('[type=submit]');b.disabled=true;b.classList.add('pending');const original=b.textContent;b.textContent=local('提交中…','提交中…','Submitting…');try{await api('login',{method:'POST',body:{email:form.elements.email.value,password:form.elements.password.value}});form.reset();await boot();}catch(e){$('#login-error').textContent=e.message;}finally{b.disabled=false;b.classList.remove('pending');b.textContent=original;}};
 $('#register-form').onsubmit=async event=>{event.preventDefault();const form=event.currentTarget,b=form.querySelector('[type=submit]');b.disabled=true;b.classList.add('pending');const original=b.textContent;b.textContent=local('提交中…','提交中…','Submitting…');$('#register-error').textContent='';try{await api('register',{method:'POST',body:{email:form.elements.email.value,password:form.elements.password.value,question:form.elements.question.value,answer:form.elements.answer.value}});form.reset();await boot();toast('账号已创建');}catch(e){$('#register-error').textContent=e.message;}finally{b.disabled=false;b.classList.remove('pending');b.textContent=original;}};
 $$('[data-auth]').forEach(button=>button.onclick=()=>{$$('[data-auth]').forEach(b=>b.classList.toggle('selected',b===button));$('#login-form').classList.toggle('hidden',button.dataset.auth!=='login');$('#register-form').classList.toggle('hidden',button.dataset.auth!=='register');});
-$('#forgot-password').onclick=()=>{$('#recovery-form').reset();$('#recovery-answer').classList.add('hidden');$('#recovery-error').textContent='';$('#recovery-dialog').showModal();};
+$('#forgot-password').onclick=()=>{$('#recovery-form').reset();$('#recovery-answer').classList.add('hidden');for(const name of ['answer','password','confirmPassword'])$('#recovery-form').elements[name].required=false;$('#recovery-error').textContent='';$('#recovery-dialog').showModal();};
 $('#close-recovery').onclick=()=>$('#recovery-dialog').close();
-$('#load-question').onclick=async()=>{const f=$('#recovery-form');$('#recovery-error').textContent='';try{const result=await api('recovery/question',{method:'POST',body:{email:f.elements.email.value}});$('#security-question').textContent='密保问题：'+result.question;$('#recovery-answer').classList.remove('hidden');f.elements.answer.required=true;f.elements.password.required=true;}catch(e){$('#recovery-error').textContent=e.message;}};
+$('#load-question').onclick=async()=>{const f=$('#recovery-form'),b=$('#load-question');$('#recovery-error').textContent='';if(!f.elements.email.reportValidity())return;b.disabled=true;try{const result=await api('recovery/question',{method:'POST',body:{email:f.elements.email.value}});$('#security-question').textContent=local('密保问题：','密保問題：','Security question: ')+result.question;$('#recovery-answer').classList.remove('hidden');for(const name of ['answer','password','confirmPassword'])f.elements[name].required=true;}catch(e){$('#recovery-error').textContent=e.message;}finally{b.disabled=false;}};
 $('#recovery-form').onsubmit=async event=>{event.preventDefault();const f=event.currentTarget,b=f.querySelector('[type=submit]');b.disabled=true;try{await api('recovery/reset',{method:'POST',body:{email:f.elements.email.value,answer:f.elements.answer.value,password:f.elements.password.value}});$('#recovery-dialog').close();toast('密码已重置，请使用新密码登录');}catch(e){$('#recovery-error').textContent=e.message;}finally{b.disabled=false;}};
-async function logout(){try{await api('logout',{method:'POST',body:{}});}finally{tasks=[];location.replace('/');}}
+async function logout(){try{await api('logout',{method:'POST',body:{}});tasks=[];location.replace('/');}catch(e){toast(e.message);}}
 $('#logout').onclick=logout;
 $('#add-task').onclick=()=>openForm();$('#close-dialog').onclick=$('#cancel-task').onclick=()=>$('#task-dialog').close();
 $('#new-group').onclick=()=>{$('#group-form').reset();$('#group-form-error').textContent='';$('#group-dialog').showModal();};$('#close-group-dialog').onclick=$('#cancel-group').onclick=()=>$('#group-dialog').close();
@@ -449,7 +481,7 @@ function wireMailDetail(){
     $('#mail-detail-en').classList.toggle('hidden',btn.dataset.mailPane!=='en');
   });
 }
-async function boot(){wireMailDetail();wireMailSearch();try{status=await api('status');const profile=await api('profile');reminderDefaults=profile.reminders||reminderDefaults;applyLocale(status.account.locale||localStorage.getItem('campus-locale')||'zh-CN');localStorage.setItem('campus-locale',locale);$('#login').classList.add('hidden');$('#app').classList.remove('hidden');$('#account-label').textContent=accountLabel(status.account);setAvatar(status.account.avatar,accountLabel(status.account).slice(0,1).toUpperCase());$('#date-label').textContent=new Date().toLocaleDateString(dateLocale(),{timeZone:'Asia/Hong_Kong',year:'numeric',month:'long',day:'numeric',weekday:'long'});await loadTasks();const v=new URLSearchParams(location.search).get('view');view(['groups','mail','digests','settings'].includes(v)?v:'tasks');}catch(e){if(!$('#app').classList.contains('hidden'))$('#global-error').textContent=e.message;else showLogin();}}
+async function boot(){wireMailDetail();wireMailSearch();try{status=await api('status');const profile=await api('profile');reminderDefaults=profile.reminders||reminderDefaults;applyLocale(status.account.locale||localStorage.getItem('campus-locale')||'zh-CN');localStorage.setItem('campus-locale',locale);$('#login').classList.add('hidden');$('#app').classList.remove('hidden');$('#account-label').textContent=accountLabel(status.account);setAvatar(status.account.avatar,accountLabel(status.account).slice(0,1).toUpperCase());$('#date-label').textContent=new Date().toLocaleDateString(dateLocale(),{timeZone:'Asia/Hong_Kong',year:'numeric',month:'long',day:'numeric',weekday:'long'});await loadTasks().catch(e=>loadError('#task-list',e,loadTasks));const v=new URLSearchParams(location.search).get('view');view(['groups','mail','digests','settings'].includes(v)?v:'tasks');}catch(e){if(!$('#app').classList.contains('hidden'))$('#global-error').textContent=e.message;else{showLogin();if(e.code!=='SESSION_EXPIRED')$('#login-error').textContent=e.message;}}}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!$('#app').classList.contains('hidden'))loadTasks().catch(e=>toast(e.message));});
 
 function announcementText(item){if(item.kind==='meeting-change')return {title:item.title,body:item.body==='cancel'?local('会议已取消','會議已取消','Meeting cancelled'):local('会议已改期，请重新提交可用时间','會議已改期，請重新提交可用時間','Meeting rescheduled. Submit availability again.')};if(item.kind==='meeting'){const poll=groupState.meetingPolls.find(p=>p.id===item.source_id);if(poll)return {title:local('会议时间已确认：','會議時間已確認：','Meeting confirmed: ')+poll.name,body:fmt(poll.confirmed_start)+' · '+poll.duration_minutes+' '+local('分钟','分鐘','minutes')};}return item;}
@@ -463,7 +495,7 @@ function meetingControls(){
  return `<form id="meeting-change" class="candidate-review"><h3>${local('管理会议','管理會議','Manage meeting')}</h3><p>${local('改期会撤销旧待办和提醒，并重新收集全员时间。','改期會撤銷舊待辦和提醒，並重新收集全員時間。','Rescheduling removes old tasks and reminders and collects availability again.')}</p><div class="form-row"><label>${local('新范围开始','新範圍開始','New range starts')}<input type="datetime-local" name="rangeStart" required value="${hkValue(poll.range_start)}"></label><label>${local('新范围结束','新範圍結束','New range ends')}<input type="datetime-local" name="rangeEnd" required value="${hkValue(poll.range_end)}"></label></div><button type="submit">${local('改期 / 重新收集','改期／重新收集','Reschedule / collect again')}</button> <button type="button" id="cancel-meeting" ${poll.status==='closed'?'disabled':''}>${local('取消会议','取消會議','Cancel meeting')}</button></form>`;
 }
 function bindUpgradeControls(){
- $$('[data-member-action]').forEach(b=>b.onclick=()=>{const action=b.dataset.memberAction,target=action==='leave'?status.account.id:$('#member-target')?.value;if(!target)return;if(!confirm(local('确认变更小组成员？','確認變更小組成員？','Confirm this membership change?')))return;runAction(b,()=>api(`groups/${selectedGroupId}/membership`,{method:'POST',body:{action:action==='leave'?'remove':action,userId:target}}),()=>loadGroups(true));});
+ $$('[data-member-action]').forEach(b=>b.onclick=()=>{const action=b.dataset.memberAction,target=action==='leave'?status.account.id:$('#member-target')?.value;if(!target){toast(local('请先选择一位成员','請先選擇一位成員','Choose a member first.'));return;}if(!confirm(local('确认变更小组成员？','確認變更小組成員？','Confirm this membership change?')))return;runAction(b,()=>api(`groups/${selectedGroupId}/membership`,{method:'POST',body:{action:action==='leave'?'remove':action,userId:target}}),()=>loadGroups(true));});
  const form=$('#meeting-change');if(!form)return;
  const change=(action,button)=>{if(!confirm(local('确认撤销旧会议待办与提醒？','確認撤銷舊會議待辦與提醒？','Remove the old meeting tasks and reminders?')))return;return runAction(button,()=>api(`meeting-polls/${activePoll.poll.id}/lifecycle`,{method:'POST',body:{action,revision:activePoll.poll.revision,rangeStart:hkTime(form.elements.rangeStart.value),rangeEnd:hkTime(form.elements.rangeEnd.value)}}),async()=>{await loadGroups(true);await loadTasks();});};
  form.onsubmit=e=>{e.preventDefault();change('reopen',form.querySelector('[type=submit]'));};$('#cancel-meeting').onclick=e=>change('cancel',e.currentTarget);
@@ -476,9 +508,10 @@ async function renderMailSuggestions(){
 }
 
 loadSettings=loadSettingsProfile;
-const localeObserver=new MutationObserver(()=>translateTextNodes());
+const localeObserver=new MutationObserver(()=>{enhanceForms(document,translateCopy);translateTextNodes();});
 localeObserver.observe(document.body,{childList:true,subtree:true,characterData:true});
 $$('[data-login-locale]').forEach(button=>button.onclick=()=>{localStorage.setItem('campus-locale',button.dataset.loginLocale);applyLocale(button.dataset.loginLocale);$$('[data-login-locale]').forEach(b=>b.classList.toggle('selected',b===button));});
+enhanceForms(document,translateCopy);
 applyLocale(detectLocale());
 $$('[data-login-locale]').forEach(b=>b.classList.toggle('selected',b.dataset.loginLocale===locale));
 boot();
@@ -493,12 +526,12 @@ async function loadSettingsProfile(){
     const zhNameField=zhUi?`<div class="name-aliases-block"><div class="alias-list" id="alias-list">${aliasRows}</div><div class="alias-actions"><button type="button" id="alias-add" class="chip-button">＋ ${tx('addAlias')}</button></div><div id="alias-suggestions" class="alias-suggestions"></div></div>`:'';
     const translateFields=zhUi?`<div class="zh-only-settings"><label><input type="checkbox" name="translateZh" ${mailPrefs.translateZh!==false?'checked':''}> ${tx('mailTranslateZh')}</label><label><input type="checkbox" name="englishSummary" ${mailPrefs.englishSummary?'checked':''}> ${tx('mailEnglishSummary')}</label><small>${tx('mailTranslateHelp')}</small></div>`:'';
     const mailPreferences=`<div class="setting-card"><h2>${tx('mailNotifications')}</h2><p>${tx('mailReminderHelp')}</p><form id="mail-preferences-form"><label>${tx('focusTerms')}<textarea name="focusTerms" rows="4" maxlength="2400">${esc((mailPrefs.focusTerms||[]).join('\n'))}</textarea><small>${tx('focusTermsHelp')}</small></label><div class="settings-grid"><label><span><input type="checkbox" name="dailyEnabled" ${mailPrefs.daily.enabled?'checked':''}> ${tx('dailyDigest')}</span><input type="time" name="dailyTime" value="${esc(mailPrefs.daily.time)}"></label><label><span><input type="checkbox" name="lateEnabled" ${mailPrefs.late.enabled?'checked':''}> ${tx('lateDigest')}</span><input type="time" name="lateTime" value="${esc(mailPrefs.late.time)}"></label></div>${translateFields}<button class="primary" type="submit">${tx('saveMailPreferences')}</button></form></div>`;
-    $('#settings-content').innerHTML=`<div class="setting-card"><h2>${tx('profile')}</h2><form id="profile-form"><div class="settings-grid profile-identity"><label>${tx('nickname')}<input name="nickname" maxlength="80" value="${esc(p.nickname)}"></label><label>${tx('avatar')}<input type="hidden" name="avatar" value="${esc(p.avatar)}"><input name="avatarFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif"><small>${tx('avatarType')}</small><img class="avatar-preview" id="avatar-preview" alt="${esc(tx('avatarPreview'))}" ${p.avatar.startsWith('data:image/')?`src="${esc(p.avatar)}"`:'hidden'}></label></div><label>${tx('language')}<select name="locale"><option value="zh-CN" ${p.locale==='zh-CN'?'selected':''}>简体中文</option><option value="zh-TW" ${p.locale==='zh-TW'?'selected':''}>繁體中文</option><option value="en" ${p.locale==='en'?'selected':''}>English</option></select></label>${zhNameField}<button class="primary" type="submit">${tx('save')}</button></form></div>${outlook}${mailPreferences}<div class="setting-card"><h2>${local('通知渠道','通知渠道','Notification channels')}</h2><p>${local('可以启用本机推送，或在网站查看待办与日报。','可以啟用本機推送，或在網站查看待辦與日報。','Enable push on this device or check tasks and digests here.')}</p><p>${local('iPhone：在 Safari 添加到主屏幕后，再开启通知。','iPhone：在 Safari 加入主畫面後，再開啟通知。','iPhone: add this site to your Home Screen in Safari before enabling notifications.')}</p><button id="enable-push" ${status.pushReady?'':'disabled'}>${local('在此设备启用通知','在此裝置啟用通知','Enable notifications on this device')}</button> <button id="test-push" ${status.pushReady?'':'disabled'}>${local('测试手机通知','測試手機通知','Test push notification')}</button></div><div class="setting-card"><h2>${tx('accountSecurity')}</h2><div class="settings-grid"><form id="password-form"><label>${tx('currentPassword')}<input name="current" type="password" required></label><label>${tx('newPassword')}<input name="next" type="password" minlength="12" required></label><button class="primary" type="submit">${tx('changePassword')}</button></form><form id="security-form"><label>${tx('currentPassword')}<input name="password" type="password" required></label><label>${tx('customQuestion')}<input name="question" required></label><label>${tx('answer')}<input name="answer" type="password" required></label><button type="submit">${tx('saveSecurity')}</button></form></div></div><div class="setting-card account-exit"><h2>${tx('signOutHere')}</h2><p>${tx('signOutHint')}</p><button type="button" id="settings-logout" class="danger-text">${tx('logout')}</button></div>`;
+    $('#settings-content').innerHTML=`<div class="setting-card"><h2>${tx('profile')}</h2><form id="profile-form"><div class="settings-grid profile-identity"><label>${tx('nickname')}<input name="nickname" maxlength="80" value="${esc(p.nickname)}"></label><label>${tx('avatar')}<input type="hidden" name="avatar" value="${esc(p.avatar)}"><input name="avatarFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif"><small>${tx('avatarType')}</small><img class="avatar-preview" id="avatar-preview" alt="${esc(tx('avatarPreview'))}" ${p.avatar.startsWith('data:image/')?`src="${esc(p.avatar)}"`:'hidden'}></label></div><label>${tx('language')}<select name="locale"><option value="zh-CN" ${p.locale==='zh-CN'?'selected':''}>简体中文</option><option value="zh-TW" ${p.locale==='zh-TW'?'selected':''}>繁體中文</option><option value="en" ${p.locale==='en'?'selected':''}>English</option></select></label>${zhNameField}<button class="primary" type="submit">${tx('save')}</button></form></div>${outlook}${mailPreferences}<div class="setting-card"><h2>${local('通知渠道','通知渠道','Notification channels')}</h2><p>${local('可以启用本机推送，或在网站查看待办与日报。','可以啟用本機推送，或在網站查看待辦與日報。','Enable push on this device or check tasks and digests here.')}</p><p>${local('iPhone：在 Safari 添加到主屏幕后，再开启通知。','iPhone：在 Safari 加入主畫面後，再開啟通知。','iPhone: add this site to your Home Screen in Safari before enabling notifications.')}</p>${!status.pushReady?`<p class="form-help">${local('通知服务尚未配置；目前请在站内查看待办。','通知服務尚未設定；目前請在站內查看待辦。','Notifications are not configured; check tasks in the app for now.')}</p>`:''}<button id="enable-push" ${status.pushReady?'':'disabled'}>${local('在此设备启用通知','在此裝置啟用通知','Enable notifications on this device')}</button> <button id="test-push" ${status.pushReady?'':'disabled'}>${local('测试手机通知','測試手機通知','Test push notification')}</button></div><div class="setting-card"><h2>${tx('accountSecurity')}</h2><div class="settings-grid"><form id="password-form"><label>${tx('currentPassword')}<input name="current" type="password" required></label><label>${tx('newPassword')}<input name="next" type="password" minlength="12" required></label><button class="primary" type="submit">${tx('changePassword')}</button></form><form id="security-form"><label>${tx('currentPassword')}<input name="password" type="password" required></label><label>${tx('customQuestion')}<input name="question" required></label><label>${tx('answer')}<input name="answer" type="password" required></label><button type="submit">${tx('saveSecurity')}</button></form></div></div><div class="setting-card account-exit"><h2>${tx('signOutHere')}</h2><p>${tx('signOutHint')}</p><button type="button" id="settings-logout" class="danger-text">${tx('logout')}</button></div>`;
     const mailPreferencesForm=$('#mail-preferences-form');if(mailPreferencesForm)mailPreferencesForm.onsubmit=async e=>{e.preventDefault();const f=e.currentTarget,button=f.querySelector('[type=submit]');button.disabled=true;try{const mailPreferences={focusTerms:[...new Set(f.elements.focusTerms.value.split(/[\n,，]/).map(x=>x.trim()).filter(Boolean))],daily:{enabled:f.elements.dailyEnabled.checked,time:f.elements.dailyTime.value},late:{enabled:f.elements.lateEnabled.checked,time:f.elements.lateTime.value},translateZh:f.elements.translateZh?f.elements.translateZh.checked:true,englishSummary:f.elements.englishSummary?f.elements.englishSummary.checked:false};await api('profile',{method:'PATCH',body:{mailPreferences}});toast(tx('mailPreferencesSaved'));}catch(err){toast(err.message);}finally{button.disabled=false;}};
-    const outlookForm=$('#outlook-connect-form');if(outlookForm)outlookForm.onsubmit=e=>{e.preventDefault();const input=outlookForm.elements.email;if(!input.reportValidity())return;location.assign('/api/outlook/start?email='+encodeURIComponent(input.value.trim()));};
-    const syncOutlook=$('#sync-outlook');if(syncOutlook)syncOutlook.onclick=async()=>{syncOutlook.disabled=true;syncOutlook.textContent=tx('syncing');try{const r=await api('outlook/sync',{method:'POST',body:{}});toast(tx('syncFinished').replace('{count}',r.imported));await loadMail();await loadSettingsProfile();}catch(err){toast(err.message);}finally{syncOutlook.disabled=false;}};
+    const outlookForm=$('#outlook-connect-form');if(outlookForm)outlookForm.onsubmit=async e=>{e.preventDefault();const input=outlookForm.elements.email;if(!validEmail(input.value)){input.setCustomValidity(translateCopy('请输入完整邮箱地址，例如 name@outlook.com'));input.reportValidity();return;}const button=outlookForm.querySelector('[type=submit]');button.disabled=true;try{const result=await api('outlook/start?format=json&email='+encodeURIComponent(input.value.trim()));location.assign(result.authorizationUrl);}catch(error){showFormError(outlookForm,error.message);}finally{button.disabled=false;}};
+    const syncOutlook=$('#sync-outlook');if(syncOutlook)syncOutlook.onclick=async()=>{syncOutlook.disabled=true;syncOutlook.textContent=tx('syncing');try{const r=await api('outlook/sync',{method:'POST',body:{}});toast(tx('syncFinished').replace('{count}',r.imported));await loadMail();await loadSettingsProfile();}catch(err){toast(err.message);}finally{syncOutlook.disabled=false;syncOutlook.textContent=tx('syncNow');}};
     const disconnectOutlook=$('#disconnect-outlook');if(disconnectOutlook)disconnectOutlook.onclick=async()=>{if(!confirm(tx('confirmDisconnectOutlook')))return;disconnectOutlook.disabled=true;try{await api('outlook',{method:'DELETE',body:{}});toast(tx('outlookDisconnected'));await loadSettingsProfile();}catch(err){toast(err.message);disconnectOutlook.disabled=false;}};
-    $('#profile-form').elements.avatarFile.onchange=e=>{const file=e.target.files[0];if(!file)return;if(!['image/png','image/jpeg','image/webp','image/gif'].includes(file.type)){e.target.value='';toast(tx('avatarInvalid'));return;}const reader=new FileReader();reader.onload=()=>{e.target.form.elements.avatar.value=reader.result;$('#avatar-preview').src=reader.result;$('#avatar-preview').hidden=false;};reader.readAsDataURL(file);};
+    $('#profile-form').elements.avatarFile.onchange=e=>{const file=e.target.files[0];if(!file)return;if(!['image/png','image/jpeg','image/webp','image/gif'].includes(file.type)){e.target.value='';toast(tx('avatarInvalid'));return;}if(file.size>2*1024*1024){e.target.value='';showFormError(e.target.form,translateCopy('头像不能超过 2 MB'));return;}const reader=new FileReader();reader.onerror=()=>showFormError(e.target.form,translateCopy('无法读取图片，请重新选择'));reader.onload=()=>{e.target.form.elements.avatar.value=reader.result;$('#avatar-preview').src=reader.result;$('#avatar-preview').hidden=false;};reader.readAsDataURL(file);};
     $('#profile-form').onsubmit=async e=>{e.preventDefault();const f=e.currentTarget,b=f.querySelector('[type=submit]');b.disabled=true;b.classList.add('pending');const original=b.textContent;b.textContent=local('保存中…','儲存中…','Saving…');try{const body={nickname:f.elements.nickname.value,avatar:f.elements.avatar.value,locale:f.elements.locale.value,preferredZhName:f.elements.preferredZhName?f.elements.preferredZhName.value:undefined};if(f.elements.nickname.form.querySelector('#alias-list'))body.nameAliases=[...$$('#alias-list .alias-row')].map(row=>({alias:row.querySelector('[name=alias]').value.trim(),zhName:row.querySelector('[name=aliasZh]').value.trim()})).filter(a=>a.alias&&a.zhName);const r=await api('profile',{method:'PATCH',body});applyLocale(r.locale);localStorage.setItem('campus-locale',r.locale);$('#account-label').textContent=r.nickname||accountLabel(status.account);setAvatar(r.avatar,(r.nickname||accountLabel(status.account)).slice(0,1).toUpperCase());b.textContent=local('已保存 ✓','已儲存 ✓','Saved ✓');setTimeout(()=>location.reload(),150);}catch(err){toast(err.message);b.disabled=false;b.classList.remove('pending');b.textContent=original;}};
     const aliasList=$('#alias-list'),aliasAdd=$('#alias-add');
     if(aliasAdd&&aliasList){
@@ -506,10 +539,10 @@ async function loadSettingsProfile(){
       bindAliasRows();
       loadAliasSuggestions(aliasList);
     }
-    $('#password-form').onsubmit=async e=>{e.preventDefault();const f=e.currentTarget;try{await api('password',{method:'POST',body:{current:f.elements.current.value,next:f.elements.next.value}});f.reset();toast(tx('passwordSaved'));}catch(err){toast(err.message);}};
-    $('#security-form').onsubmit=async e=>{e.preventDefault();const f=e.currentTarget;try{await api('security-question',{method:'POST',body:{password:f.elements.password.value,question:f.elements.question.value,answer:f.elements.answer.value}});f.reset();toast(tx('securitySaved'));}catch(err){toast(err.message);}};
+    $('#password-form').onsubmit=async e=>{e.preventDefault();const f=e.currentTarget,b=f.querySelector('[type=submit]');b.disabled=true;try{await api('password',{method:'POST',body:{current:f.elements.current.value,next:f.elements.next.value}});f.reset();showFormError(f,'');toast(tx('passwordSaved'));}catch(err){showFormError(f,err.message);}finally{b.disabled=false;}};
+    $('#security-form').onsubmit=async e=>{e.preventDefault();const f=e.currentTarget,b=f.querySelector('[type=submit]');b.disabled=true;try{await api('security-question',{method:'POST',body:{password:f.elements.password.value,question:f.elements.question.value,answer:f.elements.answer.value}});f.reset();showFormError(f,'');toast(tx('securitySaved'));}catch(err){showFormError(f,err.message);}finally{b.disabled=false;}};
     $('#settings-logout').onclick=logout;$('#enable-push').onclick=enablePush;$('#test-push').onclick=async()=>{try{await api('test-notification',{method:'POST',body:{}});toast(local('已提交推送，请检查设备通知','已提交推送，請檢查裝置通知','Push requested. Check this device.'));}catch(error){toast(error.message);}};
-  }catch(e){$('#global-error').textContent=e.message;}
+  }catch(e){loadError('#settings-content',e,loadSettingsProfile);}
 }
 function aliasRowHTML(a={},i=0){
   return `<div class="alias-row" data-index="${i}"><input name="alias" placeholder="${esc(tx('aliasPlaceholder'))}" maxlength="80" value="${esc(a.alias||'')}" aria-label="${esc(tx('aliasPlaceholder'))}"><span class="alias-arrow" aria-hidden="true">→</span><input name="aliasZh" placeholder="${esc(tx('aliasZhPlaceholder'))}" maxlength="40" value="${esc(a.zhName||'')}" aria-label="${esc(tx('aliasZhPlaceholder'))}"><button type="button" class="icon-button alias-remove" data-i18n-aria="aliasRemove" aria-label="${esc(tx('aliasRemove'))}">×</button></div>`;
@@ -530,7 +563,7 @@ async function loadAliasSuggestions(aliasList){
   }catch{/* suggestions are best-effort */}
 }
 const renderSettingsLocalized=loadSettingsProfile;
-loadSettingsProfile=async()=>{await renderSettingsLocalized();translateTextNodes();};
+loadSettingsProfile=async()=>{await renderSettingsLocalized();enhanceForms(document,translateCopy);translateTextNodes();if(oauthFeedback){const node=document.createElement('p');node.className='error';node.setAttribute('role','alert');node.textContent=translateCopy(oauthFeedback);$('#settings-content').prepend(node);oauthFeedback='';}};
 loadSettings=loadSettingsProfile;
 
 function updateProgress(done,total){
@@ -551,5 +584,5 @@ async function celebrateTask(control){
 
 function offerUndo(id){
  const button=document.createElement('button');button.type='button';button.textContent=local('撤销','復原','Undo');$('#toast').append(button);clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.add('hidden'),8000);
- button.onclick=async()=>{button.disabled=true;try{const current=tasks.find(t=>t.id===id);if(!current)throw Error(local('任务不存在','任務不存在','Task not found'));await api('tasks/'+id,{method:'PATCH',body:{version:current.version,completed:false}});await loadTasks();toast('已重新打开待办');}catch(e){toast(e.message);}};
+ button.onclick=async()=>{button.disabled=true;try{const current=tasks.find(t=>t.id===id);if(!current)throw Error(local('任务不存在','任務不存在','Task not found'));await api('tasks/'+id,{method:'PATCH',body:{version:current.version,completed:false}});await loadTasks();toast('已重新打开待办');}catch(e){toast(e.message);}finally{button.disabled=false;}};
 }

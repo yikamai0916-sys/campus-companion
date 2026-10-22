@@ -339,3 +339,10 @@ button.pending::before{content:'';display:inline-block;width:13px;height:13px;ma
 .mail-points li+li{margin-top:9px}.brief-actions{padding:16px;border-left:3px solid var(--ink);background:var(--surface-2);border-radius:0 14px 14px 0;margin-top:16px;font-size:15px;line-height:1.7}
 .brief-actions ul{padding-left:1.25em;margin-bottom:0}.digest-overview{padding:18px 0;border-bottom:1px solid var(--surface-3);font-size:16px;font-weight:400}
 .digest-item .mail-points{font-size:15px;font-weight:400}.digest-item h3{font-size:20px;line-height:1.4}.digest-item{cursor:pointer;text-align:left}
+.password-field{display:block;position:relative;width:100%}
+.password-field input{padding-right:58px!important;width:100%;box-sizing:border-box}
+.password-field .password-toggle{position:absolute;right:6px;top:50%;transform:translateY(-50%);display:grid;place-items:center;width:44px;height:44px;min-width:44px;padding:0;margin:0;border:0;border-radius:50%;background:transparent;color:var(--ink,#151515);box-shadow:none}
+.password-toggle[aria-pressed=true]{background:var(--surface-2,#e8e8e8)}
+.password-toggle:focus-visible{outline:2px solid currentColor;outline-offset:1px}
+.load-error{padding:24px;border:1px solid #bd6464;border-radius:16px;background:#fff7f7;color:#8d2121}
+.load-error p{margin-top:0}.error:not(:empty){line-height:1.6;overflow-wrap:anywhere}

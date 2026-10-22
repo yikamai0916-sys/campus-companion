@@ -259,7 +259,32 @@ test('Outlook diagnostics reject example placeholders before OAuth starts',async
   await env.DB.prepare('INSERT INTO sessions(id,expires,user_id) VALUES(?,?,?)').bind(await hash(token),Date.now()+3600000,'user').run();
   const request=path=>worker.fetch(new Request(origin+'/api/'+path,{headers:{Cookie:'campus_session='+token},redirect:'manual'}),env);
   const status=await (await request('status')).json();assert.equal(status.outlookConfigured,false);assert.deepEqual(status.outlookMissingConfig.sort(),['APP_ORIGIN','MS_CLIENT_ID','MS_CLIENT_SECRET','TOKEN_KEY']);
-  assert.equal((await request('outlook/start?email=personal@outlook.com')).status,400);
+  assert.equal((await request('outlook/start?format=json&email=personal@outlook.com')).status,400);
+});
+
+test('Outlook form validation stays in JSON mode; browser failures return to settings',async()=>{
+  const origin='https://campus.example',token=random(),env={DB:database(),MS_CLIENT_ID:'client',MS_CLIENT_SECRET:'secret',APP_ORIGIN:origin,TOKEN_KEY:random()};
+  await env.DB.prepare("INSERT INTO users(id,email,password_hash,created) VALUES('u','user@example.com','unused',0)").run();
+  await env.DB.prepare('INSERT INTO sessions(id,expires,user_id) VALUES(?,?,?)').bind(await hash(token),Date.now()+3600000,'u').run();
+  const req=path=>worker.fetch(new Request(origin+path,{headers:{Cookie:'campus_session='+token},redirect:'manual'}),env);
+  const invalid=await req('/api/outlook/start?format=json&email=kaiqiou@outlook');
+  assert.equal(invalid.status,400);assert.match((await invalid.json()).error,/Outlook/);
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) n FROM oauth').first()).n,0);
+  const valid=await req('/api/outlook/start?format=json&email=student@outlook.com');
+  assert.equal(valid.status,200);assert.equal(new URL((await valid.json()).authorizationUrl).hostname,'login.microsoftonline.com');
+  for(const path of ['/api/outlook/start?email=kaiqiou@outlook','/api/outlook/callback?error=access_denied']){
+    const response=await req(path);assert.equal(response.status,302);
+    const target=new URL(response.headers.get('location'));assert.equal(target.origin,origin);assert.equal(target.searchParams.get('view'),'settings');assert.ok(target.searchParams.get('outlookError'));
+  }
+  const expired=await worker.fetch(new Request(origin+'/api/outlook/callback?error=access_denied'),env);
+  assert.equal(expired.status,302);assert.equal(new URL(expired.headers.get('location')).searchParams.get('authError'),'session');
+});
+
+test('unexpected database errors do not expose diagnostics to the user',async()=>{
+  const env={DB:{prepare(){throw new Error('D1_ERROR: no such table: private_internal_table');}}};
+  const response=await worker.fetch(new Request('https://campus.example/api/tasks',{headers:{Cookie:'campus_session=test'}}),env);
+  assert.equal(response.status,500);
+  const data=await response.json();assert.equal(data.error,'暂时无法处理，请重试');assert.doesNotMatch(JSON.stringify(data),/private_internal_table|D1_ERROR/);
 });
 
 test('disconnecting Outlook removes only the current account authorization',async()=>{

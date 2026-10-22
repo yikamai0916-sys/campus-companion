@@ -86,7 +86,7 @@ async function routes(request,env){
     if(url.searchParams.has('view')&&!await session(request,env))return Response.redirect(url.origin+'/',302);
     return env.ASSETS.fetch(request);
   }
-  const account=await session(request,env);if(!account)return json({error:serverMessage('请先登录',uiLocale)},401);
+  const account=await session(request,env);if(!account)return json({error:serverMessage('请先登录',uiLocale),code:'SESSION_EXPIRED'},401);
   if(path==='/api/logout'&&method==='POST'){await env.DB.prepare('DELETE FROM sessions WHERE id=?').bind(account.id).run();return new Response('{}',{headers:{'Set-Cookie':'campus_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0','Content-Type':'application/json'}});}
   if(path==='/api/password'&&method==='POST'){
     const data=await body(request),user=await env.DB.prepare('SELECT password_hash FROM users WHERE id=?').bind(account.user_id).first(),current=user.password_hash;
@@ -277,7 +277,8 @@ async function routes(request,env){
   if(path==='/api/outlook/start'&&method==='GET'){
     const requestedEmail=emailOf(url.searchParams.get('email'));
     if(requestedEmail&&!validEmail(requestedEmail))return json({error:serverMessage('请输入有效的 Outlook 邮箱',uiLocale)},400);
-    return Response.redirect(await startOAuth(env,account,requestedEmail,url.origin));
+    const authorizationUrl=await startOAuth(env,account,requestedEmail,url.origin);
+    return url.searchParams.get('format')==='json'?json({authorizationUrl}):Response.redirect(authorizationUrl);
   }
   if(path==='/api/outlook/callback'&&method==='GET'){
     await finishOAuth(env,url,account);
@@ -312,7 +313,18 @@ async function routes(request,env){
 export default {
   async fetch(request,env){
     const uiLocale=normalizeLocale(request.headers.get('X-Locale'));
-    let response;try{response=await routes(request,env);}catch(error){response=json({error:serverMessage(error.message||'暂时无法处理，请重试',uiLocale)},Number(error.status)||400);}
+    let response;try{response=await routes(request,env);}catch(error){
+      const message=String(error.message||'');
+      const technical=error instanceof TypeError||error instanceof SyntaxError||/SQLITE|D1_ERROR|constraint failed|no such (?:table|column)|fetch failed|ECONN|ENOTFOUND|token|secret/i.test(message)||!/[\u4e00-\u9fff]/.test(message);
+      response=json({error:serverMessage(technical?'暂时无法处理，请重试':message,uiLocale)},technical?500:Number(error.status)||400);
+    }
+    const requestUrl=new URL(request.url);
+    if(['/api/outlook/start','/api/outlook/callback'].includes(requestUrl.pathname)&&requestUrl.searchParams.get('format')!=='json'&&response.status>=400){
+      const target=new URL('/',requestUrl.origin);
+      if(response.status===401)target.searchParams.set('authError','session');
+      else{target.searchParams.set('view','settings');target.searchParams.set('outlookError',requestUrl.searchParams.get('error')==='access_denied'?'cancelled':'connection');}
+      response=Response.redirect(target.href,302);
+    }
     const h=new Headers(response.headers);h.set('X-Content-Type-Options','nosniff');h.set('Referrer-Policy','same-origin');h.set('X-Frame-Options','DENY');h.set('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     if(new URL(request.url).pathname.startsWith('/api/'))h.set('Cache-Control','no-store');
     return new Response(response.body,{status:response.status,headers:h});
