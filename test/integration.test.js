@@ -293,11 +293,13 @@ test('disconnecting Outlook removes only the current account authorization',asyn
   await env.DB.prepare('INSERT INTO sessions(id,expires,user_id) VALUES(?,?,?)').bind(await hash(token),Date.now()+3600000,'one').run();
   await env.DB.prepare("INSERT INTO outlook_connections(user_id,token,email,status) VALUES('one','encrypted-a','one@outlook.com','同步完成'),('two','encrypted-b','two@outlook.com','同步完成')").run();
   await env.DB.prepare("INSERT INTO messages(id,subject,received,sender,origin,category,summary,action,url,quality,user_id) VALUES('keep','School mail',0,'sender','school',2,'summary','action','','test','one')").run();
+  await env.DB.prepare("INSERT INTO mail_cache(user_id,message_id,generation,kind,locale,variant,value,created,expires) SELECT user_id,id,cache_generation,'translation','en','body','Retained translation',0,9999999999999 FROM messages WHERE user_id='one'").run();
   const response=await worker.fetch(new Request(origin+'/api/outlook',{method:'DELETE',headers:{Origin:origin,Cookie:'campus_session='+token,'Content-Type':'application/json'}}),env);
   assert.equal(response.status,200);
   assert.equal(await env.DB.prepare("SELECT user_id FROM outlook_connections WHERE user_id='one'").first(),null);
   assert.equal((await env.DB.prepare("SELECT email FROM outlook_connections WHERE user_id='two'").first()).email,'two@outlook.com');
   assert.equal((await env.DB.prepare("SELECT id FROM messages WHERE id='keep' AND user_id='one'").first()).id,'keep');
+  assert.equal((await env.DB.prepare("SELECT value FROM mail_cache WHERE user_id='one'").first()).value,'Retained translation');
 });
 
 test('mail reminder preferences are saved separately for each account',async()=>{

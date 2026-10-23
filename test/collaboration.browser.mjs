@@ -7,6 +7,7 @@ const base=process.env.CAMPUS_ACCEPTANCE_BASE||'http://localhost:8788';
 assert.equal(new URL(base).hostname,'localhost');assert.equal(new URL(base).port,'8788');
 const browser=await chromium.launch({channel:'chrome',headless:true}),pages=[],errors=[];
 const password='Acceptance-only-'+crypto.randomUUID(),run=Date.now();
+async function capture(page,name){if(process.env.CAMPUS_QA_DIR){await mkdir(process.env.CAMPUS_QA_DIR,{recursive:true});await page.screenshot({path:process.env.CAMPUS_QA_DIR+'/'+name+'.png',fullPage:true});}}
 async function call(page,path,method='GET',data,expected=200){
  const result=await page.evaluate(async({path,method,data})=>{const response=await fetch('/api/'+path,{method,headers:{'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data)});return {status:response.status,data:await response.json()};},{path,method,data});
  assert.equal(result.status,expected,method+' '+path+': '+JSON.stringify(result.data));return result.data;
@@ -53,6 +54,7 @@ try{
  await c.waitForFunction(()=>document.querySelector('#completed').textContent==='1');
  assert.equal((await call(a,`groups/${g}`)).tasks.find(t=>t.id===newTask.id).completed,1);
  await call(c,`tasks/${newTask.id}`,'PATCH',{version:1,completed:false},409);
+ await capture(c,'assignment-completed');
  console.log('PASS T11 three real accounts: invite reject/accept, review, decline, replacement, accept, complete, replay rejection');
  const start=Date.now()+3*86400000,end=start+5*3600000;
  const poll=await call(a,`groups/${g}/meeting-polls`,'POST',{name:'Three-student meeting',rangeStart:start,rangeEnd:end,durationMinutes:60,slotMinutes:30,bufferMinutes:0},201);
@@ -71,6 +73,7 @@ try{
  await call(a,path+'/confirm','POST',{start:options[0].start},409);
  for(const p of pages){assert.equal((await call(p,'tasks')).filter(t=>t.source_id===poll.id).length,1);await refreshGroups(p);await p.locator(`[data-open-poll="${poll.id}"]`).click();await p.locator('#groups-content').getByText('Three-student meeting',{exact:false}).first().waitFor();}
  snapshot=await call(a,path);assert.equal((await call(a,`groups/${g}`)).announcements.length,1);
+ await capture(a,'meeting-confirmed');
  const revision=snapshot.poll.revision;
  await call(a,path+'/lifecycle','POST',{action:'cancel',revision});
  for(const p of pages)assert.equal((await call(p,'tasks')).some(t=>t.source_id===poll.id),false);
@@ -91,7 +94,7 @@ try{
  await a.locator('#login-form [name=email]').fill(identities[1].account.email);await a.locator('#login-form [name=password]').fill(password);await a.locator('#login-form [type=submit]').click();await a.locator('#app').waitFor({state:'visible'});
  assert.equal((await call(a,'status')).account.id,ids[1]);await call(a,`groups/${g}`,'GET',undefined,404);
  assert.equal(await a.locator('#mail-detail-zh').textContent(),'');assert.equal(await a.locator('#mail-detail-en').textContent(),'');
- if(process.env.CAMPUS_QA_DIR){await mkdir(process.env.CAMPUS_QA_DIR,{recursive:true});for(let i=0;i<3;i++)await pages[i].screenshot({path:process.env.CAMPUS_QA_DIR+`/student-${i+1}.png`,fullPage:true});}
+ await capture(a,'account-switched');
  assert.deepEqual(errors,[]);console.log('PASS T13 real account boundaries, removal, stale task, persisted profile, logout and account switch');
 }finally{await browser.close();}
 
