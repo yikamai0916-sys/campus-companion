@@ -1,3 +1,4 @@
+import {messageGeneration,readMailCache,writeMailCache} from './mail-cache.js';
 import { saveMailSuggestion } from './suggestions.js';
 import { hash, random, seal, unseal } from './security.js';
 import { originalSender, classify } from './domain.js';
@@ -421,6 +422,7 @@ export async function localizeMessages(env,userId,requestedLocale,messages,optio
     // Fast path: script normalisation only, no per-row DB round trips.
     return messages.map(m=>applyRules(localizeFallback(locale,m)));
   }
+  const generations=new Map(await Promise.all(messages.map(async m=>[m.id,await messageGeneration(env,userId,m.id)])));
   const cached=new Map();
   // One batched lookup instead of N sequential cache reads (was the main list lag).
   if(messages.length){
@@ -439,7 +441,7 @@ export async function localizeMessages(env,userId,requestedLocale,messages,optio
   const missing=messages.filter(m=>!cached.has(m.id));
   if(!missing.length)return messages.map(m=>applyRules(cached.get(m.id)));
   const save=async rows=>{for(const row of rows){
-    await env.DB.prepare('INSERT INTO message_localizations(message_id,user_id,locale,subject,sender,origin,summary,action,quality,cache_version,updated) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,message_id,locale) DO UPDATE SET subject=excluded.subject,sender=excluded.sender,origin=excluded.origin,summary=excluded.summary,action=excluded.action,quality=excluded.quality,cache_version=excluded.cache_version,updated=excluded.updated').bind(row.id,userId,locale,row.subject,row.sender,row.origin,row.summary,row.action,row.quality,localizationCacheVersion,Date.now()).run();cached.set(row.id,row);
+    await env.DB.prepare('INSERT INTO message_localizations(message_id,user_id,locale,subject,sender,origin,summary,action,quality,cache_version,updated) SELECT ?,?,?,?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM messages WHERE user_id=? AND id=? AND cache_generation=?) ON CONFLICT(user_id,message_id,locale) DO UPDATE SET subject=excluded.subject,sender=excluded.sender,origin=excluded.origin,summary=excluded.summary,action=excluded.action,quality=excluded.quality,cache_version=excluded.cache_version,updated=excluded.updated').bind(row.id,userId,locale,row.subject,row.sender,row.origin,row.summary,row.action,row.quality,localizationCacheVersion,Date.now(),userId,row.id,generations.get(row.id)||'').run();cached.set(row.id,row);
   }};
   // List views pass allowAi:false so missing rows use the instant fallback and
   // never block the mailbox on Workers AI. Detail views may turn AI back on.
@@ -563,15 +565,15 @@ export async function translateFullBody(env,userId,locale,messageId,englishBody,
   if(!englishBody||!englishBody.trim())return null;
   const translationBody=stripForwardedHeader(compactPlainBody(englishBody));
   if(!translationBody)return null;
-  const cooldownUntil=Number(await getKV(env,'fulltrans:cooldown')||0);
-  if(cooldownUntil>Date.now())return null;
   // The same message can be returned as a truncated plain body and a complete
   // HTML body by Graph. Never let a translation of one variant mask the other.
-  const cacheKey=`fulltrans:v6:${locale}:${userId}:${await hash(messageId)}:${await hash(translationBody)}`;
+  const generation=await messageGeneration(env,userId,messageId);if(!generation)return null;
+  const variant=await hash(translationBody+'\n'+preferredZhName);
   try{
-    const cached=await getKV(env,cacheKey);
+    const cached=await readMailCache(env,userId,messageId,generation,'translation',locale,variant);
     if(cached)return cached;
   }catch{}
+  if(Number(await getKV(env,'fulltrans:cooldown')||0)>Date.now())return null;
   if(env.ENABLE_AI!=='true'||!env.AI)return null;
   const language=locale==='zh-TW'?'Traditional Chinese (繁體中文)':'Simplified Chinese (简体中文)';
   const scriptNote=locale==='zh-TW'
@@ -586,8 +588,8 @@ export async function translateFullBody(env,userId,locale,messageId,englishBody,
     ],max_tokens:4000});
     const translation=typeof out.response==='string'?out.response.trim():JSON.stringify(out.response);
     if(translation){
-      await setKV(env,cacheKey,translation);
-      return translation;
+      if(await writeMailCache(env,userId,messageId,generation,'translation',locale,variant,translation))return translation;
+      return null;
     }
   }catch(e){
     if(/daily free allocation|neurons|quota|rate.?limit/i.test(e.message||'')){

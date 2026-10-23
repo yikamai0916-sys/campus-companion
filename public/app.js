@@ -142,26 +142,31 @@ const fmt=n=>n?new Date(Number(n)).toLocaleString(dateLocale(),{timeZone:'Asia/H
 const localDate=n=>n?new Date(Number(n)+8*3600000).toISOString().slice(0,16):'';
 const returnParams=new URLSearchParams(location.search);
 let oauthFeedback=returnParams.has('outlookError')?(returnParams.get('outlookError')==='cancelled'?'尚未完成 Outlook 授权，可重新连接':'Outlook 连接未完成，请核对邮箱和应用配置后重试'):'';
+let sessionEpoch=0;
 let tasks=[],status={},editing=null,showDone=false,activeView='tasks';
 let toastTimer;
 function toast(s){$('#toast').textContent=translateCopy(s);$('#toast').classList.remove('hidden');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.add('hidden'),4500);}
 function accountLabel(account){const nickname=String(account?.nickname||'').trim();return nickname||`${tx('defaultNickname')} ${String(account?.userCode||'0000')}`;}
 function setAvatar(value,fallback='U'){const el=$('#avatar');el.textContent='';if(/^data:image\//.test(value||'')){const img=document.createElement('img');img.src=value;img.alt='';el.append(img);}else el.textContent=value||fallback;}
 async function api(path,options={}){
-  const form=document.activeElement?.closest('form');
-  try{return await requestJSON('/api/'+path,{...options,headers:{'Content-Type':'application/json','X-Locale':locale,...options.headers},body:options.body===undefined?undefined:JSON.stringify(options.body)});}
-  catch(error){error.message=translateCopy(error.message);
+  const form=document.activeElement?.closest('form'),epoch=sessionEpoch;
+  try{const result=await requestJSON('/api/'+path,{...options,headers:{'Content-Type':'application/json','X-Locale':locale,...options.headers},body:options.body===undefined?undefined:JSON.stringify(options.body)});if(epoch!==sessionEpoch)throw Object.assign(new Error('Session changed'),{code:'STALE_SESSION'});return result;}
+  catch(error){if(epoch!==sessionEpoch)throw Object.assign(new Error('Session changed'),{code:'STALE_SESSION'});if(error.code==='STALE_SESSION')throw error;error.message=translateCopy(error.message);
     if(error.code==='SESSION_EXPIRED'){const expired=!$('#app').classList.contains('hidden')||returnParams.has('authError');showLogin();if(expired)$('#login-error').textContent=translateCopy('登录已失效，请重新登录');}
     else if(form)showFormError(form,error.message);
     throw error;
   }
 }
 function showFormError(form,message){let node=form.querySelector('.error');if(!node){node=document.createElement('p');node.className='error';node.setAttribute('role','alert');form.append(node);}node.textContent=message;}
-function loadError(selector,error,retry){const root=$(selector);root.innerHTML='';const box=document.createElement('div');box.className='load-error';box.setAttribute('role','alert');const message=document.createElement('p');message.textContent=error.message;const button=document.createElement('button');button.type='button';button.textContent=translateCopy('重试');button.onclick=async()=>{button.disabled=true;try{await retry();}catch(e){loadError(selector,e,retry);}finally{button.disabled=false;}};box.append(message,button);root.append(box);}
+function loadError(selector,error,retry){if(error.code==='STALE_SESSION'||error.code==='SESSION_EXPIRED')return;const root=$(selector);root.innerHTML='';const box=document.createElement('div');box.className='load-error';box.setAttribute('role','alert');const message=document.createElement('p');message.textContent=error.message;const button=document.createElement('button');button.type='button';button.textContent=translateCopy('重试');button.onclick=async()=>{button.disabled=true;try{await retry();}catch(e){loadError(selector,e,retry);}finally{button.disabled=false;}};box.append(message,button);root.append(box);}
 function showLogin(){
+  sessionEpoch++;groupRequest++;hideMailReader();tasks=[];status={};groups=[];invitations=[];groupState=null;selectedGroupId=null;activePoll=null;digestData=[];digestViews=[];digestOpen.clear();
+  for(const id of ['task-list','mail-list','mail-suggestions','groups-content','digest-list','settings-content'])$('#'+id).replaceChildren();
+  $('#avatar-page')?.remove();document.body.style.overflow='';
   for(const dialog of $$('dialog[open]'))dialog.close();
   $('#app').classList.add('hidden');$('#login').classList.remove('hidden');
   if(location.search)history.replaceState(null,'','/');
+  $('#login-form').elements.password.value='';$('#login-form [name=email]').focus();
   applyLocale(localStorage.getItem('campus-locale')||detectLocale());
   $$('[data-login-locale]').forEach(b=>b.classList.toggle('selected',b.dataset.loginLocale===locale));
 }
@@ -312,18 +317,20 @@ function bindMailList(root){
     card.onclick=e=>{if(e.target.closest('[data-delete-mail]'))return;openMailDetail(decodeURIComponent(card.dataset.openMail));};
     card.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openMailDetail(decodeURIComponent(card.dataset.openMail));}};
   });
-  root.querySelectorAll('[data-delete-mail]').forEach(b=>b.onclick=async e=>{e.stopPropagation();if(!confirm(tx('confirmDeleteMail')))return;b.disabled=true;try{await api('messages/'+b.dataset.deleteMail,{method:'DELETE',body:{}});await loadMail();toast(tx('mailDeleted'));}catch(err){toast(err.message);b.disabled=false;}});
+  root.querySelectorAll('[data-delete-mail]').forEach(b=>b.onclick=async e=>{e.stopPropagation();if(!confirm(local('删除本地邮件、摘要、译文和待审核候选；不会删除 Outlook 原邮件。已确认任务及其备注独立保留，可在待办中单独删除。','刪除本地郵件、摘要、譯文和待審核候選；不會刪除 Outlook 原郵件。已確認任務及其備註獨立保留，可在待辦中另行刪除。','Delete local mail, summaries, translations and review candidates. Outlook originals are kept. Confirmed tasks and their notes remain; delete them separately in Tasks.')))return;b.disabled=true;try{await api('messages/'+b.dataset.deleteMail,{method:'DELETE',body:{}});await loadMail();toast(tx('mailDeleted'));}catch(err){toast(err.message);b.disabled=false;}});
 }
-let readerRequest=0;
+let readerRequest=0,readerTrigger=null;
 function hideMailReader(){
+  $('#mail-detail-title').textContent='';$('#mail-detail-meta').textContent='';$('#mail-detail-zh').replaceChildren();$('#mail-detail-en').replaceChildren();$('#mail-detail-error').replaceChildren();$('#mail-detail-error').hidden=true;$('#mail-detail-outlook').removeAttribute('href');
   readerRequest++;$('#mail-detail-dialog').classList.add('hidden');document.body.classList.remove('reader-open');$('#app').inert=false;
 }
 async function openMailDetail(id,{push=true}={}){
   const page=$('#mail-detail-dialog'),request=++readerRequest;
-  if(push&&new URLSearchParams(location.search).get('message')!==id)history.pushState({mailReader:true},'','/?view=mail&message='+encodeURIComponent(id));
+  if(push&&new URLSearchParams(location.search).get('message')!==id){readerTrigger=document.activeElement;history.replaceState({...history.state,readerScroll:window.scrollY},'',location.href);history.pushState({mailReader:true,source:activeView},'','/?view='+activeView+'&message='+encodeURIComponent(id));}
   page.classList.remove('hidden');document.body.classList.add('reader-open');$('#app').inert=true;page.scrollTop=0;
   $('#close-mail-detail').textContent=local('← 返回','← 返回','← Back');
   $('#mail-detail-label').textContent=tx('mailDetail');
+  $('#mail-detail-error').hidden=true;$('#mail-detail-error').replaceChildren();
   $('#mail-detail-title').textContent=local('加载中…','載入中…','Loading…');
   $('#mail-detail-title').focus();$('#mail-detail-meta').textContent='';
   $('#mail-detail-zh').textContent='';$('#mail-detail-en').textContent='';$('#mail-detail-outlook').hidden=true;
@@ -343,6 +350,7 @@ async function openMailDetail(id,{push=true}={}){
     $('#mail-detail-meta').innerHTML=`<span class="badge">${esc(safe(englishBrief?.topic||tx(categoryKey(detail.category)),'Email'))}</span><span>${esc(safe(display.sender,'Sender unavailable'))}</span><span>${esc(safe(display.origin,'Source not identified'))}</span><time>${esc(fmt(detail.received))}</time>`;
     $('#mail-detail-zh').innerHTML=englishUi?'':display.brief?briefContent(display):`<p data-user-content>${esc(display.summary||'')}</p>`;
     $('#mail-detail-zh').classList.toggle('hidden',englishUi);
+    if(display.brief?.scriptWarning){const note=document.createElement('p');note.textContent=local('摘要可能混用字形，请核对原文。','摘要可能混用字形，請核對原文。','The summary may mix writing systems; check the original.');$('#mail-detail-zh').append(note);}
     const original=renderMailBody(detail.english||{});
     $('#mail-detail-en').replaceChildren(original);
     if(!englishUi&&detail.chinese?.fullBody){
@@ -364,7 +372,7 @@ async function openMailDetail(id,{push=true}={}){
     if(!detail.translationEnabled)selectPane('en');
     const link=$('#mail-detail-outlook');
     if(/^https:\/\/(?:outlook\.live\.com|outlook\.office\.com|outlook\.office365\.com)\//.test(detail.url||'')){link.hidden=false;link.href=detail.url;link.textContent=tx('viewOriginal');}
-  }catch(e){if(request===readerRequest){$('#mail-detail-title').textContent=tx('mailDetail');$('#mail-detail-zh').textContent=e.message;}}
+  }catch(e){if(request!==readerRequest||e.code==='SESSION_EXPIRED'||e.code==='STALE_SESSION')return;$('#mail-detail-title').textContent=tx('mailDetail');$('#mail-detail-error').hidden=false;loadError('#mail-detail-error',e,()=>openMailDetail(id,{push:false}));if(e.status===404){$('#mail-detail-error p').textContent=local('这封邮件已不存在或无权访问，请返回列表。','此郵件已不存在或無權存取，請返回列表。','This email is unavailable or you do not have access. Return to the list.');$('#mail-detail-error button').remove();}}
 }
 let currentMailQuery='';
 async function loadMail(opts={}){
@@ -450,7 +458,7 @@ function digestBody(r,key){
 function digestRow(r,di,n){
   const key=di+':'+n,id=r.item.id||key,open=digestOpen.has(id),when=r.when!==null?dayLabel(r.when):null;
   const gist=r.gist.text&&!r.item.briefLoading?`<span class="dg-gist${r.gist.provisional?' is-quick':''}" data-user-content>${esc(r.gist.text)}</span>`:'';
-  return `<li class="dg-row tier-${r.tier}${open?' open':''}" data-dg-row="${key}" data-tier="${r.tier}"><button type="button" class="dg-head" aria-expanded="${open}" aria-controls="dg-b-${di}-${n}"><span class="dg-dot" role="img" aria-label="${esc(tierLabel(r.tier))}"></span><span class="dg-main"><span class="dg-title" data-user-content>${esc(r.headline)}</span>${gist}</span>${when?`<span class="dg-when${when.soon?' soon':''}" title="${esc(when.title)}">${esc(when.text)}</span>`:''}<span class="dg-chev" aria-hidden="true"></span></button><div class="dg-body" id="dg-b-${di}-${n}"><div class="dg-body-inner">${digestBody(r,key)}</div></div></li>`;
+  return `<li class="dg-row tier-${r.tier}${open?' open':''}" data-dg-row="${key}" data-tier="${r.tier}"><button type="button" class="dg-head" aria-expanded="${open}" aria-controls="dg-b-${di}-${n}"><span class="dg-dot" role="img" aria-label="${esc(tierLabel(r.tier))}"></span><span class="dg-main"><span class="dg-title" data-user-content>${esc(r.headline)}</span>${gist}</span>${when?`<span class="dg-when${when.soon?' soon':''}" title="${esc(when.title)}">${esc(when.text)}</span>`:''}<span class="dg-chev" aria-hidden="true"></span></button><button type="button" class="dg-btn" data-dg-expand="${key}" aria-expanded="${open}" aria-controls="dg-b-${di}-${n}">${esc(local('展开要点','展開要點','Expand notes'))}</button><div class="dg-body" id="dg-b-${di}-${n}"><div class="dg-body-inner">${digestBody(r,key)}</div></div></li>`;
 }
 function digestCard(d,di){
   const o=digestViews[di],c=o.counts;
@@ -522,6 +530,8 @@ function bindDigestEvents(){
     if(e.target.closest('.card-stack.is-collapsed'))return; // first click only unfolds the stack
     const find=sel=>e.target.closest(sel);
     const rowOf=key=>{const [di,n]=key.split(':').map(Number);return {row:root.querySelector(`[data-dg-row="${key}"]`),r:digestViews[di]?.rows[n]};};
+    const expand=find('[data-dg-expand]');
+    if(expand){const {row,r}=rowOf(expand.dataset.dgExpand);if(!row)return;const open=!row.classList.contains('open');row.classList.toggle('open',open);expand.setAttribute('aria-expanded',String(open));const id=r?.item.id||row.dataset.dgRow;open?digestOpen.add(id):digestOpen.delete(id);syncToggleAll(row.closest('.dg-card'));return;}
     const head=find('.dg-head');
     if(head){
       // 点击日报行直接跳转到邮件详情页（用户要求）
@@ -550,7 +560,7 @@ function bindDigestEvents(){
     const all=find('[data-dg-all]');
     if(all){
       const card=all.closest('.dg-card'),open=all.dataset.state!=='close';
-      card.querySelectorAll('.dg-row:not([hidden])').forEach(row=>{const {r}=rowOf(row.dataset.dgRow),id=r?.item.id||row.dataset.dgRow;row.classList.toggle('open',open);row.querySelector('.dg-head').setAttribute('aria-expanded',String(open));open?digestOpen.add(id):digestOpen.delete(id);});
+      card.querySelectorAll('.dg-row:not([hidden])').forEach(row=>{const {r}=rowOf(row.dataset.dgRow),id=r?.item.id||row.dataset.dgRow;row.classList.toggle('open',open);row.querySelector('[data-dg-expand]').setAttribute('aria-expanded',String(open));open?digestOpen.add(id):digestOpen.delete(id);});
       syncToggleAll(card);return;
     }
     const jump=find('[data-dg-jump]');
@@ -562,7 +572,7 @@ function bindDigestEvents(){
       row.classList.remove('dg-flash');void row.offsetWidth;row.classList.add('dg-flash');return;
     }
     const open=find('[data-dg-open]');
-    if(open){const {r}=rowOf(open.dataset.dgOpen);if(r?.item.id){history.replaceState(null,'','/?view=mail&message='+encodeURIComponent(r.item.id));view('mail');openMailDetail(r.item.id);}return;}
+    if(open){const {r}=rowOf(open.dataset.dgOpen);if(r?.item.id)openMailDetail(r.item.id);return;}
     const brief=find('[data-dg-brief]');
     if(brief){
       const {r}=rowOf(brief.dataset.dgBrief);if(!r||r.item.briefLoading)return;
@@ -663,9 +673,26 @@ function bindGroupActions(){
 
 function bindAvailabilityRemove(){$$('[data-remove-availability]').forEach(button=>button.onclick=()=>{const container=button.closest('.availability-rows');if(container.dataset.intervalKind==='available'&&container.children.length===1){toast('至少保留一个可用时段');return;}button.closest('.availability-row').remove();});}
 
-async function loadGroups(force=false,keepPoll=false){
-  const root=$('#groups-content');if(!force&&!groups.length)root.innerHTML='<div class="group-loading"><span></span><span></span></div>';
-  try{[groups,invitations]=await Promise.all([api('groups'),api('invitations')]);if(selectedGroupId&&!groups.some(group=>group.id===selectedGroupId))selectedGroupId=null;if(!selectedGroupId)selectedGroupId=groups[0]?.id||null;groupState=selectedGroupId?await api(`groups/${selectedGroupId}`):null;if(!keepPoll)activePoll=null;renderGroups();bindUpgradeControls();}catch(error){loadError('#groups-content',error,()=>loadGroups(true));}
+function groupDrafts(){return [...$('#groups-content').querySelectorAll('form')].flatMap(form=>[...form.elements].filter(el=>el.name&&!['password','file'].includes(el.type)).map(el=>({form:form.id,name:el.name,index:[...form.elements].filter(e=>e.name===el.name).indexOf(el),value:el.value,checked:el.checked})));}
+let groupRequest=0;
+async function loadGroups(force=false,keepPoll=false,drafts=null){
+  const request=++groupRequest,root=$('#groups-content');
+  if(!force&&!groups.length)root.innerHTML='<div class="group-loading"><span></span><span></span></div>';
+  try{
+    const [nextGroups,nextInvitations]=await Promise.all([api('groups'),api('invitations')]);
+    if(request!==groupRequest)return;
+    const groupId=nextGroups.some(g=>g.id===selectedGroupId)?selectedGroupId:nextGroups[0]?.id||null;
+    const snapshot=groupId?await api('groups/'+groupId):null;
+    if(request!==groupRequest)return;
+    groups=nextGroups;invitations=nextInvitations;selectedGroupId=groupId;groupState=snapshot;
+    if(!keepPoll)activePoll=null;
+    renderGroups();
+    if(drafts)for(const draft of drafts){const form=document.getElementById(draft.form),input=form&&[...form.elements].filter(e=>e.name===draft.name)[draft.index];if(input){input.value=draft.value;input.checked=draft.checked;}}
+  }catch(error){
+    if(request!==groupRequest||error.code==='SESSION_EXPIRED'||error.code==='STALE_SESSION')return;
+    let box=$('#groups-load-error');if(!box){box=document.createElement('div');box.id='groups-load-error';root.prepend(box);}
+    loadError('#groups-load-error',error,()=>loadGroups(true,true,groupDrafts()));
+  }
 }
 
 async function loadSettings(){return loadSettingsProfile();}
@@ -689,9 +716,9 @@ $$('[data-view]').forEach(b=>b.onclick=event=>{if(b.dataset.view===activeView)vi
 function wireMailDetail(){
   const page=$('#mail-detail-dialog');if(!page||page.dataset.wired)return;page.dataset.wired='1';
   $('#close-mail-detail').onclick=()=>{if(history.state?.mailReader)history.back();else{hideMailReader();view('mail');}};
-  window.addEventListener('popstate',()=>{const params=new URLSearchParams(location.search),id=params.get('message');if(id)openMailDetail(id,{push:false});else{hideMailReader();const target=params.get('view')||'tasks';if(target!==activeView)view(target);}});
+  window.addEventListener('popstate',()=>{const params=new URLSearchParams(location.search),id=params.get('message');if(id)openMailDetail(id,{push:false});else{hideMailReader();const target=params.get('view')||'tasks';if(['tasks','groups','mail','digests','settings'].includes(target)&&target!==activeView)view(target);window.scrollTo(0,history.state?.readerScroll||0);readerTrigger?.isConnected&&readerTrigger.focus();}});
 }
-async function boot(){wireMailDetail();wireMailSearch();try{status=await api('status');const profile=await api('profile');reminderDefaults=profile.reminders||reminderDefaults;applyLocale(status.account.locale||localStorage.getItem('campus-locale')||'zh-CN');localStorage.setItem('campus-locale',locale);$('#login').classList.add('hidden');$('#app').classList.remove('hidden');$('#account-label').textContent=accountLabel(status.account);setAvatar(status.account.avatar,accountLabel(status.account).slice(0,1).toUpperCase());$('#date-label').textContent=new Date().toLocaleDateString(dateLocale(),{timeZone:'Asia/Hong_Kong',year:'numeric',month:'long',day:'numeric',weekday:'long'});await loadTasks().catch(e=>loadError('#task-list',e,loadTasks));const params=new URLSearchParams(location.search),v=params.get('view'),id=params.get('message');view(['groups','mail','digests','settings'].includes(v)?v:'tasks');if(id){history.replaceState(null,'','/?view=mail&message='+encodeURIComponent(id));openMailDetail(id,{push:false});}}catch(e){if(!$('#app').classList.contains('hidden'))$('#global-error').textContent=e.message;else{showLogin();if(e.code!=='SESSION_EXPIRED')$('#login-error').textContent=e.message;}}}
+async function boot(){wireMailDetail();wireMailSearch();try{status=await api('status');const profile=await api('profile');reminderDefaults=profile.reminders||reminderDefaults;applyLocale(status.account.locale||localStorage.getItem('campus-locale')||'zh-CN');localStorage.setItem('campus-locale',locale);$('#login').classList.add('hidden');$('#app').classList.remove('hidden');$('#account-label').textContent=accountLabel(status.account);setAvatar(status.account.avatar,accountLabel(status.account).slice(0,1).toUpperCase());$('#date-label').textContent=new Date().toLocaleDateString(dateLocale(),{timeZone:'Asia/Hong_Kong',year:'numeric',month:'long',day:'numeric',weekday:'long'});await loadTasks().catch(e=>loadError('#task-list',e,loadTasks));const params=new URLSearchParams(location.search),v=params.get('view'),id=params.get('message');view(['groups','mail','digests','settings'].includes(v)?v:'tasks');if(id){history.replaceState(null,'','/?view='+activeView+'&message='+encodeURIComponent(id));openMailDetail(id,{push:false});}}catch(e){if(e.code==='STALE_SESSION')return;if(!$('#app').classList.contains('hidden'))$('#global-error').textContent=e.message;else{showLogin();if(e.code!=='SESSION_EXPIRED')$('#login-error').textContent=e.message;}}}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!$('#app').classList.contains('hidden'))loadTasks().catch(e=>toast(e.message));});
 
 function announcementText(item){if(item.kind==='meeting-change')return {title:item.title,body:item.body==='cancel'?local('会议已取消','會議已取消','Meeting cancelled'):local('会议已改期，请重新提交可用时间','會議已改期，請重新提交可用時間','Meeting rescheduled. Submit availability again.')};if(item.kind==='meeting'){const poll=groupState.meetingPolls.find(p=>p.id===item.source_id);if(poll)return {title:local('会议时间已确认：','會議時間已確認：','Meeting confirmed: ')+poll.name,body:fmt(poll.confirmed_start)+' · '+poll.duration_minutes+' '+local('分钟','分鐘','minutes')};}return item;}
@@ -744,7 +771,7 @@ async function loadSettingsProfile(){
     const disconnectOutlook=$('#disconnect-outlook');if(disconnectOutlook)disconnectOutlook.onclick=async()=>{if(!confirm(tx('confirmDisconnectOutlook')))return;disconnectOutlook.disabled=true;try{await api('outlook',{method:'DELETE',body:{}});toast(tx('outlookDisconnected'));await loadSettingsProfile();}catch(err){toast(err.message);disconnectOutlook.disabled=false;}};
     $('#edit-profile').onclick=()=>{const editor=$('#profile-editor'),open=editor.classList.contains('hidden');editor.classList.toggle('hidden',!open);$('#edit-profile').setAttribute('aria-expanded',String(open));if(open)$('#profile-form').elements.nickname.focus();};
     $('#profile-form').elements.avatarFile.onchange=e=>{const file=e.target.files[0];if(!file)return;if(!['image/png','image/jpeg','image/webp','image/gif'].includes(file.type)){e.target.value='';toast(tx('avatarInvalid'));return;}if(file.size>2*1024*1024){e.target.value='';showFormError(e.target.form,translateCopy('头像不能超过 2 MB'));return;}const reader=new FileReader();reader.onerror=()=>showFormError(e.target.form,translateCopy('无法读取图片，请重新选择'));reader.onload=()=>{e.target.form.elements.avatar.value=reader.result;$('#avatar-preview').src=reader.result;$('#avatar-preview').hidden=false;};reader.readAsDataURL(file);};
-    $('#profile-form').onsubmit=async e=>{e.preventDefault();const f=e.currentTarget,b=f.querySelector('[type=submit]');b.disabled=true;b.classList.add('pending');const original=b.textContent;b.textContent=local('保存中…','儲存中…','Saving…');try{const body={nickname:f.elements.nickname.value,avatar:f.elements.avatar.value,locale:f.elements.locale.value,preferredZhName:f.elements.preferredZhName?f.elements.preferredZhName.value:undefined};if(f.elements.nickname.form.querySelector('#alias-list'))body.nameAliases=[...$$('#alias-list .alias-row')].map(row=>({alias:row.querySelector('[name=alias]').value.trim(),zhName:row.querySelector('[name=aliasZh]').value.trim()})).filter(a=>a.alias&&a.zhName);const r=await api('profile',{method:'PATCH',body});applyLocale(r.locale);localStorage.setItem('campus-locale',r.locale);$('#account-label').textContent=r.nickname||accountLabel(status.account);setAvatar(r.avatar,(r.nickname||accountLabel(status.account)).slice(0,1).toUpperCase());b.textContent=local('已保存 ✓','已儲存 ✓','Saved ✓');setTimeout(()=>location.reload(),150);}catch(err){toast(err.message);b.disabled=false;b.classList.remove('pending');b.textContent=original;}};
+    $('#profile-form').onsubmit=async e=>{e.preventDefault();const f=e.currentTarget,b=f.querySelector('[type=submit]');b.disabled=true;b.classList.add('pending');const original=b.textContent;b.textContent=local('保存中…','儲存中…','Saving…');try{const body={nickname:f.elements.nickname.value,avatar:f.elements.avatar.value,locale:f.elements.locale.value,preferredZhName:f.elements.preferredZhName?f.elements.preferredZhName.value:undefined};if(f.elements.nickname.form.querySelector('#alias-list'))body.nameAliases=[...$$('#alias-list .alias-row')].map(row=>({alias:row.querySelector('[name=alias]').value.trim(),zhName:row.querySelector('[name=aliasZh]').value.trim()})).filter(a=>a.alias&&a.zhName);const r=await api('profile',{method:'PATCH',body});applyLocale(r.locale);localStorage.setItem('campus-locale',r.locale);$('#account-label').textContent=r.nickname||accountLabel(status.account);setAvatar(r.avatar,(r.nickname||accountLabel(status.account)).slice(0,1).toUpperCase());b.textContent=local('已保存 ✓','已儲存 ✓','Saved ✓');$('#profile-display-name').textContent=r.nickname||accountLabel(status.account);status.account={...status.account,...r};b.disabled=false;b.classList.remove('pending');b.textContent=original;}catch(err){showFormError(f,err.message);b.disabled=false;b.classList.remove('pending');b.textContent=original;}};
     const aliasList=$('#alias-list'),aliasAdd=$('#alias-add');
     if(aliasAdd&&aliasList){
       aliasAdd.onclick=()=>{aliasList.insertAdjacentHTML('beforeend',aliasRowHTML());bindAliasRows();};

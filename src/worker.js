@@ -1,3 +1,4 @@
+import {deleteMailData,cleanExpiredMailCache} from './mail-cache.js';
 import {attachBriefs,generateBrief,readBrief,preGenerateBriefs} from './mail-briefs.js';
 import { meetingTask,wording } from './display.js';
 import { serverMessage,normalizeLocale } from './errors.js';
@@ -273,7 +274,7 @@ async function routes(request,env,ctx){
       englishSummaryEnabled:prefs.englishSummary===true&&locale.startsWith('zh')
     });
   }
-  if(messageId&&method==='DELETE'){await env.DB.batch([env.DB.prepare('DELETE FROM messages WHERE id=? AND user_id=?').bind(decodeURIComponent(messageId),account.user_id),env.DB.prepare('DELETE FROM mail_suggestions WHERE message_id=? AND user_id=?').bind(decodeURIComponent(messageId),account.user_id)]);return json({ok:true});}
+  if(messageId&&method==='DELETE'){await deleteMailData(env,account.user_id,decodeURIComponent(messageId));return json({ok:true});}
   if(path==='/api/mail/reprocess'&&method==='POST')return json(await reprocessMail(env,account.user_id,2));
   if(path==='/api/mail/link-summary'&&method==='POST'){
     const data=await body(request),url=String(data.url||'').trim();
@@ -380,7 +381,7 @@ export default {
           }catch(error){await env.DB.prepare('UPDATE outlook_connections SET status=? WHERE user_id=?').bind(String(error.message).slice(0,300),connection.user_id).run();}
         }
       }
-      await makeDigest(env,Date.now());
+      await makeDigest(env,Date.now());await cleanExpiredMailCache(env);
 
       await env.DB.batch([env.DB.prepare('DELETE FROM sessions WHERE expires<?').bind(now),env.DB.prepare('DELETE FROM oauth WHERE expires<?').bind(now)]);
     }finally{await env.DB.prepare("UPDATE kv SET value='0' WHERE key='cron_lease' AND value=?").bind(String(now+240000)).run();}

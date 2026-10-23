@@ -1,3 +1,4 @@
+import {database} from './helpers/database.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { defaults,assignmentReminders,validateTask,initialTimes,nextAllowed,allowed,digestWindow,originalSender,classify } from '../src/domain.js';
@@ -52,19 +53,8 @@ test('forwarded header with only From and Sent is removed before translation',()
   assert.equal(stripForwardedHeader(forwarded),'The briefing offers two sessions.');
 });
 test('full email translation strips forwarding headers and caches by substantive body',async()=>{
-  const values=new Map();let calls=0,systemPrompt='',translatedInput='';
-  const DB={
-    prepare(sql){
-      return {
-        bind(...args){
-          return {
-            first:async()=>sql.startsWith('SELECT value FROM kv')?{value:values.get(args[0])}:null,
-            run:async()=>{if(sql.startsWith('INSERT INTO kv'))values.set(args[0],args[1]);}
-          };
-        }
-      };
-    }
-  };
+  const {DB,sqlite}=database();let calls=0,systemPrompt='',translatedInput='';
+  sqlite.exec("INSERT INTO messages(id,user_id,subject,received,sender,origin,category,summary,action,url,quality) VALUES('mail-1','user','Notice',0,'Office','School',2,'Summary','','','')");
   const env={ENABLE_AI:'true',DB,AI:{run:async(_model,{messages})=>{calls++;systemPrompt=messages[0].content;if(calls===1)translatedInput=messages[1].content;return {response:`译文${calls}`};}}};
   const fullBody=`From: Staff\nSent: Monday\nTo: Student\nSubject: Notice\n\nActual message`;
   const first=await translateFullBody(env,'user','zh-CN','mail-1',fullBody,'马艺恺');
@@ -72,19 +62,16 @@ test('full email translation strips forwarding headers and caches by substantive
   const different=await translateFullBody(env,'user','zh-CN','mail-1','Different body','马艺恺');
   assert.equal(first,'译文1');assert.equal(second,first);assert.equal(different,'译文2');assert.equal(calls,2);
   assert.match(systemPrompt,/omit that block/);assert.equal(translatedInput,'Actual message');
-  assert.ok([...values.keys()].some(key=>key.startsWith('fulltrans:v6:')));
+  assert.equal(sqlite.prepare('SELECT COUNT(*) n FROM mail_cache').get().n,2);
 });
 test('translation quota exhaustion is reported once and suppresses repeat AI calls',async()=>{
-  const values=new Map();let calls=0;
-  const DB={prepare(sql){return {bind(...args){return {
-    first:async()=>sql.startsWith('SELECT value FROM kv')?{value:values.get(args[0])}:null,
-    run:async()=>{if(sql.startsWith('INSERT INTO kv'))values.set(args[0],args[1]);}
-  };}};}};
+  const {DB,sqlite}=database();let calls=0;
+  for(const id of ['mail-2','mail-3'])sqlite.prepare("INSERT INTO messages(id,user_id,subject,received,sender,origin,category,summary,action,url,quality) VALUES(?,'user','Notice',0,'Office','School',2,'Summary','','','')").run(id);
   const env={ENABLE_AI:'true',DB,AI:{run:async()=>{calls++;throw new Error('4006: daily free allocation of 10,000 neurons exhausted');}}};
   const first=await translateFullBody(env,'user','zh-CN','mail-2','The actual email body.');
   const second=await translateFullBody(env,'user','zh-CN','mail-3','Another actual email body.');
   assert.equal(first,null);assert.equal(second,null);assert.equal(calls,1);
-  assert.ok(Number(values.get('fulltrans:cooldown'))>Date.now());
+  assert.ok(Number(sqlite.prepare("SELECT value FROM kv WHERE key='fulltrans:cooldown'").get().value)>Date.now());
 });
 test('receipt ignored but resubmission and scholarships retained',()=>{
   assert.equal(classify('Moodle','you have successfully submitted assignment'),6);
