@@ -1,0 +1,42 @@
+/* App icon (public/brand-icon.js): tile, entrance + resident motion, login hero, sidebar dock, flight. */
+.bi-tile{display:block;position:relative;aspect-ratio:1;border-radius:26%;overflow:hidden;background:#dcf5f2;flex-shrink:0}
+.bi-tile svg{display:block;width:100%;height:100%}
+
+/* ---- motion (same timings as the approved A1 animation) ---- */
+.bi .calendar,.bi .rings,.bi .check{transform-box:fill-box;transform-origin:center}
+.bi .rays{transform-box:view-box;transform-origin:200px 144px}
+@keyframes bi-cal-pop{0%{opacity:0;transform:scale(.6)}60%{opacity:1;transform:scale(1.04)}100%{opacity:1;transform:scale(1)}}
+@keyframes bi-ring-pop{0%{opacity:0;transform:scale(.5)}60%{opacity:1;transform:scale(1.06)}100%{opacity:1;transform:scale(1)}}
+@keyframes bi-sunrise{0%{opacity:0;transform:translateY(150px)}12%{opacity:1}100%{opacity:1;transform:translateY(0)}}
+@keyframes bi-check-draw{from{stroke-dashoffset:1.1}to{stroke-dashoffset:0}}
+@keyframes bi-check-pop{0%{transform:scale(1)}50%{transform:scale(1.1)}100%{transform:scale(1)}}
+@keyframes bi-rays-sway{0%,100%{transform:rotate(-2.5deg)}50%{transform:rotate(2.5deg)}}
+@keyframes bi-check-breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.02)}}
+@media(prefers-reduced-motion:no-preference){
+  .bi .calendar{animation:bi-cal-pop 500ms cubic-bezier(.34,1.56,.64,1) 0ms both}
+  .bi .rings{animation:bi-ring-pop 400ms cubic-bezier(.34,1.56,.64,1) 350ms both}
+  .bi .sun{animation:bi-sunrise 900ms cubic-bezier(.16,1,.3,1) 450ms both}
+  .bi .rays{animation:bi-rays-sway 4000ms ease-in-out 2000ms infinite}
+  .bi .check{stroke-dasharray:1 1.2;animation:bi-check-draw 400ms cubic-bezier(.4,0,.2,1) 1400ms both,bi-check-pop 200ms cubic-bezier(.34,1.56,.64,1) 1800ms both,bi-check-breathe 2600ms ease-in-out 2000ms infinite}
+}
+
+/* ---- login: big icon, top centre ---- */
+.login .brand.login-brand{flex-direction:column;justify-content:center;gap:18px;margin-bottom:30px;text-align:center}
+.bi-hero{width:clamp(124px,36vw,172px);border-radius:26%;box-shadow:0 18px 44px rgba(4,159,149,.18),0 3px 10px rgba(0,0,0,.06)}
+
+/* ---- sidebar: small icon docked where the old check logo was ---- */
+aside .brand .bi-dock{width:44px;height:44px;border-radius:26%;box-shadow:0 2px 8px rgba(0,0,0,.22)}
+.bi-dock.bi-waiting{visibility:hidden}
+.bi-dock.bi-landed::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:0 0 0 0 rgba(212,255,0,.9);animation:bi-ripple .9s ease-out}
+.bi-dock.bi-landed{overflow:visible}
+.bi-dock.bi-landed svg{border-radius:26%}
+@keyframes bi-ripple{to{box-shadow:0 0 0 18px rgba(212,255,0,0)}}
+@media(max-width:700px){aside .brand .bi-dock{width:40px;height:40px;box-shadow:0 2px 8px rgba(0,0,0,.12)}}
+
+/* ---- the copy that flies from the login screen to the dock ---- */
+.bi-flyer{position:fixed;z-index:2000;margin:0;transform-origin:0 0;will-change:transform;pointer-events:none;box-shadow:0 22px 50px rgba(4,159,149,.28)}
+
+/* the app fades in underneath the flying icon */
+@keyframes appEnter{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+#app.app-enter{animation:appEnter .6s cubic-bezier(.2,.8,.2,1) .35s both}
+@media(prefers-reduced-motion:reduce){#app.app-enter{animation:none}.bi-dock.bi-landed::after{animation:none}}
