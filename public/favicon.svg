@@ -1,1 +1,30 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="#37332e"/><path d="m17 33 10 10 21-24" fill="none" stroke="#fff9ee" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+<svg viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+    <defs><clipPath id="cal-clip-fav"><path d="M 123 144 H 280 A 28 28 0 0 1 308 172 V 309 A 28 28 0 0 1 280 337 H 123 A 28 28 0 0 1 95 309 V 172 A 28 28 0 0 1 123 144 Z"/></clipPath></defs>
+    <rect x="0" y="0" width="400" height="400" rx="92" fill="#DCF5F2"/>
+    <g class="sun">
+    <g class="rays" fill="#FE6C3E">
+    <rect class="ray" x="194" y="37" width="12" height="33" rx="6"/>
+    <g transform="rotate(45 129 73)"><rect class="ray" x="111.5" y="66.5" width="35" height="13" rx="6.5"/></g>
+    <g transform="rotate(-45 271 73)"><rect class="ray" x="253.5" y="66.5" width="35" height="13" rx="6.5"/></g>
+    <rect class="ray" x="91" y="116" width="32" height="12" rx="6"/>
+    <rect class="ray" x="277" y="116" width="32" height="12" rx="6"/>
+    </g>
+    <path class="dome" d="M 132 144 A 68 68 0 0 1 268 144 Z" fill="#FE6C3E"/>
+    </g>
+    <g class="calendar">
+    <path class="cal-body" d="M 123 144 H 280 A 28 28 0 0 1 308 172 V 309 A 28 28 0 0 1 280 337 H 123 A 28 28 0 0 1 95 309 V 172 A 28 28 0 0 1 123 144 Z" fill="#FDFAF1"/>
+    <g class="curl" clip-path="url(#cal-clip-fav)">
+    <path class="curl-flap" d="M 332 215 L 309 221 C 308 252 302 266 288 272 C 272 278 252 277 241 284 C 235 289 236 302 233 316 C 230 328 215 337 192 337 L 192 362 L 332 362 Z" fill="#CDEFEB">
+    
+    </path>
+    <path class="curl-back" d="M 332 222 L 309 228 C 306 262 282 306 234 330 C 222 336 206 337 192 337 L 192 362 L 332 362 Z" fill="#B8E2DE">
+    
+    </path>
+    </g>
+    </g>
+    <g class="rings" fill="#CAEDEA">
+    <rect x="146" y="128" width="16" height="42" rx="8"/>
+    <rect x="238" y="128" width="16" height="42" rx="8"/>
+    </g>
+    <path class="check" d="M 148 242 L 186 278 L 256 196" fill="none" stroke="#049F95" stroke-width="28" stroke-linecap="round" stroke-linejoin="round" pathLength="1"/>
+    </svg>
