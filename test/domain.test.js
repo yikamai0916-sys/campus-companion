@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { defaults,assignmentReminders,validateTask,initialTimes,nextAllowed,allowed,digestWindow,originalSender,classify } from '../src/domain.js';
-import { explicitDeadline,plain } from '../src/mail.js';
+import { explicitDeadline,plain,htmlToPlainText,stripForwardedHeader,translateFullBody } from '../src/mail.js';
 test('deadline offsets respect Hong Kong quiet hours',()=>{
   const due=Date.parse('2026-10-05T09:00:00+08:00'),now=Date.parse('2026-10-01T00:00:00+08:00');
   const t=validateTask({title:'作业',due});const times=initialTimes(t,now);
@@ -25,6 +25,7 @@ test('20:00 and midnight partition the Hong Kong day exactly',()=>{
 test('forwarding sender is not mistaken for original author',()=>{
   assert.equal(originalSender('From: Teacher <teacher@ln.edu.hk>\nTo: student@university.example','student@university.example','student@university.example'),'Teacher <teacher@ln.edu.hk>');
   assert.match(originalSender('no headers','student@university.example','student@university.example'),/无法确认/);
+  assert.equal(originalSender('no headers','student@outlook.com',undefined),'student@outlook.com');
 });
 test('nested self-forward identifies the author and keeps unrelated quotes out',()=>{
   const body='From: Me <me@example.com> On Behalf Of My Account <mine@example.com>\nTo: student@ln.hk\nSubject: Assignment\n---\nFrom: Dr. Wong <wong@example.edu>\nTo: student@ln.hk\nSubject: Assignment\nDear student, submit by 2 October 2026 at 11:59 PM.\nFrom: Old Author <old@example.org>';
@@ -40,6 +41,50 @@ test('message text preserves angle-bracket email addresses',()=>{
   assert.match(html,/Teacher <teacher@example.edu>/);
   const text=plain({body:{contentType:'text',content:'From: Teacher <teacher@example.edu>'}});
   assert.equal(text,'From: Teacher <teacher@example.edu>');
+});
+test('rich Outlook HTML produces the full translatable message body',()=>{
+  const body=htmlToPlainText('<div>From: Finance Office &lt;finance@example.edu&gt;<br>Sent: Monday<br>To: Staff<br>Subject: PATP</div><div><p>Two sessions are available.</p><p>Register online.</p></div>');
+  assert.match(body,/From: Finance Office <finance@example.edu>/);
+  assert.match(body,/Two sessions are available\.\nRegister online\./);
+});
+test('forwarded header with only From and Sent is removed before translation',()=>{
+  const forwarded='________________ From: Finance Office <finance@example.edu> Sent: Wed 9:22 AM\n\nThe briefing offers two sessions.';
+  assert.equal(stripForwardedHeader(forwarded),'The briefing offers two sessions.');
+});
+test('full email translation strips forwarding headers and caches by substantive body',async()=>{
+  const values=new Map();let calls=0,systemPrompt='',translatedInput='';
+  const DB={
+    prepare(sql){
+      return {
+        bind(...args){
+          return {
+            first:async()=>sql.startsWith('SELECT value FROM kv')?{value:values.get(args[0])}:null,
+            run:async()=>{if(sql.startsWith('INSERT INTO kv'))values.set(args[0],args[1]);}
+          };
+        }
+      };
+    }
+  };
+  const env={ENABLE_AI:'true',DB,AI:{run:async(_model,{messages})=>{calls++;systemPrompt=messages[0].content;if(calls===1)translatedInput=messages[1].content;return {response:`译文${calls}`};}}};
+  const fullBody=`From: Staff\nSent: Monday\nTo: Student\nSubject: Notice\n\nActual message`;
+  const first=await translateFullBody(env,'user','zh-CN','mail-1',fullBody,'马艺恺');
+  const second=await translateFullBody(env,'user','zh-CN','mail-1',fullBody,'马艺恺');
+  const different=await translateFullBody(env,'user','zh-CN','mail-1','Different body','马艺恺');
+  assert.equal(first,'译文1');assert.equal(second,first);assert.equal(different,'译文2');assert.equal(calls,2);
+  assert.match(systemPrompt,/omit that block/);assert.equal(translatedInput,'Actual message');
+  assert.ok([...values.keys()].some(key=>key.startsWith('fulltrans:v6:')));
+});
+test('translation quota exhaustion is reported once and suppresses repeat AI calls',async()=>{
+  const values=new Map();let calls=0;
+  const DB={prepare(sql){return {bind(...args){return {
+    first:async()=>sql.startsWith('SELECT value FROM kv')?{value:values.get(args[0])}:null,
+    run:async()=>{if(sql.startsWith('INSERT INTO kv'))values.set(args[0],args[1]);}
+  };}};}};
+  const env={ENABLE_AI:'true',DB,AI:{run:async()=>{calls++;throw new Error('4006: daily free allocation of 10,000 neurons exhausted');}}};
+  const first=await translateFullBody(env,'user','zh-CN','mail-2','The actual email body.');
+  const second=await translateFullBody(env,'user','zh-CN','mail-3','Another actual email body.');
+  assert.equal(first,null);assert.equal(second,null);assert.equal(calls,1);
+  assert.ok(Number(values.get('fulltrans:cooldown'))>Date.now());
 });
 test('receipt ignored but resubmission and scholarships retained',()=>{
   assert.equal(classify('Moodle','you have successfully submitted assignment'),6);

@@ -344,9 +344,10 @@ test('mail suggestions are private, deduplicated and require explicit confirmati
  const {saveMailSuggestion,listMailSuggestions,reviewMailSuggestion}=await import('../src/suggestions.js');
  const env={DB:database()},a={assignment:true,title:'Assignment',action:'Submit report',due:Date.now()+86400000,evidence:{deadline:'tomorrow'}};
  await saveMailSuggestion(env,'one','message',a);await saveMailSuggestion(env,'one','message',a);
+ await env.DB.prepare("INSERT INTO messages(id,subject,received,sender,origin,category,summary,action,url,quality,user_id) VALUES('message','Exchange plan source',0,'sender','origin',2,'summary','action','','test','one')").run();
  assert.equal((await listMailSuggestions(env,'two')).length,0);
  assert.equal((await env.DB.prepare('SELECT count(*) n FROM tasks').first()).n,0);
- const rows=await listMailSuggestions(env,'one');assert.equal(rows.length,1);
+ const rows=await listMailSuggestions(env,'one');assert.equal(rows.length,1);assert.equal(rows[0].message_subject,'Exchange plan source');
  await assert.rejects(()=>reviewMailSuggestion(env,'two',rows[0].id,{decision:'confirm'}));
  await reviewMailSuggestion(env,'one',rows[0].id,{decision:'confirm',title:'Reviewed title',due:null});
  const task=await env.DB.prepare('SELECT * FROM tasks').first();assert.equal(task.title,'Reviewed title');assert.equal(task.due,null);assert.equal(task.user_id,'one');

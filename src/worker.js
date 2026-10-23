@@ -1,4 +1,4 @@
-import {attachBriefs,generateBrief,readBrief,processBriefBacklog} from './mail-briefs.js';
+import {attachBriefs,generateBrief,readBrief,preGenerateBriefs} from './mail-briefs.js';
 import { meetingTask,wording } from './display.js';
 import { serverMessage,normalizeLocale } from './errors.js';
 import { buildAliasRules,normalizeName,suggestAliasVariants } from './names.js';
@@ -6,8 +6,8 @@ import { listMailSuggestions,reviewMailSuggestion } from './suggestions.js';
 import { validateTask } from './domain.js';
 import { normalizePresets } from '../public/reminder-logic.js';
 import { random,hash,verifyPassword,makePasswordHash,makeAnswerHash,verifyAnswer } from './security.js';
-import { getKV,setKV,startOAuth,finishOAuth,syncMail,reprocessMail,ingestForwardedEmail,ingestShortcutEmail,localizeMessages,outlookConnection,outlookConfigProblems,fetchMessageOriginal } from './mail.js';
-import { applyPreferredNameToFields } from './names.js';
+import { getKV,setKV,startOAuth,finishOAuth,syncMail,preGenerateMailTranslations,reprocessMail,ingestForwardedEmail,ingestShortcutEmail,localizeMessages,outlookConnection,outlookConfigProblems,fetchMessageOriginal,translateFullBody,summarizeLink } from './mail.js';
+import { applyNameAliases,applyPreferredNameToFields } from './names.js';
 import { normalizeDigestRecord } from './digest-format.js';
 import { scheduleTask,repeatTasks,deliver,makeDigest,enqueue } from './jobs.js';
 import { listInvitations,respondInvitation,manageMember,addGroupMember,createGroup,createTaskCandidate,groupSnapshot,listGroups,respondToAssignment,reviewTaskCandidate } from './collaboration.js';
@@ -38,7 +38,7 @@ async function createTask(env,data,source='manual',sourceId=null,userId=null){
   await env.DB.prepare('INSERT INTO tasks(id,title,notes,due,priority,completed,source,source_id,reminders,version,created,updated,user_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(t.id,t.title,t.notes,t.due,t.priority,t.completed,t.source,t.source_id,JSON.stringify(t.reminders),t.version,t.created,t.updated,t.user_id).run();
   await scheduleTask(env,t);return t;
 }
-async function routes(request,env){
+async function routes(request,env,ctx){
   const url=new URL(request.url),path=url.pathname,method=request.method;
   const uiLocale=normalizeLocale(request.headers.get('X-Locale'));
   const shortcutIngest=path==='/api/mail/shortcut'&&method==='POST';
@@ -241,25 +241,47 @@ async function routes(request,env){
     const aliasRules=await nameAliasRules(env,account.user_id,profile?.preferred_zh_name||'');
     const fetched=await fetchMessageOriginal(env,account.user_id,id,{rich:true});
     if(!fetched)return json({error:serverMessage('邮件不存在',uiLocale)},404);
-    const {row,englishSubject,englishBody,englishHtml,images}=fetched;
+    const {row,englishSubject,englishBody,recipients}=fetched;
     const wantZh=locale.startsWith('zh')&&prefs.translateZh!==false;
     const localizedRows=await localizeMessages(env,account.user_id,locale,[row],{allowAi:env.ENABLE_AI==='true',translate:wantZh||locale==='en',nameAliases:aliasRules});
-    const localized=applyPreferredNameToFields(localizedRows[0]||row,aliasRules);
+    const localized=locale==='en'?(localizedRows[0]||row):applyPreferredNameToFields(localizedRows[0]||row,aliasRules);
+    // 全文翻译：中文页显示英文原文的完整逐句翻译
+    // 获取用户偏好中文名，确保翻译中使用正确的名字（如马艺恺而非 AI 猜测）
+    let fullTranslation=null,translationStatus='disabled';
+    if(wantZh&&englishBody){
+      translationStatus='unavailable';
+      try{
+        const userProfile=await env.DB.prepare('SELECT preferred_zh_name FROM users WHERE id=?').bind(account.user_id).first();
+        const preferredName=userProfile?.preferred_zh_name||'';
+        fullTranslation=await translateFullBody(env,account.user_id,locale,id,englishBody,preferredName);
+      }catch{}
+      if(fullTranslation)translationStatus='ready';
+      else if(env.ENABLE_AI==='true'&&env.AI&&Number(await getKV(env,'fulltrans:cooldown')||0)>Date.now())translationStatus='quota';
+    }
     return json({
       id:row.id,
+      locale,
       received:row.received,
       category:row.category,
       url:row.url||'',
       quality:localized.quality||row.quality,
-      chinese:wantZh?{subject:localized.subject,sender:localized.sender,origin:localized.origin,summary:localized.summary,action:localized.action}:null,
-      english:{subject:englishSubject,body:englishBody,html:englishHtml,images,summary:prefs.englishSummary&&locale.startsWith('zh')?String(row.summary||''):undefined},
+      chinese:wantZh?{subject:localized.subject,sender:localized.sender,origin:localized.origin,summary:localized.summary,action:localized.action,fullBody:applyNameAliases(fullTranslation,aliasRules)}:null,
+      english:{subject:englishSubject,body:englishBody,html:fetched.englishHtml,images:fetched.images,recipients:recipients||[],summary:prefs.englishSummary&&locale.startsWith('zh')?String(row.summary||''):undefined},
       display:{...localized,brief:await readBrief(env,account.user_id,locale,id)},
       translationEnabled:wantZh,
+      translationStatus,
       englishSummaryEnabled:prefs.englishSummary===true&&locale.startsWith('zh')
     });
   }
   if(messageId&&method==='DELETE'){await env.DB.batch([env.DB.prepare('DELETE FROM messages WHERE id=? AND user_id=?').bind(decodeURIComponent(messageId),account.user_id),env.DB.prepare('DELETE FROM mail_suggestions WHERE message_id=? AND user_id=?').bind(decodeURIComponent(messageId),account.user_id)]);return json({ok:true});}
   if(path==='/api/mail/reprocess'&&method==='POST')return json(await reprocessMail(env,account.user_id,2));
+  if(path==='/api/mail/link-summary'&&method==='POST'){
+    const data=await body(request),url=String(data.url||'').trim();
+    if(!url||!/^https?:\/\//.test(url))return json({error:'无效链接'},400);
+    const profile=await env.DB.prepare('SELECT locale FROM users WHERE id=?').bind(account.user_id).first();
+    const summary=await summarizeLink(env,profile?.locale||'zh-CN',url);
+    return json({summary:summary||null});
+  }
   if(path==='/api/digests'){
     const prefix='digest:'+account.user_id+':%';
     const rows=(await env.DB.prepare("SELECT value FROM kv WHERE key LIKE ? AND value!='quiet' ORDER BY key DESC LIMIT 30").bind(prefix).all()).results;
@@ -282,12 +304,17 @@ async function routes(request,env){
   }
   if(path==='/api/outlook/callback'&&method==='GET'){
     await finishOAuth(env,url,account);
-    try{await syncMail(env,account.user_id);}catch(error){await env.DB.prepare('UPDATE outlook_connections SET status=? WHERE user_id=?').bind(String(error.message).slice(0,300),account.user_id).run();}
+    try{const result=await syncMail(env,account.user_id);if(result.importedIds?.length){const translations=preGenerateMailTranslations(env,account.user_id,result.importedIds).catch(()=>{});if(ctx?.waitUntil)ctx.waitUntil(translations);else await translations;}}catch(error){await env.DB.prepare('UPDATE outlook_connections SET status=? WHERE user_id=?').bind(String(error.message).slice(0,300),account.user_id).run();}
+    // 后台预生成新邮件的 AI 摘要（不阻塞跳转）
+    try{const briefs=preGenerateBriefs(env,account.user_id).catch(()=>{});if(ctx?.waitUntil)ctx.waitUntil(briefs);}catch{}
     return Response.redirect(url.origin+'/?view=settings');
   }
   if(path==='/api/outlook/sync'&&method==='POST'){
     const result=await syncMail(env,account.user_id);
-    return json(result||{imported:0,pages:0,more:false});
+    // 后台预生成摘要和全文翻译，不阻塞同步响应。
+    try{const briefs=preGenerateBriefs(env,account.user_id).catch(()=>{});if(ctx?.waitUntil)ctx.waitUntil(briefs);}catch{}
+    if(result.importedIds?.length)try{const translations=preGenerateMailTranslations(env,account.user_id,result.importedIds).catch(()=>{});if(ctx?.waitUntil)ctx.waitUntil(translations);else await translations;}catch{}
+    return json({imported:result.imported||0,pages:result.pages||0,more:!!result.more});
   }
   if(path==='/api/outlook'&&method==='DELETE'){
     const connection=await outlookConnection(env,account.user_id);if(!connection)return json({error:serverMessage('尚未连接 Outlook',uiLocale)},404);
@@ -311,9 +338,9 @@ async function routes(request,env){
   return json({error:serverMessage('页面不存在',uiLocale)},404);
 }
 export default {
-  async fetch(request,env){
+  async fetch(request,env,ctx){
     const uiLocale=normalizeLocale(request.headers.get('X-Locale'));
-    let response;try{response=await routes(request,env);}catch(error){
+    let response;try{response=await routes(request,env,ctx);}catch(error){
       const message=String(error.message||'');
       const technical=error instanceof TypeError||error instanceof SyntaxError||/SQLITE|D1_ERROR|constraint failed|no such (?:table|column)|fetch failed|ECONN|ENOTFOUND|token|secret/i.test(message)||!/[\u4e00-\u9fff]/.test(message);
       response=json({error:serverMessage(technical?'暂时无法处理，请重试':message,uiLocale)},technical?500:Number(error.status)||400);
@@ -345,11 +372,16 @@ export default {
         const connections=(await env.DB.prepare('SELECT user_id,cursor,last_attempt FROM outlook_connections WHERE last_attempt IS NULL OR last_attempt<? OR cursor IS NOT NULL').bind(now-240000).all()).results;
         for(const connection of connections){
           await env.DB.prepare('UPDATE outlook_connections SET last_attempt=? WHERE user_id=?').bind(now,connection.user_id).run();
-          try{await syncMail(env,connection.user_id);}catch(error){await env.DB.prepare('UPDATE outlook_connections SET status=? WHERE user_id=?').bind(String(error.message).slice(0,300),connection.user_id).run();}
+          try{
+            const syncResult=await syncMail(env,connection.user_id);
+            if(syncResult.importedIds?.length)try{await preGenerateMailTranslations(env,connection.user_id,syncResult.importedIds);}catch{}
+            // 定时任务中预生成摘要（等待完成，因为是后台任务）
+            try{await preGenerateBriefs(env,connection.user_id,3);}catch{}
+          }catch(error){await env.DB.prepare('UPDATE outlook_connections SET status=? WHERE user_id=?').bind(String(error.message).slice(0,300),connection.user_id).run();}
         }
       }
       await makeDigest(env,Date.now());
-      await processBriefBacklog(env);
+
       await env.DB.batch([env.DB.prepare('DELETE FROM sessions WHERE expires<?').bind(now),env.DB.prepare('DELETE FROM oauth WHERE expires<?').bind(now)]);
     }finally{await env.DB.prepare("UPDATE kv SET value='0' WHERE key='cron_lease' AND value=?").bind(String(now+240000)).run();}
   }

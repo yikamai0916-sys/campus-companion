@@ -8,13 +8,19 @@ export function safeMailUrl(value,image=false){
 export function compactPlainBody(value){
   let text=String(value||'').replace(/\r/g,'').replace(/[ \t]+\n/g,'\n');
   // Only remove a recognized forwarding header at the beginning, never quoted history.
-  const match=text.match(/^[\s_\-]*(?:Begin forwarded message:\s*|Forwarded message\s*)?(?:From|发件人|寄件者)\s*[:：][\s\S]{0,2500}?(?:Subject|主题|主旨)\s*[:：][^\n]*(?:\n|$)/i);
-  if(match&&/(?:Sent|Date|发送时间|寄件日期)\s*[:：]/i.test(match[0])&&/(?:To|收件人|收件者)\s*[:：]/i.test(match[0]))text=text.slice(match[0].length);
+  const match=text.match(/^[\s_\-]*(?:Begin forwarded message:\s*|Forwarded message\s*)?(?:From|从|從|发件人|寄件者)\s*[:：][\s\S]{0,2500}?(?:Subject|主题|主旨)\s*[:：][^\n]*(?:\n|$)/i);
+  if(match&&/(?:Sent|Date|发送|發送|发送时间|寄件日期)\s*[:：]/i.test(match[0])&&/(?:To|收件人|收件者)\s*[:：]/i.test(match[0]))text=text.slice(match[0].length);
   return text.replace(/\n[\s\n]*\n/g,'\n\n').trim();
 }
 export function renderMailBody({html,body,images={}},doc=document){
  const root=doc.createElement('div');root.className='original-mail-body';
- if(!html){root.textContent=compactPlainBody(body);root.classList.add('plain-mail');return root;}
+ if(!html){
+   const text=compactPlainBody(body);let offset=0;
+   for(const match of text.matchAll(/\[(https:\/\/[^\]\s]+\.(?:png|jpe?g|gif|webp)(?:\?[^\]\s]*)?)\]/gi)){
+     root.append(doc.createTextNode(text.slice(offset,match.index)));const img=doc.createElement('img');img.src=safeMailUrl(match[1],true);img.alt='';img.loading='lazy';img.referrerPolicy='no-referrer';root.append(img);offset=match.index+match[0].length;
+   }
+   root.append(doc.createTextNode(text.slice(offset)));root.classList.add('plain-mail');return root;
+ }
  const template=doc.createElement('template');template.innerHTML=html;
  const allowed=new Set('p div span br a img strong b em i u s ul ol li blockquote h1 h2 h3 h4 table tbody thead tr td th hr'.split(' '));
  const drop=new Set('script style iframe object embed form input button select textarea link meta base svg math video audio source noscript'.split(' '));
@@ -42,9 +48,9 @@ export function renderMailBody({html,body,images={}},doc=document){
  const walker=doc.createTreeWalker(root,4);const nodes=[];let n;
  while((n=walker.nextNode())){nodes.push(n);if(nodes.map(x=>x.textContent).join('').length>3500)break;}
  const all=nodes.map(x=>x.textContent).join('');
- const from=all.search(/(?:From|发件人|寄件者)\s*[:：]/i);
+ const from=all.search(/(?:From|从|從|发件人|寄件者)\s*[:：]/i);
  const subject=/(?:Subject|主题|主旨)\s*[:：]/i.exec(all);
- if(from>=0&&from<250&&/^[\s_\-]*(?:(?:Begin forwarded message:|Forwarded message)\s*)?$/i.test(all.slice(0,from))&&subject&&subject.index>from&&/(?:Sent|Date|发送时间|寄件日期)\s*[:：]/i.test(all.slice(from,subject.index))&&/(?:To|收件人|收件者)\s*[:：]/i.test(all.slice(from,subject.index))){
+ if(from>=0&&from<250&&/^[\s_\-]*(?:(?:Begin forwarded message:|Forwarded message)\s*)?$/i.test(all.slice(0,from))&&subject&&subject.index>from&&/(?:Sent|Date|发送|發送|发送时间|寄件日期)\s*[:：]/i.test(all.slice(from,subject.index))&&/(?:To|收件人|收件者)\s*[:：]/i.test(all.slice(from,subject.index))){
    let offset=0,target;for(const node of nodes){offset+=node.textContent.length;if(offset>subject.index+subject[0].length){target=node;break;}}
    if(target){
      let block=target.parentElement;while(block&&block!==root&&!['P','DIV','TD'].includes(block.tagName))block=block.parentElement;

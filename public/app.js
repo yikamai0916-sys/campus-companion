@@ -9,7 +9,7 @@ let locale='zh-CN';
 let reminderDefaults={offsets:[4320,1440,120,30],repeat:1440,start:'08:00',end:'23:00'};
 function detectLocale(){const saved=localStorage.getItem('campus-locale');if(saved&&I18N[saved])return saved;const nav=String(navigator.language||navigator.languages?.[0]||'').toLowerCase();if(nav.startsWith('zh')){if(/(?:hk|tw|mo|hant)/.test(nav))return 'zh-TW';return 'zh-CN';}return 'en';}
 function applyLocale(next){locale=I18N[next]?next:'zh-CN';document.documentElement.lang=locale;document.title=I18N[locale].appName;const metaDescription=$('meta[name=description]');if(metaDescription&&I18N[locale].appDescription)metaDescription.content=I18N[locale].appDescription;for(const el of $$('[data-i18n]')){const value=I18N[locale][el.dataset.i18n];if(value!==undefined)el.innerHTML=value;}for(const el of $$('[data-i18n-placeholder]')){const value=I18N[locale][el.dataset.i18nPlaceholder];if(value!==undefined)el.placeholder=value;}for(const el of $$('[data-i18n-aria]')){const value=I18N[locale][el.dataset.i18nAria];if(value!==undefined)el.setAttribute('aria-label',value);}const staticText={'.login h1':'heroTitle','.login>p':'heroSubtitle','.private':'personalAccount','.tasks-eyebrow':'tasksEyebrow'};for(const [selector,key] of Object.entries(staticText)){const el=$(selector),value=I18N[locale][key];if(el&&value!==undefined)el.innerHTML=value;}const logoutButton=$('#logout');if(logoutButton)logoutButton.setAttribute('aria-label',tx('logout'));translateTextNodes();updateManifestLocale();}
-function updateManifestLocale(){const link=$('link[rel=manifest]');if(!link)return;fetch(link.href).then(response=>response.ok?response.json():null).then(manifest=>{if(!manifest)return;manifest.name=I18N[locale].appName;manifest.short_name=I18N[locale].appName;manifest.lang=locale;if(I18N[locale].appDescription)manifest.description=I18N[locale].appDescription;link.href=URL.createObjectURL(new Blob([JSON.stringify(manifest)],{type:'application/manifest+json'}));}).catch(()=>{});}
+function updateManifestLocale(){const link=$('link[rel=manifest]');if(!link)return;if(!link.dataset.src)link.dataset.src=link.href;fetch(link.dataset.src).then(response=>response.ok?response.json():null).then(manifest=>{if(!manifest)return;manifest.name=I18N[locale].appName;manifest.short_name=I18N[locale].appName;manifest.lang=locale;if(I18N[locale].appDescription)manifest.description=I18N[locale].appDescription;link.href=URL.createObjectURL(new Blob([JSON.stringify(manifest)],{type:'application/manifest+json'}));}).catch(()=>{});}
 const tx=key=>I18N[locale]?.[key]||I18N['zh-CN'][key]||key;
 
 Object.assign(I18N['zh-CN'],{
@@ -180,10 +180,12 @@ function renderTasks(){
 async function loadTasks(){tasks=await api('tasks');renderTasks();translateTextNodes();}
 // ES module imports are hoisted, so these work even though they are not at the very top.
 // (They sit here because test/localization.test.js evaluates the top of this file as a plain script.)
+import {renderMailBody} from './mail-reader.js';
 import { requestJSON, validEmail, enhanceForms } from './feedback.js';
 import { TaskReminderPicker } from './task-reminders.js';
 import { playButtonSuccess, resetSuccessButton, circularTransition, progressColor, setupCardStack } from './motion.js';
 import { watchTimeInputs } from './native-pickers.js';
+import { digestOverview, daysUntil, digestTextForLocale, digestTitleForLocale } from './digest-insights.js';
 
 // Every native date/time input (task form, groups, meetings, settings) becomes a wheel picker.
 watchTimeInputs();
@@ -239,32 +241,71 @@ $('#task-form').onsubmit=async event=>{
 let mailNextBefore=null,mailLoadingMore=false,mailRequest=0;
 const categoryKey=c=>({1:'cat1',2:'cat2',3:'cat3',4:'cat4'}[c]||'cat3');
 const briefRequests=new Map();
+const containsCjk=value=>/[\u3400-\u9fff]/.test(String(value||''));
+const englishBriefIsUsable=brief=>!!brief&&![brief.title,brief.topic,...(brief.points||[]).map(p=>p.text),...(brief.actions||[]).map(p=>p.text)].some(containsCjk);
 function briefContent(m,compact=false){
   const b=m.brief;
   if(!b)return `<p class="quality">${esc(local('后台正在整理这封邮件，完成后会保留摘要。','背景正在整理這封郵件，完成後會保留摘要。','This email is being summarized in the background. The result will be saved.'))}</p>`;
   const points=compact?b.points.slice(0,2):b.points;
   return `<ul class="mail-points">${points.map(p=>`<li data-user-content>${esc(p.text)}</li>`).join('')}</ul>${b.actions.length?`<div class="brief-actions"><strong>${local('邮件中的请求','郵件中的請求','Requests in this email')}</strong><ul>${b.actions.map(p=>`<li data-user-content>${esc(p.text)}</li>`).join('')}</ul></div>`:''}`;
 }
-async function prepareBriefs(rows,onUpdate,isCurrent){
-  const missing=rows.filter(m=>!m.brief);
-  for(let i=0;i<missing.length;i+=2){
-    if(!isCurrent())break;
-    const batch=missing.slice(i,i+2),ids=batch.map(m=>m.id).filter(Boolean);
-    if(!ids.length)continue;
-    const key=locale+':'+ids.join('|');
-    try{
-      if(!briefRequests.has(key))briefRequests.set(key,api('mail/briefs',{method:'POST',body:{ids}}));
-      const result=await briefRequests.get(key);
-      for(const item of result.results||[]){const row=rows.find(m=>m.id===item.id);if(row){row.brief=item.brief;row.briefError=!!item.error;}}
-      if(isCurrent())await onUpdate();
-      if((result.results||[]).length&&result.results.every(r=>r.error)){toast(local('摘要暂不可用，请确认邮箱连接后重试。','摘要暫不可用，請確認電郵連接後重試。','Summaries are unavailable. Check your mailbox connection and retry.'));break;}
-    }catch{for(const row of batch)row.briefError=true;if(isCurrent())await onUpdate();break;}
-    finally{briefRequests.delete(key);}
+// ---------- 日报专属摘要渲染 ----------
+// 与邮件页的 briefContent 区分开：日报用更紧凑的简报风格，带明确的"AI 详细要点"标识，
+// 避免用户觉得"和邮件页一样"。
+function digestBriefContent(m){
+  const b=m.brief;
+  if(!b)return '';
+  const points=b.points||[];
+  const actions=b.actions||[];
+  let html=`<div class="dg-brief"><p class="dg-brief-label">${esc(local('AI 详细要点','AI 詳細重點','AI detailed notes'))}</p><ul class="dg-brief-points">`;
+  html+=points.map(p=>`<li data-user-content>${esc(p.text)}</li>`).join('');
+  html+=`</ul>`;
+  if(actions.length){
+    html+=`<p class="dg-brief-label is-action">${esc(local('需要你处理的请求','需要你處理的請求','Requests for you'))}</p><ul class="dg-brief-points is-action">`;
+    html+=actions.map(p=>`<li data-user-content>${esc(p.text)}</li>`).join('');
+    html+=`</ul>`;
   }
+  html+=`</div>`;
+  return html;
 }
-function briefFallback(m){return m.briefError?`<p class="quality">${local('详细摘要暂未生成，请确认邮箱连接后刷新重试。可点击邮件查看原文。','詳細摘要暫未產生，請確認電郵連接後重新整理。可點擊郵件查看原文。','Detailed summary unavailable. Check your mailbox connection and refresh to retry. Open the email to read the original.')}</p>`:briefContent(m);}
+async function prepareBriefs(rows,onUpdate,isCurrent,opts={}){
+  // Briefs are generated on demand (original mail fetch + AI), two mails per request.
+  // `live` also reports per-row loading/error state so the page can show progress, and
+  // `concurrency` runs several requests side by side.
+  const queue=rows.filter(m=>m.id&&!m.brief&&!m.briefLoading),batches=[];
+  for(let i=0;i<queue.length;i+=2)batches.push(queue.slice(i,i+2));
+  let warned=false;
+  const worker=async()=>{
+    while(batches.length&&isCurrent()){
+      const batch=batches.shift(),ids=batch.map(m=>m.id),key=locale+':'+ids.join('|');
+      if(opts.live){batch.forEach(m=>{m.briefLoading=true;m.briefError=false;});await onUpdate();}
+      try{
+        if(!briefRequests.has(key))briefRequests.set(key,Promise.race([api('mail/briefs',{method:'POST',body:{ids}}),new Promise((_,reject)=>setTimeout(()=>reject(new Error('timeout')),60000))]));
+        const result=await briefRequests.get(key),results=result.results||[];
+        for(const row of batch){const item=results.find(r=>r.id===row.id);row.briefLoading=false;if(item?.brief)row.brief=item.brief;row.briefError=!item||!!item.error;}
+        if(results.length&&results.every(r=>r.error)){
+          if(!warned){warned=true;toast(local('摘要暂不可用，请确认邮箱连接后重试。','摘要暫不可用，請確認電郵連接後重試。','Summaries are unavailable. Check your mailbox connection and retry.'));}
+          batches.length=0; // do not hammer the service when everything fails
+        }
+      }catch{for(const row of batch){row.briefLoading=false;row.briefError=true;}batches.length=0;}
+      finally{briefRequests.delete(key);}
+      if(isCurrent())await onUpdate();
+    }
+  };
+  await Promise.all(Array.from({length:Math.max(1,opts.concurrency||1)},worker));
+}
+function briefFallback(m){
+  if(m.briefError)return `<p class="quality">${local('详细摘要暂未生成，请确认邮箱连接后刷新重试。可点击邮件查看原文。','詳細摘要暫未產生，請確認電郵連接後重新整理。可點擊郵件查看原文。','Detailed summary unavailable. Check your mailbox connection and refresh to retry. Open the email to read the original.')}</p>`;
+  // 如果有本地化摘要，先显示它，而不是卡在"正在整理"
+  if(m.summary)return `<p class="mail-summary-preview" data-user-content>${esc(m.summary)}</p>`;
+  return briefContent(m);
+}
 function mailCard(m){
-  return `<article class="mail-card" data-open-mail="${encodeURIComponent(m.id)}" tabindex="0" role="button"><div class="mail-card-head"><div class="meta"><span class="badge ${m.category===1?'high':''}">${esc(m.brief?.topic||local('待整理','待整理','Pending summary'))}</span><span>${esc(fmt(m.received))}</span></div><button class="icon-delete" data-delete-mail="${encodeURIComponent(m.id)}" aria-label="${esc(tx('deleteMail'))}">${esc(tx('delete'))}</button></div><h2>${esc(m.brief?.title||m.subject.replace(/^(?:(?:fw|fwd|re)\s*:\s*)+/i,''))}</h2><div class="sender">${esc(tx('originalSender'))} ${esc(m.sender)}<br>${esc(tx('source'))} ${esc(m.origin)}</div>${m.brief?briefContent(m):briefFallback(m)}</article>`;
+  const english=locale==='en',brief=english&&!englishBriefIsUsable(m.brief)?null:m.brief;
+  const safe=(value,fallback)=>english&&containsCjk(value)?fallback:value;
+  const subject=safe(String(m.subject||'').replace(/^(?:(?:fw|fwd|re)\s*:\s*)+/i,''),'Email summary unavailable');
+  const sender=safe(m.sender,'Sender unavailable'),origin=safe(m.origin,'Source not identified');
+  return `<article class="mail-card" data-open-mail="${encodeURIComponent(m.id)}" tabindex="0" role="button"><div class="mail-card-head"><div class="meta"><span class="badge ${m.category===1?'high':''}">${esc(safe(brief?.topic,'Email'))||esc(local('待整理','待整理','Pending summary'))}</span><span>${esc(fmt(m.received))}</span></div><button class="icon-delete" data-delete-mail="${encodeURIComponent(m.id)}" aria-label="${esc(tx('deleteMail'))}">${esc(tx('delete'))}</button></div><h2>${esc(brief?.title||subject)}</h2><div class="sender">${esc(tx('originalSender'))} ${esc(sender)}<br>${esc(tx('source'))} ${esc(origin)}</div>${brief?briefContent({...m,brief}):briefFallback({...m,brief:null,summary:safe(m.summary,'')})}</article>`;
 }
 function bindMailList(root){
   root.querySelectorAll('[data-open-mail]').forEach(card=>{
@@ -287,16 +328,40 @@ async function openMailDetail(id,{push=true}={}){
   $('#mail-detail-title').focus();$('#mail-detail-meta').textContent='';
   $('#mail-detail-zh').textContent='';$('#mail-detail-en').textContent='';$('#mail-detail-outlook').hidden=true;
   const summaryTab=page.querySelector('[data-mail-pane="zh"]'),originalTab=page.querySelector('[data-mail-pane="en"]');
-  summaryTab.textContent=local('摘要','摘要','Summary');originalTab.textContent=local('原文','原文','Original');
+  const englishUi=locale==='en';
+  page.querySelector('.mail-detail-tabs').classList.toggle('hidden',englishUi);
+  summaryTab.hidden=englishUi;
+  summaryTab.textContent=local('中文','中文','Summary');originalTab.textContent=local('原文','原文','Original');
   const selectPane=name=>{for(const tab of [summaryTab,originalTab]){const selected=tab.dataset.mailPane===name;tab.classList.toggle('selected',selected);tab.setAttribute('aria-selected',String(selected));}$('#mail-detail-zh').classList.toggle('hidden',name!=='zh');$('#mail-detail-en').classList.toggle('hidden',name!=='en');};
-  selectPane('zh');summaryTab.onclick=()=>selectPane('zh');originalTab.onclick=()=>selectPane('en');
+  selectPane(englishUi?'en':'zh');summaryTab.onclick=()=>selectPane('zh');originalTab.onclick=()=>selectPane('en');
   try{
     const detail=await api('messages/'+encodeURIComponent(id));if(request!==readerRequest)return;
-    const display=detail.display||detail.chinese||{};
-    $('#mail-detail-title').textContent=display.brief?.title||String(display.subject||detail.english?.subject||'').replace(/^(?:(?:fw|fwd|re)\s*:\s*)+/i,'');
-    $('#mail-detail-meta').innerHTML=`<span class="badge">${esc(display.brief?.topic||tx(categoryKey(detail.category)))}</span><span>${esc(display.sender||'')}</span><span>${esc(display.origin||'')}</span><time>${esc(fmt(detail.received))}</time>`;
-    $('#mail-detail-zh').innerHTML=display.brief?briefContent(display):`<p data-user-content>${esc(display.summary||'')}</p>`;
-    $('#mail-detail-en').replaceChildren(renderMailBody(detail.english||{}));
+    const display=detail.display||detail.chinese||{},englishBrief=englishUi&&!englishBriefIsUsable(display.brief)?null:display.brief;
+    const safe=(value,fallback)=>englishUi&&containsCjk(value)?fallback:value;
+    const subject=String(detail.english?.subject||display.subject||'').replace(/^(?:(?:fw|fwd|re)\s*:\s*)+/i,'');
+    $('#mail-detail-title').textContent=englishBrief?.title||safe(subject,'Original email');
+    $('#mail-detail-meta').innerHTML=`<span class="badge">${esc(safe(englishBrief?.topic||tx(categoryKey(detail.category)),'Email'))}</span><span>${esc(safe(display.sender,'Sender unavailable'))}</span><span>${esc(safe(display.origin,'Source not identified'))}</span><time>${esc(fmt(detail.received))}</time>`;
+    $('#mail-detail-zh').innerHTML=englishUi?'':display.brief?briefContent(display):`<p data-user-content>${esc(display.summary||'')}</p>`;
+    $('#mail-detail-zh').classList.toggle('hidden',englishUi);
+    const original=renderMailBody(detail.english||{});
+    $('#mail-detail-en').replaceChildren(original);
+    if(!englishUi&&detail.chinese?.fullBody){
+      const translated=renderMailBody({body:detail.chinese.fullBody});
+      $('#mail-detail-zh').replaceChildren(translated);
+      for(const img of original.querySelectorAll('img'))if(![...translated.querySelectorAll('img')].some(i=>i.src===img.src))$('#mail-detail-zh').append(img.cloneNode(true));
+    }else if(!englishUi&&detail.translationEnabled){
+      if(!display.brief){
+        const summary=String(display.summary||'').trim();
+        $('#mail-detail-zh').replaceChildren();
+        if(summary&&!/^[_\-\s]*(?:From|发件人|寄件者)\s*[:：]/i.test(summary))$('#mail-detail-zh').append(Object.assign(document.createElement('p'),{textContent:summary}));
+      }
+      const notice=document.createElement('p');
+      notice.textContent=detail.translationStatus==='quota'
+        ?local('全文翻译暂不可用：AI 服务今日用量已达上限。英文原文仍可查看，额度恢复后再次打开即可生成译文。','全文翻譯暫不可用：AI 服務今日用量已達上限。英文原文仍可查看，額度恢復後再次開啟即可生成譯文。','Full translation is temporarily unavailable because the AI daily limit has been reached. The original is still available; reopen this email after the limit resets to generate a translation.')
+        :local('全文翻译暂时无法生成，英文原文仍可在「原文」中查看，请稍后重试。','全文翻譯暫時無法生成，英文原文仍可在「原文」中查看，請稍後重試。','The full translation could not be generated. The original is available in “Original”; please try again later.');
+      $('#mail-detail-zh').append(notice);
+    }
+    if(!detail.translationEnabled)selectPane('en');
     const link=$('#mail-detail-outlook');
     if(/^https:\/\/(?:outlook\.live\.com|outlook\.office\.com|outlook\.office365\.com)\//.test(detail.url||'')){link.hidden=false;link.href=detail.url;link.textContent=tx('viewOriginal');}
   }catch(e){if(request===readerRequest){$('#mail-detail-title').textContent=tx('mailDetail');$('#mail-detail-zh').textContent=e.message;}}
@@ -316,7 +381,9 @@ async function loadMail(opts={}){
     mailNextBefore=Array.isArray(payload)?null:payload.nextBefore;
     const html=messages.map(mailCard).join('');
     if(!append){
-      $('#mail-list').innerHTML=messages.length?html:`<div class="empty"><span class="empty-mark">▤</span><h2>${esc(tx('mailEmptyTitle'))}</h2><p>${esc(q?local('没有找到匹配「'+q+'」的邮件。','沒有找到符合「'+q+'」的郵件。','No mail matches “'+q+'”.'):tx('mailEmptyText'))}</p></div>`;
+      const mailEmptyCta=q?'':`<button type="button" class="primary" data-goto-settings style="margin-top:14px">${esc(local('去设置连接 Outlook','去設定連接 Outlook','Connect Outlook in Settings'))}</button>`;
+      $('#mail-list').innerHTML=messages.length?html:`<div class="empty"><span class="empty-mark">▤</span><h2>${esc(tx('mailEmptyTitle'))}</h2><p>${esc(q?local('没有找到匹配「'+q+'」的邮件。','沒有找到符合「'+q+'」的郵件。','No mail matches “'+q+'”.'):tx('mailEmptyText'))}</p>${mailEmptyCta}</div>`;
+      const gotoSettingsBtn=$('#mail-list [data-goto-settings]');if(gotoSettingsBtn)gotoSettingsBtn.onclick=()=>view('settings');
     }else if(html){
       $('#mail-list').insertAdjacentHTML('beforeend',html);
     }
@@ -342,26 +409,181 @@ function wireMailSearch(){
   input.addEventListener('focusout',()=>{setTimeout(()=>{if(!input.value)close();},150);});
   input.addEventListener('keydown',e=>{if(e.key==='Escape'){input.value='';setQuery('');close();}});
 }
-function digestItemButton(item){
-  const open=item.id?`data-open-mail="${encodeURIComponent(item.id)}"`:'';
-  return `<button type="button" class="digest-item" ${open}><div class="meta">${item.category?`<span class="badge">${esc(item.brief?.topic||local('待整理','待整理','Pending summary'))}</span>`:''}${item.received?`<span>${esc(fmt(item.received))}</span>`:''}</div><h3 data-user-content>${esc(item.brief?.title||item.subject)}</h3>${item.brief?briefContent(item,true):briefFallback(item)}</button>`;
+// ---------- 日报 / Digest briefing ----------
+// A digest is a *briefing*, not a second mail list: a one-sentence lede, three counters, the next
+// dates, and compact rows sorted by urgency that expand in place. Mail cards stay on the mail page.
+let digestData=[],digestViews=[],digestFilter='all',digestBound=false,digestStackOpen=false;
+const digestOpen=new Set();
+const motionOk=()=>!matchMedia('(prefers-reduced-motion: reduce)').matches;
+const digestText=(value,fallback)=>digestTextForLocale(value,locale,fallback);
+const digestTitle=title=>digestTitleForLocale(title,locale);
+const tierLabel=t=>({act:local('需处理','需處理','Action'),upcoming:local('日程','日程','Dated'),info:local('资讯','資訊','Info')}[t]);
+function dayLabel(ts){
+  const n=daysUntil(ts,Date.now()),date=new Date(ts).toLocaleDateString(dateLocale(),{timeZone:'Asia/Hong_Kong',month:'short',day:'numeric',weekday:'short'});
+  return {text:n===0?local('今天','今日','Today'):n===1?local('明天','明日','Tomorrow'):date,title:date,soon:n<=1};
+}
+function digestLede(o){
+  const {counts,nextAct}=o,when=nextAct?dayLabel(nextAct.when).text:'';
+  if(!counts.total)return '';
+  if(counts.act)return local(`有 ${counts.act} 封邮件可能需要你处理${when?`，最近的是 ${when}`:''}。`,`有 ${counts.act} 封郵件可能需要你處理${when?`，最近的是 ${when}`:''}。`,`${counts.act} ${counts.act===1?'email may':'emails may'} need you to act${when?` — the nearest is ${when}`:''}.`);
+  if(counts.upcoming)return local(`没有需要马上处理的邮件；有 ${counts.upcoming} 项日期安排可以留意。`,`沒有需要即時處理的郵件；有 ${counts.upcoming} 項日期安排可以留意。`,`Nothing urgent. ${counts.upcoming} dated ${counts.upcoming===1?'item is':'items are'} worth keeping in mind.`);
+  return local('这个时段只有资讯类邮件，没有需要处理的事项。','這個時段只有資訊類郵件，沒有需要處理的事項。','Only informational mail this time — nothing to act on.');
+}
+function digestBody(r,key){
+  const it=r.item,brief=locale==='en'&&!englishBriefIsUsable(it.brief)?null:it.brief;
+  const meta=[digestText(brief?.topic||(it.category?tx(categoryKey(it.category)):''),'Topic unavailable'),digestText(it.origin||it.sender,'Sender unavailable'),it.received?fmt(it.received):''].filter(Boolean);
+  let html=meta.length?`<p class="dg-meta" data-user-content>${esc(meta.join(' · '))}</p>`:'';
+  if(brief)html+=digestBriefContent({...it,brief});
+  else if(it.briefLoading)html+=`<div class="dg-skel" role="status" aria-label="${esc(local('正在从原文整理要点','正在從原文整理重點','Reading the original email'))}"><span></span><span></span><span></span></div><p class="dg-note">${esc(local('正在从原文整理要点…','正在從原文整理重點…','Reading the original email…'))}</p>`;
+  else{
+    // 没有 AI 摘要时，先展示已有的速览（extractive summary），而不是一直"正在整理"。
+    // 这样用户总能看到内容，不会觉得卡住了。
+    if(r.gist.text)html+=`<p class="dg-quick"><b>${esc(local('速览','速覽','Quick view'))}</b> <span data-user-content>${esc(r.gist.text)}</span></p>`;
+    if(it.briefError)html+=`<p class="dg-note is-error">${esc(local('详细要点暂未生成，可能是原文暂时不可用。','詳細重點暫未產生，可能是原文暫時不可用。','Detailed notes could not be prepared; the original mail may be unavailable.'))}</p>`;
+    else if(!r.gist.text)html+=`<p class="dg-note">${esc(local('暂无摘要，可点击下方按钮生成详细要点。','暫無摘要，可點擊下方按鈕產生詳細重點。','No summary yet. Tap the button below to generate detailed notes.'))}</p>`;
+  }
+  const buttons=[];
+  if(it.id)buttons.push(`<button type="button" class="dg-btn primary" data-dg-open="${key}">${esc(local('查看邮件','查看郵件','Open email'))}<span aria-hidden="true"> ↗</span></button>`);
+  if(it.id&&!it.brief&&!it.briefLoading)buttons.push(`<button type="button" class="dg-btn" data-dg-brief="${key}">${esc(it.briefError?local('重试','重試','Retry'):local('生成详细要点','產生詳細重點','Prepare notes'))}</button>`);
+  return html+(buttons.length?`<div class="dg-actions">${buttons.join('')}</div>`:'');
+}
+function digestRow(r,di,n){
+  const key=di+':'+n,id=r.item.id||key,open=digestOpen.has(id),when=r.when!==null?dayLabel(r.when):null;
+  const gist=r.gist.text&&!r.item.briefLoading?`<span class="dg-gist${r.gist.provisional?' is-quick':''}" data-user-content>${esc(r.gist.text)}</span>`:'';
+  return `<li class="dg-row tier-${r.tier}${open?' open':''}" data-dg-row="${key}" data-tier="${r.tier}"><button type="button" class="dg-head" aria-expanded="${open}" aria-controls="dg-b-${di}-${n}"><span class="dg-dot" role="img" aria-label="${esc(tierLabel(r.tier))}"></span><span class="dg-main"><span class="dg-title" data-user-content>${esc(r.headline)}</span>${gist}</span>${when?`<span class="dg-when${when.soon?' soon':''}" title="${esc(when.title)}">${esc(when.text)}</span>`:''}<span class="dg-chev" aria-hidden="true"></span></button><div class="dg-body" id="dg-b-${di}-${n}"><div class="dg-body-inner">${digestBody(r,key)}</div></div></li>`;
+}
+function digestCard(d,di){
+  const o=digestViews[di],c=o.counts;
+  const stats=[['act',c.act,local('需处理','需處理','Need action')],['upcoming',c.upcoming,local('日程提醒','日程提醒','Dates ahead')],['total',c.total,local('封邮件','封郵件','Emails')]].map(([k,v,label])=>`<div class="dg-stat is-${k}"><b data-count="${v}">${v}</b><span>${esc(label)}</span></div>`).join('');
+  const chips=[['all',local('全部','全部','All'),c.total],['act',tierLabel('act'),c.act],['upcoming',tierLabel('upcoming'),c.upcoming],['info',tierLabel('info'),c.info]].map(([k,label,n])=>`<button type="button" data-dg-filter="${k}" class="${digestFilter===k?'selected':''}" aria-pressed="${digestFilter===k}"${k!=='all'&&!n?' disabled':''}>${esc(label)} <i>${n}</i></button>`).join('');
+  const timeline=o.timeline.length?`<ol class="dg-timeline" aria-label="${esc(local('即将到来','即將到來','Coming up'))}">${o.timeline.map(r=>{const w=dayLabel(r.when),n=o.rows.indexOf(r);return `<li><button type="button" data-dg-jump="${di}:${n}"><time class="${w.soon?'soon':''}" title="${esc(w.title)}">${esc(w.text)}</time><span data-user-content>${esc(r.headline)}</span></button></li>`;}).join('')}</ol>`:'';
+  return `<article class="mail-card digest-card dg-card" data-dg-card="${di}"><div class="meta"><span class="badge">${esc(fmt(d.created))}</span></div><h2>${esc(digestTitle(d.title))}</h2><p class="dg-lede">${esc(digestLede(o))}</p><div class="dg-stats">${stats}</div>${timeline}<div class="dg-toolbar"><div class="dg-filter" role="group" aria-label="${esc(local('筛选','篩選','Filter'))}"><span class="dg-ind" aria-hidden="true"></span>${chips}</div><button type="button" class="dg-btn ghost" data-dg-all="${di}"></button></div><ul class="dg-list">${o.rows.map((r,n)=>digestRow(r,di,n)).join('')}</ul></article>`;
+}
+function moveIndicators(){
+  $$('#digest-list .dg-filter').forEach(box=>{
+    const on=box.querySelector('.selected'),ind=box.querySelector('.dg-ind');
+    if(!on||!ind||!on.offsetWidth)return;
+    ind.style.width=on.offsetWidth+'px';ind.style.transform=`translateX(${on.offsetLeft}px)`;
+    requestAnimationFrame(()=>box.classList.add('ready'));
+  });
+}
+function syncToggleAll(card){
+  const rows=[...card.querySelectorAll('.dg-row:not([hidden])')],btn=card.querySelector('[data-dg-all]');
+  if(!btn)return;
+  const allOpen=rows.length>0&&rows.every(r=>r.classList.contains('open'));
+  btn.dataset.state=allOpen?'close':'open';btn.disabled=!rows.length;
+  btn.textContent=allOpen?local('全部收起','全部收起','Collapse all'):local('全部展开','全部展開','Expand all');
+}
+function applyDigestFilter(pop){
+  $$('#digest-list .dg-card').forEach(card=>{
+    let shown=0;
+    card.querySelectorAll('.dg-row').forEach(row=>{
+      const hide=digestFilter!=='all'&&row.dataset.tier!==digestFilter;
+      row.hidden=hide;row.classList.remove('dg-pop');
+      if(!hide){if(pop&&motionOk()){row.style.setProperty('--n',String(Math.min(shown,8)));void row.offsetWidth;row.classList.add('dg-pop');}shown++;}
+    });
+    card.querySelectorAll('[data-dg-filter]').forEach(b=>{const on=b.dataset.dgFilter===digestFilter;b.classList.toggle('selected',on);b.setAttribute('aria-pressed',String(on));});
+    syncToggleAll(card);
+  });
+  moveIndicators();
+}
+function countUp(el){
+  const target=Number(el.dataset.count)||0;
+  if(!target||!motionOk()){el.textContent=String(target);return;}
+  const t0=performance.now(),dur=650;el.textContent='0';
+  const step=now=>{const p=Math.min(1,(now-t0)/dur);el.textContent=String(Math.round(target*(1-Math.pow(1-p,3))));if(p<1)requestAnimationFrame(step);};
+  requestAnimationFrame(step);
+}
+function renderDigests(animate){
+  const root=$('#digest-list');
+  if(!digestData.length){root.innerHTML=`<div class="empty"><span class="empty-mark">◷</span><h2>${esc(tx('digestHistoryEmpty'))}</h2><p>${esc(tx('digestHistoryHelp'))}</p></div>`;return;}
+  digestViews=digestData.map(d=>digestOverview(Array.isArray(d.items)?d.items:[],Date.now()));
+  if(locale==='en')for(const view of digestViews)for(const row of view.rows){
+    row.headline=digestText(row.headline,'Email summary unavailable');
+    if(containsCjk(row.gist.text))row.gist={...row.gist,text:'English summary unavailable. Open the email for details.'};
+  }
+  const stacked=digestData.length>1;
+  const list=digestData.map((d,di)=>Array.isArray(d.items)&&d.items.length?digestCard(d,di):`<article class="mail-card digest-card dg-card"><div class="meta"><span class="badge">${esc(fmt(d.created))}</span></div><h2>${esc(digestTitle(d.title))}</h2><p class="body-text" data-user-content>${esc(digestText(d.body||tx('noDigestItems'),'No mail items in this digest.'))}</p></article>`).join('');
+  root.classList.toggle('dg-animate',!!animate&&motionOk());
+  root.innerHTML=(stacked?`<button type="button" class="stack-toggle chip-button" aria-expanded="false"></button><div class="card-stack">`:'')+list+(stacked?'</div>':'');
+  if(stacked)setupCardStack($('#digest-list .card-stack'),$('#digest-list .stack-toggle'),{open:local(`展开全部 ${digestData.length} 份日报`,`展開全部 ${digestData.length} 份日報`,`Show all ${digestData.length} digests`),close:local('收起','收起','Collapse')});
+  if(stacked&&digestStackOpen)$('#digest-list .stack-toggle').click();
+  $$('#digest-list .dg-row').forEach((row,i)=>row.style.setProperty('--n',String(Math.min(i,10))));
+  $$('#digest-list [data-count]').forEach(el=>animate?countUp(el):(el.textContent=el.dataset.count));
+  applyDigestFilter(false);
+  if(animate)setTimeout(()=>root.classList.remove('dg-animate'),1400);
+}
+function bindDigestEvents(){
+  if(digestBound)return;digestBound=true;
+  const root=$('#digest-list');
+  addEventListener('resize',moveIndicators);
+  root.addEventListener('click',()=>{const t=root.querySelector('.stack-toggle');if(t)digestStackOpen=t.getAttribute('aria-expanded')==='true';});
+  root.addEventListener('click',e=>{
+    if(e.target.closest('.card-stack.is-collapsed'))return; // first click only unfolds the stack
+    const find=sel=>e.target.closest(sel);
+    const rowOf=key=>{const [di,n]=key.split(':').map(Number);return {row:root.querySelector(`[data-dg-row="${key}"]`),r:digestViews[di]?.rows[n]};};
+    const head=find('.dg-head');
+    if(head){
+      // 点击日报行直接跳转到邮件详情页（用户要求）
+      try{
+        const row=head.closest('.dg-row');
+        if(!row)return;
+        const {r}=rowOf(row.dataset.dgRow);
+        const mailId=r?.item?.id;
+        if(mailId){
+          // 先切到邮件视图，再写 deep-link 参数：loadMail 加载完列表后会自动打开对应邮件；
+          // 同时立即打开详情（带加载中提示），dialog.open 守卫保证两次调用不冲突
+
+          openMailDetail(mailId).catch(e=>console.warn('openMailDetail failed',e));
+        }else{
+          // 旧日报条目没有关联邮件 id：展开行内摘要，保证点击一定有反馈
+          const open=!row.classList.contains('open');
+          row.classList.toggle('open',open);
+          head.setAttribute('aria-expanded',String(open));
+          syncToggleAll(row.closest('.dg-card'));
+        }
+      }catch(e){console.warn('digest row click failed',e);}
+      return;
+    }
+    const filter=find('[data-dg-filter]');
+    if(filter&&!filter.disabled){digestFilter=filter.dataset.dgFilter;applyDigestFilter(true);return;}
+    const all=find('[data-dg-all]');
+    if(all){
+      const card=all.closest('.dg-card'),open=all.dataset.state!=='close';
+      card.querySelectorAll('.dg-row:not([hidden])').forEach(row=>{const {r}=rowOf(row.dataset.dgRow),id=r?.item.id||row.dataset.dgRow;row.classList.toggle('open',open);row.querySelector('.dg-head').setAttribute('aria-expanded',String(open));open?digestOpen.add(id):digestOpen.delete(id);});
+      syncToggleAll(card);return;
+    }
+    const jump=find('[data-dg-jump]');
+    if(jump){
+      const {row,r}=rowOf(jump.dataset.dgJump);if(!row)return;
+      if(row.hidden){digestFilter='all';applyDigestFilter(false);}
+      row.classList.add('open');row.querySelector('.dg-head').setAttribute('aria-expanded','true');if(r?.item.id)digestOpen.add(r.item.id);
+      syncToggleAll(row.closest('.dg-card'));row.scrollIntoView({behavior:motionOk()?'smooth':'auto',block:'center'});
+      row.classList.remove('dg-flash');void row.offsetWidth;row.classList.add('dg-flash');return;
+    }
+    const open=find('[data-dg-open]');
+    if(open){const {r}=rowOf(open.dataset.dgOpen);if(r?.item.id){history.replaceState(null,'','/?view=mail&message='+encodeURIComponent(r.item.id));view('mail');openMailDetail(r.item.id);}return;}
+    const brief=find('[data-dg-brief]');
+    if(brief){
+      const {r}=rowOf(brief.dataset.dgBrief);if(!r||r.item.briefLoading)return;
+      // 按钮即时反馈：禁用并显示"生成中"，避免重复点击
+      brief.disabled=true;
+      brief.dataset.origText=brief.textContent;
+      brief.textContent=local('生成中…','生成中…','Preparing…');
+      const activeLocale=locale;r.item.briefError=false;
+      void prepareBriefs([r.item],()=>renderDigests(false),()=>locale===activeLocale&&!$('#digests-view').classList.contains('hidden'),{live:true});
+    }
+  });
 }
 async function loadDigests(opts={}){
   try{
-    const digests=await api('digests');
-    const stacked=digests.length>1;
-    $('#digest-list').innerHTML=digests.length?(stacked?`<button type="button" class="stack-toggle chip-button" aria-expanded="false"></button><div class="card-stack">`:'')+digests.map(d=>{
-      const items=Array.isArray(d.items)?d.items:[];
-      const actionCount=items.filter(m=>m.brief?.actions?.length).length;
-      const pendingCount=items.filter(m=>!m.brief).length;
-      const overview=`<p class="digest-overview">${local('本时段收到','本時段收到','Received')} <strong>${items.length}</strong> ${local('封邮件','封郵件','emails')} · ${local('邮件中的请求','郵件中的請求','Requests in this email')} <strong>${actionCount}</strong>${pendingCount?` · ${pendingCount} ${local('封待整理','封待整理','awaiting summary')}`:''}</p>`;
-      const ordered=[...items].sort((a,b)=>Number(!!b.brief?.actions?.length)-Number(!!a.brief?.actions?.length));
-      const list=items.length?`<div class="digest-day">${ordered.map(digestItemButton).join('')}</div>`:`<p class="body-text" data-user-content>${esc(d.body||tx('noDigestItems'))}</p>`;
-      return `<article class="mail-card digest-card"><div class="meta"><span class="badge">${esc(fmt(d.created))}</span><span>${items.length||0} ${local('封','封','mails')}</span></div><h2>${esc(d.title)}</h2>${overview}<details class="digest-expand" open><summary>${esc(local('展开摘要','展開摘要','Read summary'))}<span aria-hidden="true">＋</span></summary>${list}</details></article>`;
-    }).join('')+(stacked?'</div>':''):`<div class="empty"><span class="empty-mark">◷</span><h2>${esc(tx('digestHistoryEmpty'))}</h2><p>${esc(tx('digestHistoryHelp'))}</p></div>`;
-
-    if(stacked)setupCardStack($('#digest-list .card-stack'),$('#digest-list .stack-toggle'),{open:local(`展开全部 ${digests.length} 份日报`,`展開全部 ${digests.length} 份日報`,`Show all ${digests.length} digests`),close:local('收起','收起','Collapse')});
-    $('#digest-list').querySelectorAll('[data-open-mail]').forEach(btn=>btn.onclick=()=>{const id=decodeURIComponent(btn.dataset.openMail);openMailDetail(id);});
+    digestData=await api('digests');
+    bindDigestEvents();
+    renderDigests(true);
+    if(opts.generate!==false){
+      const activeLocale=locale;
+      void prepareBriefs(digestData.flatMap(d=>d.items||[]),()=>renderDigests(false),()=>locale===activeLocale&&!$('#digests-view').classList.contains('hidden'),{live:true,concurrency:2});
+    }
   }catch(e){loadError('#digest-list',e,()=>loadDigests(opts));}
 }
 
@@ -490,9 +712,10 @@ function bindUpgradeControls(){
 }
 async function renderMailSuggestions(){
  const suggestions=await api('mail-suggestions');
- $('#mail-suggestions').innerHTML=suggestions.length?`<section class="setting-card"><h2>${local('待确认的邮件任务','待確認的郵件任務','Mail tasks to review')}</h2><p>${local('核对标题、原文依据和截止时间，确认后才会创建待办与提醒。','核對標題、原文依據和截止時間，確認後才會建立待辦與提醒。','Check the title, source evidence and deadline. Tasks and reminders are created only after confirmation.')}</p>${suggestions.map(s=>`<form class="candidate-review" data-mail-review="${s.id}"><label>${tx('taskTitle')}<input name="title" required maxlength="200" value="${esc(s.title)}"></label><label>${local('截止时间（可留空）','截止時間（可留空）','Deadline (optional)')}<input name="due" type="datetime-local" value="${hkValue(s.due)}"></label><label>${local('备注','備註','Notes')}<textarea name="notes">${esc(s.notes)}</textarea></label><p data-user-content>${esc(evidenceText(s.evidence))}</p><button type="submit" class="primary">${local('确认并加入我的待办','確認並加入我的待辦','Confirm and add to my tasks')}</button> <button type="button" data-dismiss-mail="${s.id}">${local('不采用','不採用','Dismiss')}</button></form>`).join('')}</section>`:'';
+ $('#mail-suggestions').innerHTML=suggestions.length?`<section class="setting-card mail-suggestions-section"><h2>${local('待确认的邮件任务','待確認的郵件任務','Mail tasks to review')}</h2><p>${local('核对标题、原文依据和截止时间，确认后才会创建待办与提醒。','核對標題、原文依據和截止時間，確認後才會建立待辦與提醒。','Check the title, source evidence and deadline. Tasks and reminders are created only after confirmation.')}</p><div class="mail-suggestion-list">${suggestions.map(s=>`<form class="mail-suggestion-card" data-mail-review="${esc(s.id)}"><div class="mail-suggestion-head"><span class="state-pill pending">${local('邮件待办建议','郵件待辦建議','Suggested task')}</span><button type="button" class="mail-source-link" data-source-mail="${esc(s.message_id)}">${local('来源邮件：','來源電郵：','Source email: ')}${esc(String(s.message_subject||local('查看中文与原文','查看中文與原文','View summary and original')).replace(/^(?:(?:fw|fwd|re)\s*:\s*)+/i,''))} ↗</button></div><div class="mail-suggestion-fields"><label>${tx('taskTitle')}<input name="title" required maxlength="200" value="${esc(s.title)}"></label><label>${local('截止时间（可留空）','截止時間（可留空）','Deadline (optional)')}<input name="due" type="datetime-local" value="${hkValue(s.due)}"></label></div><label class="mail-suggestion-notes">${local('备注','備註','Notes')}<textarea name="notes" rows="2">${esc(s.notes)}</textarea></label><p class="mail-suggestion-evidence" data-user-content>${esc(evidenceText(s.evidence))}</p><div class="inline-actions"><button type="submit" class="primary">${local('确认并加入我的待办','確認並加入我的待辦','Confirm and add to my tasks')}</button><button type="button" data-dismiss-mail="${esc(s.id)}">${local('不采用','不採用','Dismiss')}</button></div></form>`).join('')}</div></section>`:'';
  $$('[data-mail-review]').forEach(f=>f.onsubmit=e=>{e.preventDefault();runAction(f.querySelector('[type=submit]'),()=>api('mail-suggestions/'+f.dataset.mailReview,{method:'POST',body:{decision:'confirm',title:f.elements.title.value,notes:f.elements.notes.value,due:hkTime(f.elements.due.value)}}),async()=>{await renderMailSuggestions();await loadTasks();});});
  $$('[data-dismiss-mail]').forEach(b=>b.onclick=()=>runAction(b,()=>api('mail-suggestions/'+b.dataset.dismissMail,{method:'POST',body:{decision:'reject'}}),renderMailSuggestions));
+ $$('[data-source-mail]').forEach(b=>b.onclick=()=>openMailDetail(b.dataset.sourceMail));
 }
 
 loadSettings=loadSettingsProfile;
@@ -575,3 +798,4 @@ function offerUndo(id){
  const button=document.createElement('button');button.type='button';button.textContent=local('撤销','復原','Undo');$('#toast').append(button);clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.add('hidden'),8000);
  button.onclick=async()=>{button.disabled=true;try{const current=tasks.find(t=>t.id===id);if(!current)throw Error(local('任务不存在','任務不存在','Task not found'));await api('tasks/'+id,{method:'PATCH',body:{version:current.version,completed:false}});await loadTasks();toast('已重新打开待办');}catch(e){toast(e.message);}finally{button.disabled=false;}};
 }
+
