@@ -6,7 +6,32 @@ export const parseBriefResponse=response=>typeof response==='object'&&response!=
 const compact=s=>String(s||'').normalize('NFKC').replace(/[‘’]/g,"'").replace(/[“”]/g,'"').replace(/\s+/g,' ').trim();
 const key=async(user,locale,id)=>`${version}:${user}:${locale}:${await hash(id)}`;
 export async function readBrief(env,user,locale,id){try{return JSON.parse(await getKV(env,await key(user,locale,id))||'null')}catch{return null}}
-export async function attachBriefs(env,user,locale,rows){return Promise.all(rows.map(async row=>({...row,subject:cleanSubject(row.subject),brief:await readBrief(env,user,locale,row.id)})))}
+export async function attachBriefs(env,user,locale,rows){
+ const keys=await Promise.all(rows.map(r=>key(user,locale,r.id))),cache=new Map();
+ for(let i=0;i<keys.length;i+=80){const chunk=[...new Set(keys.slice(i,i+80))];if(!chunk.length)continue;
+ const found=(await env.DB.prepare('SELECT key,value FROM kv WHERE key IN ('+chunk.map(()=>'?').join(',')+')').bind(...chunk).all()).results||[];
+ for(const row of found)try{cache.set(row.key,JSON.parse(row.value));}catch{}
+ }
+ return rows.map((row,i)=>({...row,subject:cleanSubject(row.subject),brief:cache.get(keys[i])||null}));
+}
+export async function processBriefBacklog(env){
+ if(env.ENABLE_AI!=='true'||!env.AI)return;
+ const started=Date.now();let attempted=0;
+ const users=(await env.DB.prepare('SELECT DISTINCT u.id,u.locale FROM users u JOIN messages m ON m.user_id=u.id').all()).results||[];
+ for(const user of users){
+ const rows=(await env.DB.prepare('SELECT id,subject FROM messages WHERE user_id=? ORDER BY received DESC LIMIT 200').bind(user.id).all()).results||[];
+ const pending=await attachBriefs(env,user.id,user.locale||'zh-CN',rows);
+ for(const row of pending){
+ if(row.brief)continue;
+ if(attempted>=4||Date.now()-started>80000)return;
+ const retryKey='brief-retry:'+await key(user.id,user.locale||'zh-CN',row.id);
+ if(Number(await getKV(env,retryKey)||0)>Date.now())continue;
+ attempted++;await setKV(env,retryKey,String(Date.now()+3600000));
+ try{await generateBrief(env,user.id,user.locale||'zh-CN',row.id);}catch{}
+ }
+ }
+}
+
 export function validateBrief(raw,source){
  const text=compact(source),supported=e=>typeof e==='string'&&compact(e).length>=5&&text.includes(compact(e));
  if(!raw||typeof raw.title!=='string'||!raw.title.trim()||!supported(raw.titleEvidence))throw new Error('Ungrounded title');

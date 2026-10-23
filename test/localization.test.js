@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {meetingTask,reminderPayload} from '../src/display.js';
 import {serverMessage,normalizeLocale} from '../src/errors.js';
-const source=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
+const source=readFileSync(new URL('../public/app.js',import.meta.url),'utf8').replace(/^import .*;$/gm,'');
 const sandbox={};vm.runInNewContext(source.slice(0,source.indexOf('function translateTextNodes()'))+';this.translate=(text,language)=>{locale=language;return translateCopy(text)};this.copy=TEXTS;',sandbox);
 test('all interface dictionary entries round trip through three languages; blank text stays blank',()=>{
  for(const [cn,variants] of Object.entries(sandbox.copy)){

@@ -241,7 +241,7 @@ const categoryKey=c=>({1:'cat1',2:'cat2',3:'cat3',4:'cat4'}[c]||'cat3');
 const briefRequests=new Map();
 function briefContent(m,compact=false){
   const b=m.brief;
-  if(!b)return `<p class="quality">${esc(local('正在依据原文整理详细要点；若未生成，可稍后重试。','正在依據原文整理詳細重點；若未產生，可稍後重試。','Preparing detailed notes from the original email. Retry later if unavailable.'))}</p>`;
+  if(!b)return `<p class="quality">${esc(local('后台正在整理这封邮件，完成后会保留摘要。','背景正在整理這封郵件，完成後會保留摘要。','This email is being summarized in the background. The result will be saved.'))}</p>`;
   const points=compact?b.points.slice(0,2):b.points;
   return `<ul class="mail-points">${points.map(p=>`<li data-user-content>${esc(p.text)}</li>`).join('')}</ul>${b.actions.length?`<div class="brief-actions"><strong>${local('邮件中的请求','郵件中的請求','Requests in this email')}</strong><ul>${b.actions.map(p=>`<li data-user-content>${esc(p.text)}</li>`).join('')}</ul></div>`:''}`;
 }
@@ -273,32 +273,33 @@ function bindMailList(root){
   });
   root.querySelectorAll('[data-delete-mail]').forEach(b=>b.onclick=async e=>{e.stopPropagation();if(!confirm(tx('confirmDeleteMail')))return;b.disabled=true;try{await api('messages/'+b.dataset.deleteMail,{method:'DELETE',body:{}});await loadMail();toast(tx('mailDeleted'));}catch(err){toast(err.message);b.disabled=false;}});
 }
-async function openMailDetail(id){
-  const dialog=$('#mail-detail-dialog');if(!dialog)return;
-  $('#mail-detail-title').textContent=tx('mailDetail');
-  $('#mail-detail-zh').textContent=local('加载中…','載入中…','Loading…');
-  $('#mail-detail-en').textContent='';
-  dialog.showModal();
+let readerRequest=0;
+function hideMailReader(){
+  readerRequest++;$('#mail-detail-dialog').classList.add('hidden');document.body.classList.remove('reader-open');$('#app').inert=false;
+}
+async function openMailDetail(id,{push=true}={}){
+  const page=$('#mail-detail-dialog'),request=++readerRequest;
+  if(push&&new URLSearchParams(location.search).get('message')!==id)history.pushState({mailReader:true},'','/?view=mail&message='+encodeURIComponent(id));
+  page.classList.remove('hidden');document.body.classList.add('reader-open');$('#app').inert=true;page.scrollTop=0;
+  $('#close-mail-detail').textContent=local('← 返回','← 返回','← Back');
+  $('#mail-detail-label').textContent=tx('mailDetail');
+  $('#mail-detail-title').textContent=local('加载中…','載入中…','Loading…');
+  $('#mail-detail-title').focus();$('#mail-detail-meta').textContent='';
+  $('#mail-detail-zh').textContent='';$('#mail-detail-en').textContent='';$('#mail-detail-outlook').hidden=true;
+  const summaryTab=page.querySelector('[data-mail-pane="zh"]'),originalTab=page.querySelector('[data-mail-pane="en"]');
+  summaryTab.textContent=local('摘要','摘要','Summary');originalTab.textContent=local('原文','原文','Original');
+  const selectPane=name=>{for(const tab of [summaryTab,originalTab]){const selected=tab.dataset.mailPane===name;tab.classList.toggle('selected',selected);tab.setAttribute('aria-selected',String(selected));}$('#mail-detail-zh').classList.toggle('hidden',name!=='zh');$('#mail-detail-en').classList.toggle('hidden',name!=='en');};
+  selectPane('zh');summaryTab.onclick=()=>selectPane('zh');originalTab.onclick=()=>selectPane('en');
   try{
-    const detail=await api('messages/'+encodeURIComponent(id));
-    const zh=detail.chinese||detail.display;
-    $('#mail-detail-meta').innerHTML=`<span class="badge">${esc(tx(categoryKey(detail.category)))}</span><span>${esc(fmt(detail.received))}</span>`;
-    if(detail.translationEnabled&&zh){
-      $('#mail-detail-zh').innerHTML=`<h3 data-user-content>${esc(detail.display?.brief?.title||zh.subject)}</h3><p class="sender">${esc(tx('originalSender'))} ${esc(zh.sender)}<br>${esc(tx('source'))} ${esc(zh.origin)}</p>${detail.display?.brief?briefContent(detail.display):`<p data-user-content>${esc(zh.summary)}</p><p>${esc(zh.action||'')}</p>`}`;
-      $$('[data-mail-pane]').forEach(b=>b.classList.toggle('hidden',false));
-    }else{
-      $('#mail-detail-zh').innerHTML=`<h3 data-user-content>${esc(detail.display?.brief?.title||detail.display?.subject||detail.english?.subject||'')}</h3>${detail.display?.brief?briefContent(detail.display):`<p data-user-content>${esc(detail.display?.summary||'')}</p>`}`;
-      const zhTab=document.querySelector('[data-mail-pane="zh"]');if(zhTab)zhTab.classList.add('hidden');
-    }
-    const en=detail.english||{};
-    $('#mail-detail-en').innerHTML=`<h3 data-user-content>${esc(en.subject||'')}</h3><p data-user-content>${esc(en.body||'')}</p>${detail.englishSummaryEnabled&&en.summary?`<p class="quality">${esc(en.summary)}</p>`:''}`;
+    const detail=await api('messages/'+encodeURIComponent(id));if(request!==readerRequest)return;
+    const display=detail.display||detail.chinese||{};
+    $('#mail-detail-title').textContent=display.brief?.title||String(display.subject||detail.english?.subject||'').replace(/^(?:(?:fw|fwd|re)\s*:\s*)+/i,'');
+    $('#mail-detail-meta').innerHTML=`<span class="badge">${esc(display.brief?.topic||tx(categoryKey(detail.category)))}</span><span>${esc(display.sender||'')}</span><span>${esc(display.origin||'')}</span><time>${esc(fmt(detail.received))}</time>`;
+    $('#mail-detail-zh').innerHTML=display.brief?briefContent(display):`<p data-user-content>${esc(display.summary||'')}</p>`;
+    $('#mail-detail-en').replaceChildren(renderMailBody(detail.english||{}));
     const link=$('#mail-detail-outlook');
-    if(link){if(/^https:\/\/(?:outlook\.live\.com|outlook\.office\.com|outlook\.office365\.com)\//.test(detail.url||'')){link.hidden=false;link.href=detail.url;link.textContent=tx('viewOriginal');}else{link.hidden=true;link.removeAttribute('href');}}
-    const showZh=detail.translationEnabled!==false&&!!detail.chinese;
-    document.querySelectorAll('[data-mail-pane]').forEach(b=>b.classList.toggle('selected',b.dataset.mailPane===(showZh?'zh':'en')));
-    $('#mail-detail-zh').classList.toggle('hidden',!showZh);
-    $('#mail-detail-en').classList.toggle('hidden',showZh);
-  }catch(e){$('#mail-detail-zh').classList.remove('hidden');$('#mail-detail-en').classList.add('hidden');loadError('#mail-detail-zh',e,()=>openMailDetail(id));}
+    if(/^https:\/\/(?:outlook\.live\.com|outlook\.office\.com|outlook\.office365\.com)\//.test(detail.url||'')){link.hidden=false;link.href=detail.url;link.textContent=tx('viewOriginal');}
+  }catch(e){if(request===readerRequest){$('#mail-detail-title').textContent=tx('mailDetail');$('#mail-detail-zh').textContent=e.message;}}
 }
 let currentMailQuery='';
 async function loadMail(opts={}){
@@ -326,14 +327,7 @@ async function loadMail(opts={}){
       $('#mail-list').appendChild(btn);
     }
     bindMailList($('#mail-list'));
-    const activeLocale=locale;
-    void prepareBriefs(messages,()=>{
-      for(const card of $$('#mail-list .mail-card[data-open-mail]')){const row=messages.find(m=>encodeURIComponent(m.id)===card.dataset.openMail);if(row)card.outerHTML=mailCard(row);}
-      bindMailList($('#mail-list'));
-    },()=>locale===activeLocale&&!$('#mail-view').classList.contains('hidden'));
 
-    const focusId=new URLSearchParams(location.search).get('message');
-    if(focusId&&!append)openMailDetail(focusId);
   }catch(e){if(request!==mailRequest)return;if(opts.append){toast(e.message);const more=$('#mail-load-more');if(more)more.disabled=false;}else loadError('#mail-list',e,()=>loadMail(opts));}
 }
 function wireMailSearch(){
@@ -365,9 +359,9 @@ async function loadDigests(opts={}){
       const list=items.length?`<div class="digest-day">${ordered.map(digestItemButton).join('')}</div>`:`<p class="body-text" data-user-content>${esc(d.body||tx('noDigestItems'))}</p>`;
       return `<article class="mail-card digest-card"><div class="meta"><span class="badge">${esc(fmt(d.created))}</span><span>${items.length||0} ${local('封','封','mails')}</span></div><h2>${esc(d.title)}</h2>${overview}<details class="digest-expand" open><summary>${esc(local('展开摘要','展開摘要','Read summary'))}<span aria-hidden="true">＋</span></summary>${list}</details></article>`;
     }).join('')+(stacked?'</div>':''):`<div class="empty"><span class="empty-mark">◷</span><h2>${esc(tx('digestHistoryEmpty'))}</h2><p>${esc(tx('digestHistoryHelp'))}</p></div>`;
-    if(opts.generate!==false){const activeLocale=locale;void prepareBriefs(digests.flatMap(d=>d.items||[]),()=>loadDigests({generate:false}),()=>locale===activeLocale&&!$('#digests-view').classList.contains('hidden'));}
+
     if(stacked)setupCardStack($('#digest-list .card-stack'),$('#digest-list .stack-toggle'),{open:local(`展开全部 ${digests.length} 份日报`,`展開全部 ${digests.length} 份日報`,`Show all ${digests.length} digests`),close:local('收起','收起','Collapse')});
-    $('#digest-list').querySelectorAll('[data-open-mail]').forEach(btn=>btn.onclick=()=>{const id=decodeURIComponent(btn.dataset.openMail);history.replaceState(null,'','/?view=mail&message='+encodeURIComponent(id));view('mail');openMailDetail(id);});
+    $('#digest-list').querySelectorAll('[data-open-mail]').forEach(btn=>btn.onclick=()=>{const id=decodeURIComponent(btn.dataset.openMail);openMailDetail(id);});
   }catch(e){loadError('#digest-list',e,()=>loadDigests(opts));}
 }
 
@@ -471,17 +465,11 @@ $('#show-pending').onclick=()=>{showDone=false;$('#show-pending').classList.add(
 $('#show-completed').onclick=()=>{showDone=true;$('#show-completed').classList.add('selected');$('#show-pending').classList.remove('selected');renderTasks();};
 $$('[data-view]').forEach(b=>b.onclick=event=>{if(b.dataset.view===activeView)view(b.dataset.view);else circularTransition(event,()=>view(b.dataset.view));});
 function wireMailDetail(){
-  const dialog=$('#mail-detail-dialog');if(!dialog||dialog.dataset.wired)return;dialog.dataset.wired='1';
-  const close=()=>dialog.close();
-  $('#close-mail-detail')?.addEventListener('click',close);
-  $('#mail-detail-done')?.addEventListener('click',close);
-  dialog.querySelectorAll('[data-mail-pane]').forEach(btn=>btn.onclick=()=>{
-    dialog.querySelectorAll('[data-mail-pane]').forEach(b=>b.classList.toggle('selected',b===btn));
-    $('#mail-detail-zh').classList.toggle('hidden',btn.dataset.mailPane!=='zh');
-    $('#mail-detail-en').classList.toggle('hidden',btn.dataset.mailPane!=='en');
-  });
+  const page=$('#mail-detail-dialog');if(!page||page.dataset.wired)return;page.dataset.wired='1';
+  $('#close-mail-detail').onclick=()=>{if(history.state?.mailReader)history.back();else{hideMailReader();view('mail');}};
+  window.addEventListener('popstate',()=>{const params=new URLSearchParams(location.search),id=params.get('message');if(id)openMailDetail(id,{push:false});else{hideMailReader();const target=params.get('view')||'tasks';if(target!==activeView)view(target);}});
 }
-async function boot(){wireMailDetail();wireMailSearch();try{status=await api('status');const profile=await api('profile');reminderDefaults=profile.reminders||reminderDefaults;applyLocale(status.account.locale||localStorage.getItem('campus-locale')||'zh-CN');localStorage.setItem('campus-locale',locale);$('#login').classList.add('hidden');$('#app').classList.remove('hidden');$('#account-label').textContent=accountLabel(status.account);setAvatar(status.account.avatar,accountLabel(status.account).slice(0,1).toUpperCase());$('#date-label').textContent=new Date().toLocaleDateString(dateLocale(),{timeZone:'Asia/Hong_Kong',year:'numeric',month:'long',day:'numeric',weekday:'long'});await loadTasks().catch(e=>loadError('#task-list',e,loadTasks));const v=new URLSearchParams(location.search).get('view');view(['groups','mail','digests','settings'].includes(v)?v:'tasks');}catch(e){if(!$('#app').classList.contains('hidden'))$('#global-error').textContent=e.message;else{showLogin();if(e.code!=='SESSION_EXPIRED')$('#login-error').textContent=e.message;}}}
+async function boot(){wireMailDetail();wireMailSearch();try{status=await api('status');const profile=await api('profile');reminderDefaults=profile.reminders||reminderDefaults;applyLocale(status.account.locale||localStorage.getItem('campus-locale')||'zh-CN');localStorage.setItem('campus-locale',locale);$('#login').classList.add('hidden');$('#app').classList.remove('hidden');$('#account-label').textContent=accountLabel(status.account);setAvatar(status.account.avatar,accountLabel(status.account).slice(0,1).toUpperCase());$('#date-label').textContent=new Date().toLocaleDateString(dateLocale(),{timeZone:'Asia/Hong_Kong',year:'numeric',month:'long',day:'numeric',weekday:'long'});await loadTasks().catch(e=>loadError('#task-list',e,loadTasks));const params=new URLSearchParams(location.search),v=params.get('view'),id=params.get('message');view(['groups','mail','digests','settings'].includes(v)?v:'tasks');if(id){history.replaceState(null,'','/?view=mail&message='+encodeURIComponent(id));openMailDetail(id,{push:false});}}catch(e){if(!$('#app').classList.contains('hidden'))$('#global-error').textContent=e.message;else{showLogin();if(e.code!=='SESSION_EXPIRED')$('#login-error').textContent=e.message;}}}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!$('#app').classList.contains('hidden'))loadTasks().catch(e=>toast(e.message));});
 
 function announcementText(item){if(item.kind==='meeting-change')return {title:item.title,body:item.body==='cancel'?local('会议已取消','會議已取消','Meeting cancelled'):local('会议已改期，请重新提交可用时间','會議已改期，請重新提交可用時間','Meeting rescheduled. Submit availability again.')};if(item.kind==='meeting'){const poll=groupState.meetingPolls.find(p=>p.id===item.source_id);if(poll)return {title:local('会议时间已确认：','會議時間已確認：','Meeting confirmed: ')+poll.name,body:fmt(poll.confirmed_start)+' · '+poll.duration_minutes+' '+local('分钟','分鐘','minutes')};}return item;}
@@ -526,11 +514,12 @@ async function loadSettingsProfile(){
     const zhNameField=zhUi?`<div class="name-aliases-block"><div class="alias-list" id="alias-list">${aliasRows}</div><div class="alias-actions"><button type="button" id="alias-add" class="chip-button">＋ ${tx('addAlias')}</button></div><div id="alias-suggestions" class="alias-suggestions"></div></div>`:'';
     const translateFields=zhUi?`<div class="zh-only-settings"><label><input type="checkbox" name="translateZh" ${mailPrefs.translateZh!==false?'checked':''}> ${tx('mailTranslateZh')}</label><label><input type="checkbox" name="englishSummary" ${mailPrefs.englishSummary?'checked':''}> ${tx('mailEnglishSummary')}</label><small>${tx('mailTranslateHelp')}</small></div>`:'';
     const mailPreferences=`<div class="setting-card"><h2>${tx('mailNotifications')}</h2><p>${tx('mailReminderHelp')}</p><form id="mail-preferences-form"><label>${tx('focusTerms')}<textarea name="focusTerms" rows="4" maxlength="2400">${esc((mailPrefs.focusTerms||[]).join('\n'))}</textarea><small>${tx('focusTermsHelp')}</small></label><div class="settings-grid"><label><span><input type="checkbox" name="dailyEnabled" ${mailPrefs.daily.enabled?'checked':''}> ${tx('dailyDigest')}</span><input type="time" name="dailyTime" value="${esc(mailPrefs.daily.time)}"></label><label><span><input type="checkbox" name="lateEnabled" ${mailPrefs.late.enabled?'checked':''}> ${tx('lateDigest')}</span><input type="time" name="lateTime" value="${esc(mailPrefs.late.time)}"></label></div>${translateFields}<button class="primary" type="submit">${tx('saveMailPreferences')}</button></form></div>`;
-    $('#settings-content').innerHTML=`<div class="setting-card"><h2>${tx('profile')}</h2><form id="profile-form"><div class="settings-grid profile-identity"><label>${tx('nickname')}<input name="nickname" maxlength="80" value="${esc(p.nickname)}"></label><label>${tx('avatar')}<input type="hidden" name="avatar" value="${esc(p.avatar)}"><input name="avatarFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif"><small>${tx('avatarType')}</small><img class="avatar-preview" id="avatar-preview" alt="${esc(tx('avatarPreview'))}" ${p.avatar.startsWith('data:image/')?`src="${esc(p.avatar)}"`:'hidden'}></label></div><label>${tx('language')}<select name="locale"><option value="zh-CN" ${p.locale==='zh-CN'?'selected':''}>简体中文</option><option value="zh-TW" ${p.locale==='zh-TW'?'selected':''}>繁體中文</option><option value="en" ${p.locale==='en'?'selected':''}>English</option></select></label>${zhNameField}<button class="primary" type="submit">${tx('save')}</button></form></div>${outlook}${mailPreferences}<div class="setting-card"><h2>${local('通知渠道','通知渠道','Notification channels')}</h2><p>${local('可以启用本机推送，或在网站查看待办与日报。','可以啟用本機推送，或在網站查看待辦與日報。','Enable push on this device or check tasks and digests here.')}</p><p>${local('iPhone：在 Safari 添加到主屏幕后，再开启通知。','iPhone：在 Safari 加入主畫面後，再開啟通知。','iPhone: add this site to your Home Screen in Safari before enabling notifications.')}</p>${!status.pushReady?`<p class="form-help">${local('通知服务尚未配置；目前请在站内查看待办。','通知服務尚未設定；目前請在站內查看待辦。','Notifications are not configured; check tasks in the app for now.')}</p>`:''}<button id="enable-push" ${status.pushReady?'':'disabled'}>${local('在此设备启用通知','在此裝置啟用通知','Enable notifications on this device')}</button> <button id="test-push" ${status.pushReady?'':'disabled'}>${local('测试手机通知','測試手機通知','Test push notification')}</button></div><div class="setting-card"><h2>${tx('accountSecurity')}</h2><div class="settings-grid"><form id="password-form"><label>${tx('currentPassword')}<input name="current" type="password" required></label><label>${tx('newPassword')}<input name="next" type="password" minlength="12" required></label><button class="primary" type="submit">${tx('changePassword')}</button></form><form id="security-form"><label>${tx('currentPassword')}<input name="password" type="password" required></label><label>${tx('customQuestion')}<input name="question" required></label><label>${tx('answer')}<input name="answer" type="password" required></label><button type="submit">${tx('saveSecurity')}</button></form></div></div><div class="setting-card account-exit"><h2>${tx('signOutHere')}</h2><p>${tx('signOutHint')}</p><button type="button" id="settings-logout" class="danger-text">${tx('logout')}</button></div>`;
+    $('#settings-content').innerHTML=`<div class="setting-card"><h2>${tx('profile')}</h2><form id="profile-form"><div class="profile-summary"><span class="profile-picture">${p.avatar.startsWith('data:image/')?`<img id="profile-display-avatar" src="${esc(p.avatar)}" alt="">`:`<span>${esc((p.nickname||'U').slice(0,1))}</span>`}</span><strong id="profile-display-name">${esc(p.nickname||accountLabel(status.account))}</strong><button type="button" id="edit-profile" class="icon-button" aria-expanded="false" aria-controls="profile-editor" aria-label="${local('编辑个人资料','編輯個人資料','Edit profile')}">✎</button></div><div id="profile-editor" class="profile-editor hidden"><label>${tx('nickname')}<input name="nickname" maxlength="80" value="${esc(p.nickname)}"></label><label>${tx('avatar')}<input type="hidden" name="avatar" value="${esc(p.avatar)}"><input name="avatarFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif"><small>${tx('avatarType')}</small><img class="avatar-preview" id="avatar-preview" alt="${esc(tx('avatarPreview'))}" ${p.avatar.startsWith('data:image/')?`src="${esc(p.avatar)}"`:'hidden'}></label></div><label>${tx('language')}<select name="locale"><option value="zh-CN" ${p.locale==='zh-CN'?'selected':''}>简体中文</option><option value="zh-TW" ${p.locale==='zh-TW'?'selected':''}>繁體中文</option><option value="en" ${p.locale==='en'?'selected':''}>English</option></select></label>${zhNameField}<button class="primary" type="submit">${tx('save')}</button></form></div>${outlook}${mailPreferences}<div class="setting-card"><h2>${local('通知渠道','通知渠道','Notification channels')}</h2><p>${local('可以启用本机推送，或在网站查看待办与日报。','可以啟用本機推送，或在網站查看待辦與日報。','Enable push on this device or check tasks and digests here.')}</p><p>${local('iPhone：在 Safari 添加到主屏幕后，再开启通知。','iPhone：在 Safari 加入主畫面後，再開啟通知。','iPhone: add this site to your Home Screen in Safari before enabling notifications.')}</p>${!status.pushReady?`<p class="form-help">${local('通知服务尚未配置；目前请在站内查看待办。','通知服務尚未設定；目前請在站內查看待辦。','Notifications are not configured; check tasks in the app for now.')}</p>`:''}<button id="enable-push" ${status.pushReady?'':'disabled'}>${local('在此设备启用通知','在此裝置啟用通知','Enable notifications on this device')}</button> <button id="test-push" ${status.pushReady?'':'disabled'}>${local('测试手机通知','測試手機通知','Test push notification')}</button></div><div class="setting-card"><h2>${tx('accountSecurity')}</h2><div class="settings-grid"><form id="password-form"><label>${tx('currentPassword')}<input name="current" type="password" required></label><label>${tx('newPassword')}<input name="next" type="password" minlength="12" required></label><button class="primary" type="submit">${tx('changePassword')}</button></form><form id="security-form"><label>${tx('currentPassword')}<input name="password" type="password" required></label><label>${tx('customQuestion')}<input name="question" required></label><label>${tx('answer')}<input name="answer" type="password" required></label><button type="submit">${tx('saveSecurity')}</button></form></div></div><div class="setting-card account-exit"><h2>${tx('signOutHere')}</h2><p>${tx('signOutHint')}</p><button type="button" id="settings-logout" class="danger-text">${tx('logout')}</button></div>`;
     const mailPreferencesForm=$('#mail-preferences-form');if(mailPreferencesForm)mailPreferencesForm.onsubmit=async e=>{e.preventDefault();const f=e.currentTarget,button=f.querySelector('[type=submit]');button.disabled=true;try{const mailPreferences={focusTerms:[...new Set(f.elements.focusTerms.value.split(/[\n,，]/).map(x=>x.trim()).filter(Boolean))],daily:{enabled:f.elements.dailyEnabled.checked,time:f.elements.dailyTime.value},late:{enabled:f.elements.lateEnabled.checked,time:f.elements.lateTime.value},translateZh:f.elements.translateZh?f.elements.translateZh.checked:true,englishSummary:f.elements.englishSummary?f.elements.englishSummary.checked:false};await api('profile',{method:'PATCH',body:{mailPreferences}});toast(tx('mailPreferencesSaved'));}catch(err){toast(err.message);}finally{button.disabled=false;}};
     const outlookForm=$('#outlook-connect-form');if(outlookForm)outlookForm.onsubmit=async e=>{e.preventDefault();const input=outlookForm.elements.email;if(!validEmail(input.value)){input.setCustomValidity(translateCopy('请输入完整邮箱地址，例如 name@outlook.com'));input.reportValidity();return;}const button=outlookForm.querySelector('[type=submit]');button.disabled=true;try{const result=await api('outlook/start?format=json&email='+encodeURIComponent(input.value.trim()));location.assign(result.authorizationUrl);}catch(error){showFormError(outlookForm,error.message);}finally{button.disabled=false;}};
     const syncOutlook=$('#sync-outlook');if(syncOutlook)syncOutlook.onclick=async()=>{syncOutlook.disabled=true;syncOutlook.textContent=tx('syncing');try{const r=await api('outlook/sync',{method:'POST',body:{}});toast(tx('syncFinished').replace('{count}',r.imported));await loadMail();await loadSettingsProfile();}catch(err){toast(err.message);}finally{syncOutlook.disabled=false;syncOutlook.textContent=tx('syncNow');}};
     const disconnectOutlook=$('#disconnect-outlook');if(disconnectOutlook)disconnectOutlook.onclick=async()=>{if(!confirm(tx('confirmDisconnectOutlook')))return;disconnectOutlook.disabled=true;try{await api('outlook',{method:'DELETE',body:{}});toast(tx('outlookDisconnected'));await loadSettingsProfile();}catch(err){toast(err.message);disconnectOutlook.disabled=false;}};
+    $('#edit-profile').onclick=()=>{const editor=$('#profile-editor'),open=editor.classList.contains('hidden');editor.classList.toggle('hidden',!open);$('#edit-profile').setAttribute('aria-expanded',String(open));if(open)$('#profile-form').elements.nickname.focus();};
     $('#profile-form').elements.avatarFile.onchange=e=>{const file=e.target.files[0];if(!file)return;if(!['image/png','image/jpeg','image/webp','image/gif'].includes(file.type)){e.target.value='';toast(tx('avatarInvalid'));return;}if(file.size>2*1024*1024){e.target.value='';showFormError(e.target.form,translateCopy('头像不能超过 2 MB'));return;}const reader=new FileReader();reader.onerror=()=>showFormError(e.target.form,translateCopy('无法读取图片，请重新选择'));reader.onload=()=>{e.target.form.elements.avatar.value=reader.result;$('#avatar-preview').src=reader.result;$('#avatar-preview').hidden=false;};reader.readAsDataURL(file);};
     $('#profile-form').onsubmit=async e=>{e.preventDefault();const f=e.currentTarget,b=f.querySelector('[type=submit]');b.disabled=true;b.classList.add('pending');const original=b.textContent;b.textContent=local('保存中…','儲存中…','Saving…');try{const body={nickname:f.elements.nickname.value,avatar:f.elements.avatar.value,locale:f.elements.locale.value,preferredZhName:f.elements.preferredZhName?f.elements.preferredZhName.value:undefined};if(f.elements.nickname.form.querySelector('#alias-list'))body.nameAliases=[...$$('#alias-list .alias-row')].map(row=>({alias:row.querySelector('[name=alias]').value.trim(),zhName:row.querySelector('[name=aliasZh]').value.trim()})).filter(a=>a.alias&&a.zhName);const r=await api('profile',{method:'PATCH',body});applyLocale(r.locale);localStorage.setItem('campus-locale',r.locale);$('#account-label').textContent=r.nickname||accountLabel(status.account);setAvatar(r.avatar,(r.nickname||accountLabel(status.account)).slice(0,1).toUpperCase());b.textContent=local('已保存 ✓','已儲存 ✓','Saved ✓');setTimeout(()=>location.reload(),150);}catch(err){toast(err.message);b.disabled=false;b.classList.remove('pending');b.textContent=original;}};
     const aliasList=$('#alias-list'),aliasAdd=$('#alias-add');
