@@ -1,0 +1,87 @@
+/* Profile sub-page (public/profile-page.js). Strict CSP: classes only, no inline styles. */
+.sidebar-bottom .avatar.profile-link,.sidebar-bottom .profile-link{cursor:pointer}
+.sidebar-bottom .avatar.profile-link{overflow:hidden;transition:box-shadow .25s var(--ease-out),transform .25s var(--spring);flex-shrink:0;display:grid;place-items:center}
+.sidebar-bottom .avatar.profile-link:hover{transform:scale(1.06);box-shadow:0 0 0 2px var(--lime)}
+.sidebar-bottom .avatar.profile-link:focus-visible{outline:2px solid var(--lime);outline-offset:2px}
+.sidebar-bottom .avatar.profile-open{box-shadow:0 0 0 2px var(--lime)}
+.sidebar-bottom .profile-name-link{min-width:0;border-radius:10px;transition:opacity .2s ease}
+.sidebar-bottom .profile-name-link:hover{opacity:.75}
+.sidebar-bottom #account-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+
+/* a small avatar in the header for phones, where the sidebar footer is hidden */
+.header-avatar{display:none}
+@media(max-width:700px){
+  header{display:flex;align-items:center;justify-content:space-between}
+  .header-avatar{display:grid;place-items:center;width:36px;height:36px;padding:0;border:0;border-radius:50%;overflow:hidden;background:var(--ink-2);color:#fff;font-weight:800;font-size:15px;box-shadow:none;flex-shrink:0}
+  .header-avatar img{width:100%;height:100%;object-fit:cover;display:block}
+  .header-avatar:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+}
+
+.pf{max-width:560px;animation:pfIn .45s var(--ease-out) both}
+.pf-back{display:inline-flex;align-items:center;gap:6px;padding:8px 14px 8px 10px;margin:6px 0 18px;border:0;border-radius:var(--pill);background:var(--surface);color:var(--ink);font-size:14px;font-weight:700;box-shadow:var(--shadow-soft);transition:transform .2s var(--spring),background .2s ease}
+.pf-back:hover{background:var(--surface-3)}
+.pf-back:hover svg{transform:translateX(-2px)}
+.pf-back svg{transition:transform .2s var(--ease-out)}
+.pf-back:active{transform:scale(.96)}
+
+.pf-card{display:flex;flex-direction:column;align-items:center;text-align:center;padding:40px 28px 30px;border-radius:var(--radius-lg);background:var(--surface);box-shadow:var(--shadow-soft)}
+
+.pf-avatar-zone{position:relative;border-radius:50%}
+.pf-avatar-zone.pf-pop .pf-avatar{animation:pfPop .5s var(--spring)}
+.pf-avatar{position:relative;display:block;width:132px;height:132px;padding:0;border:0;border-radius:50%;overflow:hidden;background:var(--surface-2);color:var(--ink);box-shadow:0 0 0 4px var(--surface),0 0 0 6px var(--surface-3);cursor:pointer;transition:transform .3s var(--spring),box-shadow .3s ease}
+.pf-avatar:hover{transform:scale(1.03);box-shadow:0 0 0 4px var(--surface),0 0 0 6px var(--lime)}
+.pf-avatar:focus-visible{outline:2px solid var(--ink);outline-offset:6px}
+.pf-avatar-img,.pf-avatar-img img{display:block;width:100%;height:100%;object-fit:cover}
+.pf-avatar-img{display:grid;place-items:center}
+.pf-initial{font-size:3.2rem;font-weight:800;line-height:1}
+.pf-avatar-cam{position:absolute;inset:0;display:grid;place-items:center;background:rgba(17,17,17,.52);color:#fff;opacity:0;transition:opacity .25s ease}
+.pf-avatar:hover .pf-avatar-cam,.pf-avatar:focus-visible .pf-avatar-cam,.pf-avatar-zone.drop .pf-avatar-cam{opacity:1}
+.pf-avatar-zone.drop .pf-avatar{box-shadow:0 0 0 4px var(--surface),0 0 0 6px var(--ink)}
+.pf-spinner{position:absolute;inset:0;display:none;place-items:center;background:rgba(255,255,255,.6)}
+.pf-spinner::after{content:"";width:28px;height:28px;border-radius:50%;border:3px solid var(--surface-3);border-top-color:var(--ink);animation:pfSpin .7s linear infinite}
+.pf-avatar-zone.busy .pf-spinner{display:grid}
+@media(hover:none){.pf-avatar-cam{opacity:1;inset:auto 0 0 0;height:34%;background:rgba(17,17,17,.5)}}
+
+/* name row: the text folds away while the input unfolds (same easing as #mail-search) */
+.pf-name-row{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:24px;width:100%;min-height:44px}
+.pf-name{margin:0;font-size:1.75rem;font-weight:800;letter-spacing:-.02em;max-width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:text;transition:max-width .32s var(--ease-out),opacity .2s ease,transform .32s var(--ease-out)}
+.pf-name-row.editing .pf-name{max-width:0;opacity:0;transform:translateY(4px);margin-right:-10px}
+.pf-name-input{width:0;min-width:0;opacity:0;padding:0;border:1px solid transparent;border-radius:var(--pill);background:var(--surface-2);font-size:1.1rem;font-weight:700;text-align:left;color:var(--ink);transition:width .32s var(--ease-out),opacity .22s ease,padding .32s var(--ease-out),border-color .2s ease,box-shadow .2s ease}
+.pf-name-input[hidden]{display:block!important;visibility:hidden}
+.pf-name-row.editing .pf-name-input{width:min(320px,calc(100% - 110px));opacity:1;padding:11px 18px;border-color:var(--surface-3);visibility:visible}
+.pf-name-input:focus{outline:none;border-color:var(--ink);box-shadow:0 0 0 3px rgba(212,255,0,.55);background:var(--surface)}
+.pf-name-tools{display:inline-flex;gap:6px;flex-shrink:0}
+.pf-name-tools .icon-button{width:40px;height:40px;font-size:0;transition:transform .2s var(--spring),background .2s ease}
+.pf-name-tools .icon-button:active{transform:scale(.9)}
+.pf-name-tools .icon-button:not([hidden]){animation:pfPop .35s var(--spring)}
+.pf-name-tools .pf-confirm{background:var(--ink);color:var(--lime)}
+.pf-name-tools .pf-confirm:hover{background:#2b2b2e}
+.pf-name-tools button[hidden]{display:none!important}
+.pf-name-row.saving .pf-confirm{opacity:.6}
+.pf-name-row.pf-shake{animation:pfShake .4s ease}
+.pf-name.pf-flash{animation:pfFlash 1s ease}
+
+.pf-meta{margin:6px 0 0;color:var(--muted-text);font-size:14px;overflow-wrap:anywhere}
+.pf-actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:26px}
+.pf-btn{padding:12px 22px;border:0;border-radius:var(--pill);background:var(--ink);color:#fff;font-size:14px;font-weight:700;box-shadow:none;transition:transform .2s var(--spring),background .2s ease}
+.pf-btn:hover{background:#2b2b2e}
+.pf-btn:active{transform:scale(.96)}
+.pf-btn.ghost{background:var(--surface-2);color:var(--ink)}
+.pf-btn.ghost:hover{background:var(--surface-3)}
+.pf-btn[hidden]{display:none!important}
+.pf-hint{margin:16px 0 0;color:var(--muted-text);font-size:12.5px}
+
+@keyframes pfIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes pfPop{0%{transform:scale(.88)}60%{transform:scale(1.06)}100%{transform:scale(1)}}
+@keyframes pfSpin{to{transform:rotate(360deg)}}
+@keyframes pfShake{0%,100%{transform:translateX(0)}20%{transform:translateX(-6px)}40%{transform:translateX(6px)}60%{transform:translateX(-4px)}80%{transform:translateX(3px)}}
+@keyframes pfFlash{0%{background:rgba(212,255,0,.9);box-shadow:0 0 0 6px rgba(212,255,0,.9)}100%{background:transparent;box-shadow:0 0 0 6px transparent}}
+
+@media(max-width:700px){
+  .pf{max-width:none}
+  .pf-card{padding:32px 20px 26px;border-radius:var(--radius-card)}
+  .pf-avatar{width:116px;height:116px}
+  .pf-name{font-size:1.5rem}
+  .pf-name-row.editing .pf-name-input{width:min(260px,calc(100% - 100px))}
+}
+@media(prefers-reduced-motion:reduce){.pf,.pf *{animation:none!important;transition:none!important}}

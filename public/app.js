@@ -137,7 +137,8 @@ function showLogin(){
   applyLocale(localStorage.getItem('campus-locale')||detectLocale());
   $$('[data-login-locale]').forEach(b=>b.classList.toggle('selected',b.dataset.loginLocale===locale));
 }
-function view(name){activeView=name;for(const v of ['tasks','groups','mail','digests','settings'])$('#'+v+'-view').classList.toggle('hidden',v!==name);$$('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===name));history.replaceState(null,'','/?view='+name);if(name==='groups')loadGroups();if(name==='mail')loadMail().then(translateTextNodes);if(name==='digests')loadDigests().then(translateTextNodes);if(name==='settings')loadSettings();}
+let lastMainView='tasks';
+function view(name){if(name!=='profile')lastMainView=name;activeView=name;for(const v of ['tasks','groups','mail','digests','settings','profile'])$('#'+v+'-view').classList.toggle('hidden',v!==name);$$('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===name));history.replaceState(null,'','/?view='+name);if(name==='groups')loadGroups();if(name==='mail')loadMail().then(translateTextNodes);if(name==='digests')loadDigests().then(translateTextNodes);if(name==='settings')loadSettings();if(name==='profile')profilePage.render($('#profile-view'));$('#avatar').classList.toggle('profile-open',name==='profile');}
 function renderTasks(){
   const now=Date.now(),pending=tasks.filter(t=>!t.completed);
   $('#pending').textContent=pending.length;$('#soon').textContent=pending.filter(t=>t.due&&t.due>now&&t.due<=now+3*86400000).length;$('#completed').textContent=tasks.length-pending.length;$('#nav-count').textContent=pending.length;$('#heading-count').textContent=pending.length?' / '+pending.length:'';
@@ -156,6 +157,7 @@ import { TaskReminderPicker } from './task-reminders.js';
 import { playButtonSuccess, resetSuccessButton, circularTransition, progressColor, setupCardStack } from './motion.js';
 import { watchTimeInputs } from './native-pickers.js';
 import { digestOverview, daysUntil } from './digest-insights.js';
+import { createProfilePage } from './profile-page.js';
 
 // Every native date/time input (task form, groups, meetings, settings) becomes a wheel picker.
 watchTimeInputs();
@@ -571,7 +573,21 @@ function wireMailDetail(){
   $('#close-mail-detail').onclick=()=>{if(history.state?.mailReader)history.back();else{hideMailReader();view('mail');}};
   window.addEventListener('popstate',()=>{const params=new URLSearchParams(location.search),id=params.get('message');if(id)openMailDetail(id,{push:false});else{hideMailReader();const target=params.get('view')||'tasks';if(target!==activeView)view(target);}});
 }
-async function boot(){wireMailDetail();wireMailSearch();try{status=await api('status');const profile=await api('profile');reminderDefaults=profile.reminders||reminderDefaults;applyLocale(status.account.locale||localStorage.getItem('campus-locale')||'zh-CN');localStorage.setItem('campus-locale',locale);$('#login').classList.add('hidden');$('#app').classList.remove('hidden');$('#account-label').textContent=accountLabel(status.account);setAvatar(status.account.avatar,accountLabel(status.account).slice(0,1).toUpperCase());$('#date-label').textContent=new Date().toLocaleDateString(dateLocale(),{timeZone:'Asia/Hong_Kong',year:'numeric',month:'long',day:'numeric',weekday:'long'});await loadTasks();const params=new URLSearchParams(location.search),v=params.get('view'),id=params.get('message');view(['groups','mail','digests','settings'].includes(v)?v:'tasks');if(id){history.replaceState(null,'','/?view=mail&message='+encodeURIComponent(id));openMailDetail(id,{push:false});}}catch(e){if(!$('#app').classList.contains('hidden'))$('#global-error').textContent=e.message;else showLogin();}}
+const profilePage=createProfilePage({api,toast,local,accountLabel,
+  getAccount:()=>status.account,
+  goBack:()=>view(lastMainView),
+  onChanged:next=>{status.account={...status.account,nickname:next.nickname,avatar:next.avatar};refreshAccountChrome();}});
+function refreshAccountChrome(){const a=status.account,label=accountLabel(a),initial=label.slice(0,1).toUpperCase();$('#account-label').textContent=label;setAvatar(a.avatar,initial);const h=$('#header-avatar');if(h){h.textContent='';if(/^data:image\//.test(a.avatar||'')){const img=document.createElement('img');img.src=a.avatar;img.alt='';h.append(img);}else h.textContent=initial;}}
+function wireProfileLinks(){
+  const open=()=>view('profile');
+  const avatar=$('#avatar'),name=$('#account-label').parentElement;
+  avatar.classList.add('profile-link');avatar.setAttribute('role','button');avatar.tabIndex=0;avatar.setAttribute('aria-label',local('个人资料','個人資料','Profile'));
+  name.classList.add('profile-link','profile-name-link');name.onclick=open;
+  avatar.onclick=open;avatar.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open();}};
+  if(!$('#header-avatar')){const b=document.createElement('button');b.type='button';b.id='header-avatar';b.className='header-avatar';b.setAttribute('aria-label',local('个人资料','個人資料','Profile'));b.onclick=open;$('main > header').append(b);}
+  refreshAccountChrome();
+}
+async function boot(){wireMailDetail();wireMailSearch();try{status=await api('status');const profile=await api('profile');reminderDefaults=profile.reminders||reminderDefaults;applyLocale(status.account.locale||localStorage.getItem('campus-locale')||'zh-CN');localStorage.setItem('campus-locale',locale);$('#login').classList.add('hidden');$('#app').classList.remove('hidden');$('#account-label').textContent=accountLabel(status.account);setAvatar(status.account.avatar,accountLabel(status.account).slice(0,1).toUpperCase());wireProfileLinks();$('#date-label').textContent=new Date().toLocaleDateString(dateLocale(),{timeZone:'Asia/Hong_Kong',year:'numeric',month:'long',day:'numeric',weekday:'long'});await loadTasks();const params=new URLSearchParams(location.search),v=params.get('view'),id=params.get('message');view(['groups','mail','digests','settings','profile'].includes(v)?v:'tasks');if(id){history.replaceState(null,'','/?view=mail&message='+encodeURIComponent(id));openMailDetail(id,{push:false});}}catch(e){if(!$('#app').classList.contains('hidden'))$('#global-error').textContent=e.message;else showLogin();}}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!$('#app').classList.contains('hidden'))loadTasks().catch(e=>toast(e.message));});
 
 function announcementText(item){if(item.kind==='meeting-change')return {title:item.title,body:item.body==='cancel'?local('会议已取消','會議已取消','Meeting cancelled'):local('会议已改期，请重新提交可用时间','會議已改期，請重新提交可用時間','Meeting rescheduled. Submit availability again.')};if(item.kind==='meeting'){const poll=groupState.meetingPolls.find(p=>p.id===item.source_id);if(poll)return {title:local('会议时间已确认：','會議時間已確認：','Meeting confirmed: ')+poll.name,body:fmt(poll.confirmed_start)+' · '+poll.duration_minutes+' '+local('分钟','分鐘','minutes')};}return item;}
