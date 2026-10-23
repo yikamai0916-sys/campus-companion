@@ -1,6 +1,6 @@
 # 整合邮件阅读与协作流程，修复异常恢复和缓存生命周期
 
-建议目标：`codex/collaboration-review-upgrade`；来源：`codex/integration-stability`；先创建草稿 PR。
+草稿 [PR #7](https://github.com/yikamai0916-sys/campus-companion/pull/7)。目标：`codex/collaboration-review-upgrade`；来源：`codex/integration-stability`。
 
 学生从日报或邮件进入阅读器后，现在可以回到原来源；阅读失败显示可见提示，会话失效会关闭阅读层。资料保存直接使用当前昵称。小组读取失败保留输入并提供就地重试。
 
