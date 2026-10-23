@@ -7,7 +7,7 @@ import worker from '../src/worker.js';
 import { hash,b64,random,seal,unseal,makePasswordHash } from '../src/security.js';
 import { deliver } from '../src/jobs.js';
 function database(){
-  const sqlite=new DatabaseSync(':memory:');for(const name of ['0001.sql','0002_accounts.sql','0003_profile.sql','0004_message_localizations.sql','0005_localization_version.sql','0006_outlook_connections.sql','0007_mail_preferences.sql','0008_account_scoped_records.sql','0009_collaboration.sql','0010_meeting_planner.sql','0011_meeting_votes_and_announcements.sql','0012_review_and_membership.sql','0013_preferred_zh_name.sql','0014_name_aliases.sql'])sqlite.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));
+  const sqlite=new DatabaseSync(':memory:');for(const name of ['0001.sql','0002_accounts.sql','0003_profile.sql','0004_message_localizations.sql','0005_localization_version.sql','0006_outlook_connections.sql','0007_mail_preferences.sql','0008_account_scoped_records.sql','0009_collaboration.sql','0010_meeting_planner.sql','0011_meeting_votes_and_announcements.sql','0012_review_and_membership.sql','0013_preferred_zh_name.sql','0014_name_aliases.sql','0015_mail_cache_lifecycle.sql'])sqlite.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));
   const db={prepare(sql){let args=[];const obj={bind(...a){args=a;return obj;},async first(){return sqlite.prepare(sql).get(...args)||null;},async all(){return {results:sqlite.prepare(sql).all(...args)};},async run(){const r=sqlite.prepare(sql).run(...args);return {meta:{changes:r.changes}};}};return obj;},async batch(stmts){sqlite.exec('BEGIN');try{const r=[];for(const s of stmts)r.push(await s.run());sqlite.exec('COMMIT');return r;}catch(e){sqlite.exec('ROLLBACK');throw e;}}};return db;
 }
 test('meeting workflow migration preserves historical confirmed state',()=>{
@@ -259,7 +259,32 @@ test('Outlook diagnostics reject example placeholders before OAuth starts',async
   await env.DB.prepare('INSERT INTO sessions(id,expires,user_id) VALUES(?,?,?)').bind(await hash(token),Date.now()+3600000,'user').run();
   const request=path=>worker.fetch(new Request(origin+'/api/'+path,{headers:{Cookie:'campus_session='+token},redirect:'manual'}),env);
   const status=await (await request('status')).json();assert.equal(status.outlookConfigured,false);assert.deepEqual(status.outlookMissingConfig.sort(),['APP_ORIGIN','MS_CLIENT_ID','MS_CLIENT_SECRET','TOKEN_KEY']);
-  assert.equal((await request('outlook/start?email=personal@outlook.com')).status,400);
+  assert.equal((await request('outlook/start?format=json&email=personal@outlook.com')).status,400);
+});
+
+test('Outlook form validation stays in JSON mode; browser failures return to settings',async()=>{
+  const origin='https://campus.example',token=random(),env={DB:database(),MS_CLIENT_ID:'client',MS_CLIENT_SECRET:'secret',APP_ORIGIN:origin,TOKEN_KEY:random()};
+  await env.DB.prepare("INSERT INTO users(id,email,password_hash,created) VALUES('u','user@example.com','unused',0)").run();
+  await env.DB.prepare('INSERT INTO sessions(id,expires,user_id) VALUES(?,?,?)').bind(await hash(token),Date.now()+3600000,'u').run();
+  const req=path=>worker.fetch(new Request(origin+path,{headers:{Cookie:'campus_session='+token},redirect:'manual'}),env);
+  const invalid=await req('/api/outlook/start?format=json&email=kaiqiou@outlook');
+  assert.equal(invalid.status,400);assert.match((await invalid.json()).error,/Outlook/);
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) n FROM oauth').first()).n,0);
+  const valid=await req('/api/outlook/start?format=json&email=student@outlook.com');
+  assert.equal(valid.status,200);assert.equal(new URL((await valid.json()).authorizationUrl).hostname,'login.microsoftonline.com');
+  for(const path of ['/api/outlook/start?email=kaiqiou@outlook','/api/outlook/callback?error=access_denied']){
+    const response=await req(path);assert.equal(response.status,302);
+    const target=new URL(response.headers.get('location'));assert.equal(target.origin,origin);assert.equal(target.searchParams.get('view'),'settings');assert.ok(target.searchParams.get('outlookError'));
+  }
+  const expired=await worker.fetch(new Request(origin+'/api/outlook/callback?error=access_denied'),env);
+  assert.equal(expired.status,302);assert.equal(new URL(expired.headers.get('location')).searchParams.get('authError'),'session');
+});
+
+test('unexpected database errors do not expose diagnostics to the user',async()=>{
+  const env={DB:{prepare(){throw new Error('D1_ERROR: no such table: private_internal_table');}}};
+  const response=await worker.fetch(new Request('https://campus.example/api/tasks',{headers:{Cookie:'campus_session=test'}}),env);
+  assert.equal(response.status,500);
+  const data=await response.json();assert.equal(data.error,'暂时无法处理，请重试');assert.doesNotMatch(JSON.stringify(data),/private_internal_table|D1_ERROR/);
 });
 
 test('disconnecting Outlook removes only the current account authorization',async()=>{
@@ -268,11 +293,13 @@ test('disconnecting Outlook removes only the current account authorization',asyn
   await env.DB.prepare('INSERT INTO sessions(id,expires,user_id) VALUES(?,?,?)').bind(await hash(token),Date.now()+3600000,'one').run();
   await env.DB.prepare("INSERT INTO outlook_connections(user_id,token,email,status) VALUES('one','encrypted-a','one@outlook.com','同步完成'),('two','encrypted-b','two@outlook.com','同步完成')").run();
   await env.DB.prepare("INSERT INTO messages(id,subject,received,sender,origin,category,summary,action,url,quality,user_id) VALUES('keep','School mail',0,'sender','school',2,'summary','action','','test','one')").run();
+  await env.DB.prepare("INSERT INTO mail_cache(user_id,message_id,generation,kind,locale,variant,value,created,expires) SELECT user_id,id,cache_generation,'translation','en','body','Retained translation',0,9999999999999 FROM messages WHERE user_id='one'").run();
   const response=await worker.fetch(new Request(origin+'/api/outlook',{method:'DELETE',headers:{Origin:origin,Cookie:'campus_session='+token,'Content-Type':'application/json'}}),env);
   assert.equal(response.status,200);
   assert.equal(await env.DB.prepare("SELECT user_id FROM outlook_connections WHERE user_id='one'").first(),null);
   assert.equal((await env.DB.prepare("SELECT email FROM outlook_connections WHERE user_id='two'").first()).email,'two@outlook.com');
   assert.equal((await env.DB.prepare("SELECT id FROM messages WHERE id='keep' AND user_id='one'").first()).id,'keep');
+  assert.equal((await env.DB.prepare("SELECT value FROM mail_cache WHERE user_id='one'").first()).value,'Retained translation');
 });
 
 test('mail reminder preferences are saved separately for each account',async()=>{
@@ -319,9 +346,10 @@ test('mail suggestions are private, deduplicated and require explicit confirmati
  const {saveMailSuggestion,listMailSuggestions,reviewMailSuggestion}=await import('../src/suggestions.js');
  const env={DB:database()},a={assignment:true,title:'Assignment',action:'Submit report',due:Date.now()+86400000,evidence:{deadline:'tomorrow'}};
  await saveMailSuggestion(env,'one','message',a);await saveMailSuggestion(env,'one','message',a);
+ await env.DB.prepare("INSERT INTO messages(id,subject,received,sender,origin,category,summary,action,url,quality,user_id) VALUES('message','Exchange plan source',0,'sender','origin',2,'summary','action','','test','one')").run();
  assert.equal((await listMailSuggestions(env,'two')).length,0);
  assert.equal((await env.DB.prepare('SELECT count(*) n FROM tasks').first()).n,0);
- const rows=await listMailSuggestions(env,'one');assert.equal(rows.length,1);
+ const rows=await listMailSuggestions(env,'one');assert.equal(rows.length,1);assert.equal(rows[0].message_subject,'Exchange plan source');
  await assert.rejects(()=>reviewMailSuggestion(env,'two',rows[0].id,{decision:'confirm'}));
  await reviewMailSuggestion(env,'one',rows[0].id,{decision:'confirm',title:'Reviewed title',due:null});
  const task=await env.DB.prepare('SELECT * FROM tasks').first();assert.equal(task.title,'Reviewed title');assert.equal(task.due,null);assert.equal(task.user_id,'one');

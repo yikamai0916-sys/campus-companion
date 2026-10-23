@@ -10,3 +10,5 @@ test('plain reader strips a leading forwarding header but keeps later discussion
  assert.equal(compactPlainBody(body),'Join us.\n\nFrom: historical note');
  assert.equal(compactPlainBody('Please read this.\nFrom: A\nSent: Monday\nTo: B\nSubject: C\nBody'),'Please read this.\nFrom: A\nSent: Monday\nTo: B\nSubject: C\nBody');
 });
+
+test('translated forwarding headers are removed',()=>{assert.equal(compactPlainBody('从：Department <a@example.com>\n发送：Monday\n收件人：Student\n主题：Talk\n\nWelcome'),'Welcome');});
