@@ -96,5 +96,19 @@ try{
  assert.equal(await a.locator('#mail-detail-zh').textContent(),'');assert.equal(await a.locator('#mail-detail-en').textContent(),'');
  await capture(a,'account-switched');
  assert.deepEqual(errors,[]);console.log('PASS T13 real account boundaries, removal, stale task, persisted profile, logout and account switch');
+ // Members leave and owners dissolve without first closing meetings or assignments.
+ await call(a,'login','POST',{email:identities[0].account.email,password});await a.reload();await a.locator('#app').waitFor({state:'visible'});
+ const active=await call(a,`groups/${g}/meeting-polls`,'POST',{name:'Leave without cancelling',rangeStart:start,rangeEnd:end,durationMinutes:60,slotMinutes:30,bufferMinutes:0},201);
+ const unfinished=await createCandidate(ids[2]),assigned=await call(a,`task-candidates/${unfinished.id}/review`,'POST',{decision:'confirm'});
+ await call(c,`tasks/${assigned.id}/assignment`,'POST',{decision:'accept'});
+ await refreshGroups(c);c.once('dialog',dialog=>dialog.accept());await c.locator('[data-member-action=leave]').click();
+ await c.waitForFunction(()=>!document.querySelector('[data-member-action=leave]'));
+ assert.equal((await call(c,'groups')).some(group=>group.id===g),false);await call(c,`meeting-polls/${active.id}`,'GET',undefined,404);
+ assert.equal((await call(a,`groups/${g}`)).tasks.find(t=>t.id===assigned.id).acceptance_status,'declined');
+ await refreshGroups(a);assert.ok(await a.locator('[data-member-action=dissolve]').isVisible());a.once('dialog',dialog=>dialog.accept());await a.locator('[data-member-action=dissolve]').click();
+ await a.waitForFunction(()=>!document.querySelector('[data-member-action=dissolve]'));
+ assert.equal((await call(a,'groups')).some(group=>group.id===g),false);await call(a,`groups/${g}`,'GET',undefined,404);
+ const kept=(await call(c,'tasks')).find(t=>t.id===newTask.id);assert.ok(kept?.completed);assert.equal(kept.group_id,null);
+ assert.deepEqual(errors,[]);console.log('PASS real UI: member leaves with open meeting and active assignment; sole owner dissolves immediately; completed work retained');
 }finally{await browser.close();}
 

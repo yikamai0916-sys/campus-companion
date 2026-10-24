@@ -178,16 +178,36 @@ export async function manageMember(env,actorId,groupId,input){
    env.DB.prepare('UPDATE groups SET owner_user_id=?,updated=? WHERE id=?').bind(target,Date.now(),groupId)
   ]);return {ok:true};
  }
+ if(input.action==='dissolve'){
+  if(access.role!=='owner')throw new CollaborationError('只有组长可以解散小组',403);
+  const absent=' AND NOT EXISTS(SELECT 1 FROM groups WHERE id=?)';
+  const result=await env.DB.batch([
+   env.DB.prepare('DELETE FROM groups WHERE id=? AND owner_user_id=?').bind(groupId,actorId),
+   env.DB.prepare("UPDATE jobs SET state='cancelled' WHERE task_id IN(SELECT id FROM tasks WHERE group_id=?) AND state IN('pending','sending')"+absent).bind(groupId,groupId),
+   env.DB.prepare("UPDATE tasks SET group_id=NULL,assigned_by=NULL,candidate_id=NULL,source='manual',source_id=NULL,version=version+1 WHERE group_id=? AND completed=1"+absent).bind(groupId,groupId),
+   env.DB.prepare('DELETE FROM tasks WHERE group_id=?'+absent).bind(groupId,groupId),
+   ...['meeting_votes','meeting_availability'].map(table=>env.DB.prepare('DELETE FROM '+table+' WHERE poll_id IN(SELECT id FROM meeting_polls WHERE group_id=?)'+absent).bind(groupId,groupId)),
+   ...['meeting_polls','task_candidates','group_announcements','group_invitations','group_members'].map(table=>env.DB.prepare('DELETE FROM '+table+' WHERE group_id=?'+absent).bind(groupId,groupId))
+  ]);
+  if(!result[0].meta.changes)throw new CollaborationError('小组已更新，请刷新后重试',409);
+  return {ok:true,dissolved:true};
+ }
  if(input.action!=='remove')throw new CollaborationError('操作无效');
  if(target!==actorId&&access.role!=='owner')throw new CollaborationError('只有组长可以移除成员',403);
  if(target===access.owner_user_id)throw new CollaborationError('请先转让组长，再退出小组',409);
- // Keep frozen electorates and confirmed meetings consistent. Close them first.
- const active=await env.DB.prepare("SELECT 1 FROM meeting_polls WHERE group_id=? AND status IN ('open','confirmed') LIMIT 1").bind(groupId).first();
- if(active)throw new CollaborationError('请先让组长取消小组会议，再变更成员',409);
- const assigned=await env.DB.prepare("SELECT 1 FROM tasks WHERE group_id=? AND user_id=? AND completed=0 AND acceptance_status IN ('pending','accepted') LIMIT 1").bind(groupId,target).first();
- if(assigned)throw new CollaborationError('请先完成或拒绝该成员的未完成分工',409);
+ const now=Date.now();
  await env.DB.batch([
+  env.DB.prepare("UPDATE jobs SET state='cancelled' WHERE task_id IN(SELECT id FROM tasks WHERE group_id=? AND user_id=?) AND state IN('pending','sending')").bind(groupId,target),
+  env.DB.prepare("UPDATE tasks SET group_id=NULL,assigned_by=NULL,candidate_id=NULL,source='manual',source_id=NULL,version=version+1 WHERE group_id=? AND user_id=? AND completed=1").bind(groupId,target),
+  env.DB.prepare("DELETE FROM tasks WHERE group_id=? AND user_id=? AND source='meeting'").bind(groupId,target),
+  env.DB.prepare("UPDATE tasks SET acceptance_status='declined',version=version+1,updated=? WHERE group_id=? AND user_id=? AND completed=0").bind(now,groupId,target),
+  env.DB.prepare("UPDATE task_candidates SET proposed_assignee_id=NULL,updated=? WHERE group_id=? AND proposed_assignee_id=? AND status='pending'").bind(now,groupId,target),
+  ...['meeting_votes','meeting_availability'].map(table=>env.DB.prepare('DELETE FROM '+table+' WHERE user_id=? AND poll_id IN(SELECT id FROM meeting_polls WHERE group_id=?)').bind(target,groupId)),
+  env.DB.prepare("DELETE FROM meeting_votes WHERE poll_id IN(SELECT id FROM meeting_polls WHERE group_id=? AND status='open')").bind(groupId),
+  env.DB.prepare("UPDATE meeting_polls SET phase='collecting',proposal_options='[]',eligible_user_ids='[]',revision=revision+1,updated=? WHERE group_id=? AND status='open'").bind(now,groupId),
+  env.DB.prepare("UPDATE meeting_polls SET eligible_user_ids=(SELECT json_group_array(value) FROM json_each(eligible_user_ids) WHERE value<>?),revision=revision+1,updated=? WHERE group_id=? AND status='confirmed'").bind(target,now,groupId),
   env.DB.prepare('DELETE FROM group_members WHERE group_id=? AND user_id=?').bind(groupId,target),
-  env.DB.prepare('DELETE FROM group_invitations WHERE group_id=? AND user_id=?').bind(groupId,target)
+  env.DB.prepare('DELETE FROM group_invitations WHERE group_id=? AND user_id=?').bind(groupId,target),
+  env.DB.prepare("INSERT INTO group_announcements(id,group_id,kind,title,body,created_by,created) VALUES(?,?,'membership',?,'left',?,?)").bind(crypto.randomUUID(),groupId,target,actorId,now)
  ]);return {ok:true};
 }
