@@ -55,3 +55,12 @@ export function enhanceForms(root,translate){
     }
   }
 }
+
+export function clearAuthSecrets(form){
+  for(const input of form.querySelectorAll('input')){
+    if(input.type!=='password'&&!input.dataset.revealReady)continue;
+    input.value='';input.setCustomValidity('');
+    if(input.type==='text')input.parentElement.querySelector('.password-toggle')?.click();
+    input.dispatchEvent(new Event('input',{bubbles:true}));
+  }
+}
