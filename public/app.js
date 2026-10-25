@@ -1,3 +1,4 @@
+import { clearAuthSecrets, enhanceForms } from './feedback.js';
 import { ensureHero, ensureDock, flyToDock } from './brand-icon.js';
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -106,6 +107,11 @@ function translateCopy(value){
 Object.assign(TEXTS,{'全部待办完成率':['全部待辦完成率','All tasks completion rate'],'一点一点，完成重要的事':['一點一點，完成重要的事','One small step at a time'],'全部待办进度':['全部待辦進度','Your overall progress'],'每一个小小的完成，都算数。':['每一個小小的完成，都算數。','Every small finish counts.'],'展开摘要':['展開摘要','Read summary'],'收起摘要':['收起摘要','Close summary']});
 // Copy for the wheel pickers and reminder chips (zh-TW, en).
 Object.assign(TEXTS,{'点此选择截止时间':['點此選擇截止時間','Choose a due time'],'＋ 自定义':['＋ 自訂','＋ Custom'],'把当前选择设为新待办默认':['把目前選擇設為新待辦預設','Use this selection for new tasks'],'设置截止时间后，这些提醒才会生效。':['設定截止時間後，這些提醒才會生效。','These reminders start working once a due time is set.'],'指定提醒时间（香港）':['指定提醒時間（香港）','Specific reminder times (Hong Kong)'],'＋ 添加提醒时间':['＋ 新增提醒時間','＋ Add a reminder time'],'选择间隔':['選擇間隔','Choose interval']});
+Object.assign(TEXTS,{
+ '确认密码':['確認密碼','Confirm password'],'两次输入的密码不一致':['兩次輸入的密碼不一致','The passwords do not match'],
+ '显示密码':['顯示密碼','Show password'],'隐藏密码':['隱藏密碼','Hide password'],
+ '请输入完整邮箱地址，例如 name@outlook.com':['請輸入完整電郵地址，例如 name@outlook.com','Enter a complete email address, for example name@outlook.com']
+});
 function translateTextNodes(){
  const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);let node;
  while(node=walker.nextNode()){
@@ -759,12 +765,12 @@ async function loadGroups(force=false,keepPoll=false){
 async function loadSettings(){return loadSettingsProfile();}
 async function enablePush(){try{if(!('serviceWorker'in navigator)||!('PushManager'in window))throw Error('请从 iPhone 主屏幕打开，或使用支持通知的浏览器');const permission=await Notification.requestPermission();if(permission!=='granted')throw Error('通知权限尚未允许，请在系统设置中启用');const registration=await navigator.serviceWorker.register('/sw.js');await navigator.serviceWorker.ready;const raw=atob(status.vapid.replace(/-/g,'+').replace(/_/g,'/'));const applicationServerKey=Uint8Array.from(raw,c=>c.charCodeAt(0));const sub=await registration.pushManager.getSubscription()||await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey});await api('subscriptions',{method:'POST',body:sub.toJSON()});toast('此设备已启用通知');}catch(e){toast(e.message);}}
 function exportCalendar(t){if(!t.due)return;const quote=s=>String(s).replace(/\\/g,'\\\\').replace(/\r?\n/g,'\\n').replace(/,/g,'\\,').replace(/;/g,'\\;');const stamp=n=>new Date(n).toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z/,'Z');const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Campus Companion//Tasks//ZH','BEGIN:VEVENT','UID:'+t.id+'@campus-companion','DTSTAMP:'+stamp(Date.now()),'DTSTART:'+stamp(t.due),'DTEND:'+stamp(t.due+1800000),'SUMMARY:'+quote('截止：'+t.title),'DESCRIPTION:'+quote(t.notes+'\n一次性日历副本，完成或改期请在校园清单操作。'),'END:VEVENT','END:VCALENDAR'];const blob=new Blob([lines.join('\r\n')+'\r\n'],{type:'text/calendar;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='待办截止日期.ics';a.click();setTimeout(()=>URL.revokeObjectURL(url),5000);toast('已导出日历副本；它不会自动同步');}
-$('#login-form').onsubmit=async event=>{event.preventDefault();const form=event.currentTarget,b=form.querySelector('button');b.disabled=true;b.classList.add('pending');const original=b.textContent;b.textContent=local('提交中…','提交中…','Submitting…');try{await api('login',{method:'POST',body:{email:form.elements.email.value,password:form.elements.password.value}});form.reset();await flyToDock(boot);}catch(e){$('#login-error').textContent=e.message;}finally{b.disabled=false;b.classList.remove('pending');b.textContent=original;}};
-$('#register-form').onsubmit=async event=>{event.preventDefault();const form=event.currentTarget,b=form.querySelector('[type=submit]');b.disabled=true;b.classList.add('pending');const original=b.textContent;b.textContent=local('提交中…','提交中…','Submitting…');$('#register-error').textContent='';try{await api('register',{method:'POST',body:{email:form.elements.email.value,password:form.elements.password.value,question:form.elements.question.value,answer:form.elements.answer.value}});form.reset();await flyToDock(boot);toast('账号已创建');}catch(e){$('#register-error').textContent=e.message;}finally{b.disabled=false;b.classList.remove('pending');b.textContent=original;}};
-$$('[data-auth]').forEach(button=>button.onclick=()=>{$$('[data-auth]').forEach(b=>b.classList.toggle('selected',b===button));$('#login-form').classList.toggle('hidden',button.dataset.auth!=='login');$('#register-form').classList.toggle('hidden',button.dataset.auth!=='register');});
-$('#forgot-password').onclick=()=>{$('#recovery-form').reset();$('#recovery-answer').classList.add('hidden');$('#recovery-error').textContent='';$('#recovery-dialog').showModal();};
+$('#login-form').onsubmit=async event=>{event.preventDefault();const form=event.currentTarget,b=form.querySelector('[type=submit]');b.disabled=true;b.classList.add('pending');const original=b.textContent;b.textContent=local('提交中…','提交中…','Submitting…');try{await api('login',{method:'POST',body:{email:form.elements.email.value,password:form.elements.password.value}});form.reset();await flyToDock(boot);}catch(e){clearAuthSecrets(form);$('#login-error').textContent=e.message;form.elements.password.focus();}finally{b.disabled=false;b.classList.remove('pending');b.textContent=original;}};
+$('#register-form').onsubmit=async event=>{event.preventDefault();const form=event.currentTarget,b=form.querySelector('[type=submit]');b.disabled=true;b.classList.add('pending');const original=b.textContent;b.textContent=local('提交中…','提交中…','Submitting…');$('#register-error').textContent='';try{await api('register',{method:'POST',body:{email:form.elements.email.value,password:form.elements.password.value,question:form.elements.question.value,answer:form.elements.answer.value}});form.reset();await flyToDock(boot);toast('账号已创建');}catch(e){clearAuthSecrets(form);$('#register-error').textContent=e.message;}finally{b.disabled=false;b.classList.remove('pending');b.textContent=original;}};
+$$('[data-auth]').forEach(button=>button.onclick=()=>{for(const form of [$('#login-form'),$('#register-form')])clearAuthSecrets(form);$('#login-error').textContent='';$('#register-error').textContent='';$$('[data-auth]').forEach(b=>b.classList.toggle('selected',b===button));$('#login-form').classList.toggle('hidden',button.dataset.auth!=='login');$('#register-form').classList.toggle('hidden',button.dataset.auth!=='register');});
+$('#forgot-password').onclick=()=>{$('#recovery-form').reset();$('#recovery-answer').classList.add('hidden');for(const name of ['answer','password','confirmPassword'])$('#recovery-form').elements[name].required=false;$('#recovery-error').textContent='';$('#recovery-dialog').showModal();};
 $('#close-recovery').onclick=()=>$('#recovery-dialog').close();
-$('#load-question').onclick=async()=>{const f=$('#recovery-form');$('#recovery-error').textContent='';try{const result=await api('recovery/question',{method:'POST',body:{email:f.elements.email.value}});$('#security-question').textContent='密保问题：'+result.question;$('#recovery-answer').classList.remove('hidden');f.elements.answer.required=true;f.elements.password.required=true;}catch(e){$('#recovery-error').textContent=e.message;}};
+$('#load-question').onclick=async()=>{const f=$('#recovery-form');$('#recovery-error').textContent='';try{const result=await api('recovery/question',{method:'POST',body:{email:f.elements.email.value}});$('#security-question').textContent='密保问题：'+result.question;$('#recovery-answer').classList.remove('hidden');for(const name of ['answer','password','confirmPassword'])f.elements[name].required=true;}catch(e){$('#recovery-error').textContent=e.message;}};
 $('#recovery-form').onsubmit=async event=>{event.preventDefault();const f=event.currentTarget,b=f.querySelector('[type=submit]');b.disabled=true;try{await api('recovery/reset',{method:'POST',body:{email:f.elements.email.value,answer:f.elements.answer.value,password:f.elements.password.value}});$('#recovery-dialog').close();toast('密码已重置，请使用新密码登录');}catch(e){$('#recovery-error').textContent=e.message;}finally{b.disabled=false;}};
 async function logout(){try{await api('logout',{method:'POST',body:{}});}finally{tasks=[];location.replace('/');}}
 $('#logout').onclick=logout;
@@ -812,9 +818,10 @@ async function renderMailSuggestions(){
 }
 
 loadSettings=loadSettingsProfile;
-const localeObserver=new MutationObserver(()=>translateTextNodes());
+const localeObserver=new MutationObserver(()=>{enhanceForms(document,translateCopy);translateTextNodes();});
 localeObserver.observe(document.body,{childList:true,subtree:true,characterData:true});
 $$('[data-login-locale]').forEach(button=>button.onclick=()=>{localStorage.setItem('campus-locale',button.dataset.loginLocale);applyLocale(button.dataset.loginLocale);$$('[data-login-locale]').forEach(b=>b.classList.toggle('selected',b===button));});
+enhanceForms(document,translateCopy);
 applyLocale(detectLocale());
 $$('[data-login-locale]').forEach(b=>b.classList.toggle('selected',b.dataset.loginLocale===locale));
 boot();
