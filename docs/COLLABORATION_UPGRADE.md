@@ -4,7 +4,7 @@ Based on PR #2 (`codex/mvp-foundation`). Review this change after that PR.
 
 ## User-visible changes
 - Invitations require the recipient to accept in My Groups before membership is granted.
-- Owners can transfer ownership or remove members; members can leave after outstanding assignments and active meetings are resolved.
+- Owners can transfer ownership or remove members; members can leave immediately even with active meetings or unfinished assignments. Owners can dissolve the group at any time. See `docs/GROUP_LIFECYCLE.md` for cleanup rules.
 - Assignment emails create account-private review cards. Users can correct title, notes and deadline, then confirm or dismiss. Only confirmation creates a task and reminder jobs.
 - Owners can cancel meetings or reopen availability collection for a new date range. Old generated tasks, pending reminders, votes and availability are removed. Revision checks prevent stale operations.
 - Simplified Chinese uses canonical source text rather than traditional translations. Dynamic content is localized; user-authored names and evidence are retained.

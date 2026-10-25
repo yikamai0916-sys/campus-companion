@@ -149,6 +149,18 @@ main{padding:0 4.5% 80px}
 .group-index small,.group-panel-head p,.candidate-card p,.group-task p,.poll-card p,.announcement p{color:var(--muted-text)}
 .group-panel-head,.group-section{border-color:var(--surface-3)}
 .candidate-form,.meeting-form,.candidate-review,.announcements,.security-question,.setup-block{border:0;border-radius:var(--radius-card);background:var(--surface-2)}
+.mail-suggestion-list{display:grid;gap:14px;margin-top:20px}
+.mail-suggestion-card{display:grid;gap:14px;padding:20px;border:1px solid var(--surface-3);border-radius:22px;background:var(--surface);box-shadow:var(--shadow-soft)}
+.mail-suggestion-head{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
+.mail-source-link{min-width:0;max-width:72%;padding:8px 0;background:none;box-shadow:none;color:var(--muted-text);font-size:13px;font-weight:700;text-align:right;text-decoration:underline;text-underline-offset:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mail-source-link:hover{background:none;color:var(--ink)}
+.mail-suggestion-fields{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,.45fr);gap:14px}
+.mail-suggestion-card label{display:grid;gap:7px;letter-spacing:1px}
+.mail-suggestion-card input,.mail-suggestion-card textarea{width:100%;min-width:0;border:0;border-radius:14px;background:var(--surface-2);padding:12px 14px;color:var(--ink);font:inherit;letter-spacing:normal}
+.mail-suggestion-card textarea{resize:vertical;min-height:58px}
+.mail-suggestion-evidence{margin:0;padding:11px 14px;border-left:3px solid var(--surface-3);border-radius:0 12px 12px 0;background:var(--surface-2);color:var(--muted-text);font-size:13px;line-height:1.55;max-height:4.7em;overflow:auto}
+.mail-suggestion-card .inline-actions{margin-top:0}
+.mail-suggestion-card .inline-actions .primary{padding:12px 20px}
 .member-chip{border-radius:var(--pill);background:var(--surface-2);padding:8px 14px}
 .member-chip.current{box-shadow:inset 0 0 0 2px var(--ink);background:var(--surface)}
 .state-pill{border-radius:var(--pill);padding:4px 10px;font-size:11px;font-weight:800;letter-spacing:.5px;background:var(--surface-2);color:var(--ink)}
@@ -247,6 +259,10 @@ input[type=checkbox]:not(.task-check){accent-color:var(--ink)}
   .toast{bottom:calc(110px + env(safe-area-inset-bottom))}
   dialog{padding:24px 18px;border-radius:var(--radius-card)}
   .mail-card,.setting-card{padding:22px 20px}
+  .mail-suggestion-card{padding:16px;border-radius:18px}
+  .mail-suggestion-head{align-items:flex-start;flex-direction:column}
+  .mail-source-link{max-width:100%;padding:2px 0;text-align:left}
+  .mail-suggestion-fields{grid-template-columns:1fr;gap:12px}
   .announcements{margin:0;border-radius:var(--radius-card)}
   .login{background:var(--bg)}
 }
@@ -339,6 +355,13 @@ button.pending::before{content:'';display:inline-block;width:13px;height:13px;ma
 .mail-points li+li{margin-top:9px}.brief-actions{padding:16px;border-left:3px solid var(--ink);background:var(--surface-2);border-radius:0 14px 14px 0;margin-top:16px;font-size:15px;line-height:1.7}
 .brief-actions ul{padding-left:1.25em;margin-bottom:0}.digest-overview{padding:18px 0;border-bottom:1px solid var(--surface-3);font-size:16px;font-weight:400}
 .digest-item .mail-points{font-size:15px;font-weight:400}.digest-item h3{font-size:20px;line-height:1.4}.digest-item{cursor:pointer;text-align:left}
+.password-field{display:block;position:relative;width:100%}
+.password-field input{padding-right:58px!important;width:100%;box-sizing:border-box}
+.password-field .password-toggle{position:absolute;right:6px;top:50%;transform:translateY(-50%);display:grid;place-items:center;width:44px;height:44px;min-width:44px;padding:0;margin:0;border:0;border-radius:50%;background:transparent;color:var(--ink,#151515);box-shadow:none}
+.password-toggle[aria-pressed=true]{background:var(--surface-2,#e8e8e8)}
+.password-toggle:focus-visible{outline:2px solid currentColor;outline-offset:1px}
+.load-error{padding:24px;border:1px solid #bd6464;border-radius:16px;background:#fff7f7;color:#8d2121}
+.load-error p{margin-top:0}.error:not(:empty){line-height:1.6;overflow-wrap:anywhere}
 
 /* Profile and full-page mail reader */
 .profile-summary{display:flex;align-items:center;gap:16px;margin:4px 0 28px}
@@ -350,6 +373,8 @@ button.pending::before{content:'';display:inline-block;width:13px;height:13px;ma
 .profile-editor .avatar-preview{width:56px;height:56px;object-fit:cover;border-radius:50%}
 .profile-editor input[type=file]{font-size:14px;padding:10px;max-width:100%}
 body.reader-open{overflow:hidden}
+
+.reader-open{overflow:hidden}
 .mail-reader{position:fixed;inset:0;z-index:1000;overflow:auto;background:#fff;color:var(--ink)}
 .reader-bar{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:16px;padding:14px 24px;border-bottom:1px solid var(--line);background:#fff}
 .reader-bar>span{flex:1;color:var(--muted);font-size:.9rem}
@@ -373,3 +398,5 @@ body.reader-open{overflow:hidden}
 .original-mail-body table{margin:0;border-spacing:0}
 .original-mail-body td,.original-mail-body th{padding:0 4px}
 .original-mail-body table table td,.original-mail-body table table th{padding:0}
+
+#mail-detail-zh>img{display:block;max-width:100%;height:auto;margin:16px auto}
