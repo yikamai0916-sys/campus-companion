@@ -1,0 +1,25 @@
+/* Liquid glass nav pill + view enter.
+   The nav BAR itself is owned by theme.css (centered floating bar on mobile,
+   sidebar on desktop); this file only adds the sliding pill behind the active
+   button and the view-enter animation. It deliberately does NOT restyle the
+   bar or the buttons, so it cannot fight theme.css's layout. */
+aside nav button{position:relative;z-index:1}
+.ln-pill{position:absolute;z-index:0;pointer-events:none;
+  background:rgba(255,255,255,.88);
+  border:1px solid rgba(255,255,255,.8);
+  box-shadow:0 6px 20px rgba(20,40,36,.16), inset 0 1px 0 rgba(255,255,255,.95);
+  will-change:left,top,width,height,transform}
+/* the pill IS the active background now; desktop sidebar needs a positioned nav */
+@media(min-width:701px){aside nav{position:relative}}
+aside nav button.active, aside nav button.active:hover{background:transparent;background-image:none;box-shadow:none}
+html[data-theme="dark"] aside nav button.active, html[data-theme="dark"] aside nav button.active:hover{background:transparent;background-image:none;box-shadow:none}
+/* subtle view enter on every switch (replays when a view goes hidden -> shown) */
+main [id$="-view"]:not(.hidden){animation:ln-view-in .35s ease-out both}
+@keyframes ln-view-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media(max-width:700px){
+  /* keep the toast above theme.css's floating bar */
+  .toast{bottom:calc(100px + env(safe-area-inset-bottom, 0px))}
+}
+@media(prefers-reduced-motion:reduce){
+  main [id$="-view"]:not(.hidden){animation:none}
+}

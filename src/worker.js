@@ -190,6 +190,7 @@ async function routes(request,env){
  return json(await Promise.all(rows.map(async row=>{const task=mapTask(row);return task.source==='meeting'?meetingTask(task,await env.DB.prepare('SELECT name FROM meeting_polls WHERE id=?').bind(task.source_id).first(),account.locale):task;})));
  }
   if(path==='/api/tasks'&&method==='POST')return json(await createTask(env,await body(request),'manual',null,account.user_id),201);
+  if(path==='/api/tasks/from-mail'&&method==='POST'){const input=await body(request);const mid=typeof input?.messageId==='string'?input.messageId:'';return json(await createTask(env,input,'email',mid?('digest-mail:'+mid):null,account.user_id),201);}
   const taskId=path.match(/^\/api\/tasks\/([\w-]+)$/)?.[1];
   if(taskId&&method==='PATCH'){
     const old=await env.DB.prepare('SELECT * FROM tasks WHERE id=? AND user_id=?').bind(taskId,account.user_id).first();if(!old)return json({error:serverMessage('任务不存在',uiLocale)},404);
@@ -197,7 +198,8 @@ async function routes(request,env){
     if(old.acceptance_status==='declined')return json({error:serverMessage('已拒绝的分工不能修改',uiLocale)},409);
     const input=await body(request);if(input.reminders?.email)throw new Error('邮件提醒暂不可用，请选择手机通知');if(input.version!==old.version)return json({error:serverMessage('任务已在其他设备更新，请刷新后重试',uiLocale)},409);
     const t={...old,...validateTask(input,mapTask(old)),version:old.version+1,updated:Date.now()};
-    const result=await env.DB.batch([env.DB.prepare('UPDATE tasks SET title=?,notes=?,due=?,priority=?,completed=?,reminders=?,version=?,updated=? WHERE id=? AND version=?').bind(t.title,t.notes,t.due,t.priority,t.completed,JSON.stringify(t.reminders),t.version,t.updated,t.id,old.version),env.DB.prepare("UPDATE jobs SET state='cancelled' WHERE task_id=? AND version=? AND state IN ('pending','sending')").bind(t.id,old.version)]);
+    t.completed_at=t.completed?(old.completed_at||Date.now()):null;
+    const result=await env.DB.batch([env.DB.prepare('UPDATE tasks SET title=?,notes=?,due=?,priority=?,completed=?,reminders=?,version=?,updated=?,completed_at=? WHERE id=? AND version=?').bind(t.title,t.notes,t.due,t.priority,t.completed,JSON.stringify(t.reminders),t.version,t.updated,t.completed_at,t.id,old.version),env.DB.prepare("UPDATE jobs SET state='cancelled' WHERE task_id=? AND version=? AND state IN ('pending','sending')").bind(t.id,old.version)]);
     if(!result[0].meta.changes)return json({error:serverMessage('任务已更新，请刷新',uiLocale)},409);
     await scheduleTask(env,t);return json(t);
   }
@@ -289,7 +291,16 @@ async function routes(request,env){
       return [normalized];
     }catch{return []}});
     for(const record of records)record.items=await attachBriefs(env,account.user_id,account.locale||'zh-CN',record.items||[]);
+    try{const ignoredRows=(await env.DB.prepare('SELECT message_id FROM ignored_digests WHERE user_id=?').bind(account.user_id).all()).results;const ignoredSet=new Set(ignoredRows.map(r=>r.message_id));for(const record of records)for(const item of record.items||[])if(item.id&&ignoredSet.has(item.id))item.ignored=true;}catch{}
     return json(records);
+  }
+  if(path==='/api/digests/ignore'){
+    const input=await body(request).catch(()=>({}));const messageId=typeof input?.messageId==='string'?input.messageId.trim():'';
+    if(!messageId)return json({error:serverMessage('缺少消息',uiLocale)},400);
+    if(method==='POST')await env.DB.prepare('INSERT OR IGNORE INTO ignored_digests(user_id,message_id) VALUES(?,?)').bind(account.user_id,messageId).run();
+    else if(method==='DELETE')await env.DB.prepare('DELETE FROM ignored_digests WHERE user_id=? AND message_id=?').bind(account.user_id,messageId).run();
+    else return json({error:serverMessage('不支持的方法',uiLocale)},405);
+    return json({ok:true});
   }
   if(path==='/api/outlook/start'&&method==='GET'){
     const requestedEmail=emailOf(url.searchParams.get('email'));

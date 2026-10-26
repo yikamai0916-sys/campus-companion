@@ -22,21 +22,34 @@
 
 /* ---- login: big icon, top centre ---- */
 .login .brand.login-brand{flex-direction:column;justify-content:center;gap:18px;margin-bottom:30px;text-align:center}
-.bi-hero{width:clamp(124px,36vw,172px);border-radius:26%;box-shadow:0 18px 44px rgba(4,159,149,.18),0 3px 10px rgba(0,0,0,.06)}
+.bi-hero{width:clamp(150px,38vw,196px);border-radius:26%;box-shadow:0 18px 44px rgba(4,159,149,.18),0 3px 10px rgba(0,0,0,.06)}
 
 /* ---- sidebar: small icon docked where the old check logo was ---- */
-aside .brand .bi-dock{width:44px;height:44px;border-radius:26%;box-shadow:0 2px 8px rgba(0,0,0,.22)}
+aside .brand .bi-dock{width:44px;height:44px;border-radius:26%;box-shadow:0 2px 8px rgba(32,58,54,.08)}
 .bi-dock.bi-waiting{visibility:hidden}
-.bi-dock.bi-landed::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:0 0 0 0 rgba(212,255,0,.9);animation:bi-ripple .9s ease-out}
+.bi-dock.bi-landed::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:0 0 0 0 rgba(23,111,104,.22);animation:bi-ripple .9s ease-out}
 .bi-dock.bi-landed{overflow:visible}
 .bi-dock.bi-landed svg{border-radius:26%}
-@keyframes bi-ripple{to{box-shadow:0 0 0 18px rgba(212,255,0,0)}}
+@keyframes bi-ripple{to{box-shadow:0 0 0 18px rgba(23,111,104,0)}}
 @media(max-width:700px){aside .brand .bi-dock{width:40px;height:40px;box-shadow:0 2px 8px rgba(0,0,0,.12)}}
 
 /* ---- the copy that flies from the login screen to the dock ---- */
 .bi-flyer{position:fixed;z-index:2000;margin:0;transform-origin:0 0;will-change:transform;pointer-events:none;box-shadow:0 22px 50px rgba(4,159,149,.28)}
 
 /* the app fades in underneath the flying icon */
-@keyframes appEnter{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes appEnter{from{opacity:0}to{opacity:1}}
 #app.app-enter{animation:appEnter .6s cubic-bezier(.2,.8,.2,1) .35s both}
 @media(prefers-reduced-motion:reduce){#app.app-enter{animation:none}.bi-dock.bi-landed::after{animation:none}}
+
+/* Centre the welcome mark without pushing the form below a laptop viewport. */
+.login{margin:3vh auto;padding-top:24px}
+.login .login-brand{align-items:center}
+.login h1,.login>p{text-align:center}
+.bi.is-paused *{animation-play-state:paused!important}
+@media(max-width:700px){.login{margin:0 auto;padding-top:24px}.login .brand.login-brand{gap:12px;margin-bottom:22px}.login h1{font-size:36px}}
+
+/* A quiet resident brand mark in the task header. */
+#tasks-view>.page-heading{position:relative;min-height:180px}
+.bi-home{position:absolute;width:168px;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none;box-shadow:0 12px 30px rgba(23,111,104,.08)}
+@media(min-width:701px) and (max-width:1100px){#tasks-view>.page-heading{padding-top:158px}.bi-home{width:132px;top:8px;transform:translateX(-50%)}}
+@media(max-width:700px){#tasks-view>.page-heading{padding-top:140px;min-height:0}.bi-home{width:120px;top:8px;transform:translateX(-50%)}}

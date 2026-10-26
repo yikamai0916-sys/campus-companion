@@ -39,6 +39,21 @@ export function resetSuccessButton(button) {
  * "圆形扩散转场": the new page grows as a circle from where the user tapped.
  * Uses the View Transitions API; browsers without it (or reduced motion) just switch instantly.
  */
+/** Switch workspace pages with a short spatial handoff; theme changes keep their circular reveal. */
+let pageTransitionId=0;
+export function pageTransition(update) {
+  if (reducedMotion()) { update(); return; }
+  if (document.startViewTransition) { document.startViewTransition(update); return; }
+  const id=++pageTransitionId,current=document.querySelector('main > section:not(.hidden)');
+  if (!current) { update(); return; }
+  current.animate([{opacity:1,transform:'translateY(0)'},{opacity:0,transform:'translateY(-5px)'}],{duration:120,easing:'ease-in',fill:'forwards'}).finished.catch(()=>{}).then(()=>{
+    if(id!==pageTransitionId)return;
+    update();
+    const next=document.querySelector('main > section:not(.hidden)');
+    next?.animate([{opacity:0,transform:'translateY(9px)',filter:'blur(3px)'},{opacity:1,transform:'translateY(0)',filter:'blur(0)'}],{duration:320,easing:'cubic-bezier(.16,1,.3,1)'});
+  });
+}
+
 export function circularTransition(event, update) {
   if (!document.startViewTransition || reducedMotion()) { update(); return; }
   // Keyboard "clicks" have no pointer position, so use the centre of the button instead.
@@ -59,11 +74,11 @@ export function circularTransition(event, update) {
 }
 
 /**
- * Background of the progress card: lavender at 0 %, yellow at 50 %, lime at 100 %,
+ * Background of the progress card: soft aqua deepens slightly as progress increases,
  * blended smoothly in between. Returns an 'rgb(r, g, b)' string.
  */
 export function progressColor(percent) {
-  const stops = [[0, [232, 227, 255]], [50, [255, 214, 10]], [100, [212, 255, 0]]]; // #E8E3FF, #FFD60A, #D4FF00
+  const stops = [[0, [239, 245, 243]], [50, [231, 242, 238]], [100, [220, 239, 235]]]; // #EFF5F3 → #E7F2EE → #DCEFEB
   const p = Math.min(100, Math.max(0, Number(percent) || 0));
   const [from, to] = p <= 50 ? [stops[0], stops[1]] : [stops[1], stops[2]];
   const t = (p - from[0]) / (to[0] - from[0]);

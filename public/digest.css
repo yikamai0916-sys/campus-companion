@@ -1,6 +1,6 @@
 /* ==========================================================================
    日报 / Digest briefing page.
-   Loaded after theme.css. Uses the theme tokens (--ink, --lime, --surface-2, --spring …).
+   Loaded after theme.css. Uses the theme tokens (--ink, --accent, --surface-2, --spring …).
    Motion is switched off globally by the prefers-reduced-motion rule in theme.css.
    ========================================================================== */
 
@@ -14,9 +14,9 @@
 .dg-stat:hover{transform:translateY(-2px);box-shadow:var(--shadow-soft)}
 .dg-stat b{display:block;font-size:2rem;line-height:1.05;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .dg-stat span{display:block;margin-top:6px;font-size:.78rem;font-weight:700;letter-spacing:.04em;color:var(--muted-text)}
-.dg-stat.is-act{background:var(--ink);color:#fff}
-.dg-stat.is-act b{color:var(--lime)}
-.dg-stat.is-act span{color:rgba(255,255,255,.7)}
+.dg-stat.is-act{background:var(--accent-soft);color:var(--ink)}
+.dg-stat.is-act b{color:var(--accent-strong)}
+.dg-stat.is-act span{color:var(--muted-text)}
 .dg-stat.is-act:has(b[data-count="0"]){background:var(--surface-2);color:var(--ink)}
 .dg-stat.is-act:has(b[data-count="0"]) b{color:var(--ink)}
 .dg-stat.is-act:has(b[data-count="0"]) span{color:var(--muted-text)}
@@ -36,7 +36,7 @@
 .dg-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:20px 0 14px}
 .dg-filter{position:relative;display:inline-flex;gap:2px;max-width:100%;padding:4px;border-radius:var(--pill);background:var(--surface-2);overflow-x:auto;scrollbar-width:none}
 .dg-filter::-webkit-scrollbar{display:none}
-.dg-ind{position:absolute;top:4px;bottom:4px;left:0;width:0;border-radius:var(--pill);background:var(--lime);box-shadow:0 1px 3px rgba(0,0,0,.14);pointer-events:none}
+.dg-ind{position:absolute;top:4px;bottom:4px;left:0;width:0;border-radius:var(--pill);background:var(--surface);box-shadow:var(--shadow-soft);pointer-events:none}
 .dg-filter.ready .dg-ind{transition:transform .4s var(--spring),width .4s var(--ease-out)}
 .dg-card .dg-filter button{position:relative;z-index:1;border:0;border-radius:var(--pill);padding:8px 14px;background:transparent;color:var(--muted-text);font-size:.88rem;font-weight:700;white-space:nowrap;cursor:pointer;transition:color .25s,transform .15s var(--ease-out)}
 .dg-card .dg-filter button:hover:not(:disabled){color:var(--ink)}
@@ -47,10 +47,10 @@
 
 /* ---------- shared pill button ---------- */
 .dg-card .dg-btn{display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:var(--pill);padding:10px 18px;background:var(--surface-3);color:var(--ink);font-size:.9rem;font-weight:700;cursor:pointer;transition:transform .16s var(--ease-out),background .2s,box-shadow .25s,color .2s}
-.dg-card .dg-btn:hover:not(:disabled){background:#dcdce0;transform:translateY(-1px)}
+.dg-card .dg-btn:hover:not(:disabled){background:var(--surface-3);transform:translateY(-1px)}
 .dg-card .dg-btn:active:not(:disabled){transform:scale(.96)}
-.dg-card .dg-btn.primary{background:var(--ink);color:#fff}
-.dg-card .dg-btn.primary:hover:not(:disabled){background:#000;box-shadow:var(--shadow-float)}
+.dg-card .dg-btn.primary{background:var(--ink-2);color:#fff}
+.dg-card .dg-btn.primary:hover:not(:disabled){background:var(--ink);box-shadow:var(--shadow-float)}
 .dg-card .dg-btn.ghost{padding:8px 14px;background:transparent;color:var(--muted-text)}
 .dg-card .dg-btn.ghost:hover:not(:disabled){background:var(--surface-2);color:var(--ink)}
 .dg-card .dg-btn:disabled{opacity:.4;cursor:default}
@@ -59,14 +59,14 @@
 .dg-list{display:grid;gap:8px;margin:0;padding:0;list-style:none}
 .dg-row{border-radius:22px;background:var(--surface-2);transition:background .25s,box-shadow .3s var(--ease-out)}
 .dg-row[hidden]{display:none}
-.dg-row:hover{background:#ececef}
+.dg-row:hover{background:var(--surface-3)}
 .dg-row.open{background:var(--surface);box-shadow:var(--shadow-soft),inset 0 0 0 1px var(--surface-3)}
 .dg-head{display:grid;grid-template-columns:auto 1fr auto auto;grid-template-areas:"dot main when chev";align-items:center;gap:12px;width:100%;padding:14px 16px;border:0;border-radius:22px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:transform .15s var(--ease-out)}
 .dg-head:active{transform:scale(.992)}
 .dg-row .dg-head,.dg-row .dg-head:hover,.dg-row .dg-head:active,.dg-row .dg-head:focus{background:transparent;box-shadow:none}
 .dg-dot{grid-area:dot;width:10px;height:10px;border-radius:50%;background:var(--surface-3);box-shadow:inset 0 0 0 2px #b9b9bf}
-.tier-act .dg-dot{background:var(--orange);box-shadow:0 0 0 0 rgba(255,92,0,.45);animation:dgPulse 2.8s ease-out infinite}
-.tier-upcoming .dg-dot{background:var(--ink);box-shadow:none}
+.tier-act .dg-dot{background:var(--orange);box-shadow:none}
+.tier-upcoming .dg-dot{background:var(--accent);box-shadow:none}
 .dg-main{grid-area:main;display:grid;gap:3px;min-width:0}
 .dg-title{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;font-size:1rem;font-weight:700;line-height:1.38}
 .dg-row.open .dg-title{-webkit-line-clamp:unset}
@@ -78,7 +78,7 @@
 .dg-chev{grid-area:chev;display:grid;place-items:center;width:26px;height:26px;border-radius:50%;color:var(--muted-text);transition:background .25s,color .25s}
 .dg-chev::before{content:"";width:7px;height:7px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:translateY(-2px) rotate(45deg);transition:transform .4s var(--spring)}
 .dg-head:hover .dg-chev{background:var(--surface-3);color:var(--ink)}
-.dg-row.open .dg-chev{background:var(--lime);color:var(--ink)}
+.dg-row.open .dg-chev{background:var(--accent-soft);color:var(--accent-strong)}
 .dg-row.open .dg-chev::before{transform:translateY(2px) rotate(225deg)}
 
 /* expanding body: animates height 0 -> auto without measuring it in JS */
@@ -90,19 +90,19 @@
 .dg-body .mail-points{margin:8px 0 0;font-size:.95rem}
 .dg-body .brief-actions{margin-top:14px}
 .dg-quick{margin:0;font-size:.95rem;line-height:1.6}
-.dg-quick b{display:inline-block;margin-right:6px;padding:2px 9px;border-radius:var(--pill);background:var(--lavender);font-size:.72rem;font-weight:800;letter-spacing:.04em}
+.dg-quick b{display:inline-block;margin-right:6px;padding:2px 9px;border-radius:var(--pill);background:var(--accent-soft);color:var(--accent-strong);font-size:.72rem;font-weight:800;letter-spacing:.04em}
 .dg-note{margin:10px 0 0;font-size:.85rem;color:var(--muted-text)}
 .dg-note.is-error{color:var(--orange-dark,#b3541e)}
 .dg-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
 
 /* ---------- 日报专属 AI 摘要：简报风格，与邮件页区分 ---------- */
 .dg-brief{margin:4px 0 0}
-.dg-brief-label{display:inline-block;margin:10px 0 8px;padding:3px 10px;border-radius:var(--pill);background:var(--ink);color:#fff;font-size:.72rem;font-weight:800;letter-spacing:.05em}
-.dg-brief-label.is-action{background:var(--orange);margin-top:14px}
+.dg-brief-label{display:inline-block;margin:10px 0 8px;padding:3px 10px;border-radius:var(--pill);background:var(--accent-soft);color:var(--accent-strong);font-size:.72rem;font-weight:800;letter-spacing:.05em}
+.dg-brief-label.is-action{background:var(--orange);color:#fff;margin-top:14px}
 .dg-brief-points{margin:0;padding:0;list-style:none;display:grid;gap:8px}
 .dg-brief-points li{position:relative;padding:10px 12px 10px 30px;border-radius:14px;background:var(--surface);font-size:.93rem;line-height:1.55;animation:dgIn .4s var(--ease-out) both}
-.dg-brief-points li::before{content:"";position:absolute;left:12px;top:17px;width:7px;height:7px;border-radius:50%;background:var(--lime);box-shadow:0 0 0 3px color-mix(in srgb,var(--lime) 25%,transparent)}
-.dg-brief-points.is-action li::before{background:var(--orange);box-shadow:0 0 0 3px color-mix(in srgb,var(--orange) 22%,transparent)}
+.dg-brief-points li::before{content:"";position:absolute;left:12px;top:17px;width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:none}
+.dg-brief-points.is-action li::before{background:var(--orange);box-shadow:none}
 .dg-brief-points li:nth-child(2){animation-delay:.06s}
 .dg-brief-points li:nth-child(3){animation-delay:.12s}
 .dg-brief-points li:nth-child(n+4){animation-delay:.18s}
@@ -113,8 +113,8 @@
 .dg-skel span:nth-child(1){width:94%}.dg-skel span:nth-child(2){width:78%}.dg-skel span:nth-child(3){width:52%}
 
 /* ---------- stack toggle (several digests) ---------- */
-#digest-list .stack-toggle.chip-button{border:0;background:var(--ink);color:#fff;padding:10px 20px;transition:transform .16s var(--ease-out),box-shadow .25s,background .2s}
-#digest-list .stack-toggle.chip-button:hover{background:#000;transform:translateY(-1px);box-shadow:var(--shadow-float)}
+#digest-list .stack-toggle.chip-button{border:0;background:var(--ink-2);color:#fff;padding:10px 20px;transition:transform .16s var(--ease-out),box-shadow .25s,background .2s}
+#digest-list .stack-toggle.chip-button:hover{background:var(--ink);transform:translateY(-1px);box-shadow:var(--shadow-float)}
 #digest-list .stack-toggle.chip-button:active{transform:scale(.96)}
 #digest-list .stack-toggle.chip-button:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 
@@ -128,8 +128,8 @@
 .dg-row.dg-flash{animation:dgFlash 1.3s ease-out}
 @keyframes dgIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
 @keyframes dgPop{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
-@keyframes dgFlash{0%{box-shadow:0 0 0 0 rgba(212,255,0,.95)}60%{box-shadow:0 0 0 12px rgba(212,255,0,0)}100%{box-shadow:var(--shadow-soft)}}
-@keyframes dgPulse{0%{box-shadow:0 0 0 0 rgba(255,92,0,.45)}70%,100%{box-shadow:0 0 0 9px rgba(255,92,0,0)}}
+@keyframes dgFlash{0%,60%{background:var(--accent-soft)}100%{background:var(--surface-2)}}
+@keyframes dgPulse{0%{box-shadow:0 0 0 0 rgba(179,84,58,.22)}70%,100%{box-shadow:0 0 0 9px rgba(179,84,58,0)}}
 @keyframes dgShimmer{from{background-position:120% 0}to{background-position:-120% 0}}
 
 /* ---------- narrow screens ---------- */

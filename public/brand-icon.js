@@ -49,8 +49,32 @@ export function iconMarkup() {
 export function mountIcon(slot) {
   slot.innerHTML = iconMarkup();
   slot.classList.add('bi');
+  observeMotion(slot);
   return slot.querySelector('svg');
 }
+
+// Decorative loops rest while the tab or their surface is out of view.
+const slots = new Map();
+function refreshMotion() {
+  for (const [slot, visible] of slots) {
+    if (!slot.isConnected) { observer?.unobserve(slot); slots.delete(slot); continue; }
+    const paused = document.hidden || !visible;
+    slot.classList.toggle('is-paused', paused);
+    const svg = slot.querySelector('svg');
+    if (paused || reduced()) svg?.pauseAnimations?.();
+    else svg?.unpauseAnimations?.();
+  }
+}
+const observer = typeof IntersectionObserver === 'function' ? new IntersectionObserver(entries => {
+  entries.forEach(entry => slots.set(entry.target, entry.isIntersecting));
+  refreshMotion();
+}) : null;
+function observeMotion(slot) {
+  slots.set(slot, true);
+  observer?.observe(slot);
+}
+document.addEventListener('visibilitychange', refreshMotion);
+matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', refreshMotion);
 
 /** Make `to` show the same moment of the animation as `from` (SMIL curl + CSS animations). */
 export function syncMotion(from, to) {
@@ -72,6 +96,8 @@ export function ensureHero() {
 
 /** Mount the small icon in the sidebar unless a flight is about to land there. */
 export function ensureDock() {
+  const home = document.getElementById('home-icon');
+  if (home && !home.querySelector('svg')) mountIcon(home);
   const dock = document.getElementById('dock-icon');
   if (dock && !flying && !dock.querySelector('svg')) mountIcon(dock);
 }
@@ -84,7 +110,8 @@ export function ensureDock() {
 export async function flyToDock(enter) {
   const hero = document.getElementById('hero-icon'), heroSvg = hero?.querySelector('svg');
   if (!heroSvg || reduced() || flying || hero.offsetWidth === 0) return enter();
-  const from = hero.getBoundingClientRect();
+  const rect = hero.getBoundingClientRect();
+  const from = { left: rect.left, top: Math.max(24, Math.min(rect.top, innerHeight - rect.height - 24)), width: rect.width, height: rect.height };
   // A synced copy on its own fixed layer, exactly over the original, so the login screen can disappear under it.
   const flyer = document.createElement('div');
   flyer.className = 'bi-tile bi bi-flyer';
@@ -92,9 +119,10 @@ export async function flyToDock(enter) {
   Object.assign(flyer.style, { left: from.left + 'px', top: from.top + 'px', width: from.width + 'px', height: from.height + 'px' });
   document.body.append(flyer);
   syncMotion(heroSvg, copy);
+  if (rect.top < 0) flyer.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 180, fill: 'both' });
   flying = true;
   document.getElementById('app')?.classList.add('app-enter');
-  try { await enter(); } catch (e) { flyer.remove(); flying = false; throw e; }
+  try { await enter(); window.scrollTo({ top: 0, behavior: 'instant' }); } catch (e) { flyer.remove(); flying = false; throw e; }
   const dock = document.getElementById('dock-icon');
   if (!dock || dock.offsetWidth === 0) { flyer.remove(); flying = false; ensureDock(); return; }
   dock.classList.add('bi-waiting');
@@ -116,14 +144,19 @@ async function land(flyer, copy, dock, from) {
     { offset: 0.62, transform: at(0.62, s(0.62) * 1.04, lift), easing: 'cubic-bezier(.3,0,.25,1)' }, // arc
     { offset: 0.86, transform: at(1, k * 0.9),      easing: 'cubic-bezier(.3,1.4,.5,1)' },    // touch down, slightly squashed
     { offset: 1,    transform: at(1, k) },
-  ], { duration: 1500, fill: 'forwards' });
+  ], { duration: 1100, fill: 'forwards' });
+  const settle = () => flight.cancel();
+  window.addEventListener('resize', settle, { once: true });
   await flight.finished.catch(() => {});
+  window.removeEventListener('resize', settle);
   // swap the flying copy for the docked icon at exactly the same moment of the animation
   const svg = mountIcon(dock);
   syncMotion(copy, svg);
   dock.classList.remove('bi-waiting');
   dock.classList.add('bi-landed');
   flyer.remove();
+  refreshMotion();
+  document.getElementById('app')?.classList.remove('app-enter');
   await wait(900);
   dock.classList.remove('bi-landed');
 }

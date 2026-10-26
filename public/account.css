@@ -13,9 +13,13 @@
 .qq-profile-info{min-width:0}
 .qq-name-row{display:flex;align-items:center;gap:8px}
 .qq-name{font-size:1.6rem;font-weight:800;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px}
-.qq-edit-btn{border:0;background:var(--surface-2,#f1f0ef);width:34px;height:34px;border-radius:50%;font-size:16px;cursor:pointer;transition:transform .15s,background .2s;flex:0 0 auto}
-.qq-edit-btn:hover{background:#e4e4e8;transform:scale(1.08)}
-.qq-edit-btn:active{transform:scale(.92)}
+.qq-edit-btn{display:grid;place-items:center;padding:0;border:1px solid var(--surface-3,#e2ece9);background:var(--accent-soft,#dcefeb);color:var(--accent-strong,#12685f);width:40px;height:40px;border-radius:50%;box-shadow:var(--shadow-soft,0 3px 12px rgba(32,58,54,.08));cursor:pointer;transition:transform .18s var(--ease-out,ease-out),box-shadow .18s;flex:0 0 auto;line-height:1}
+.qq-edit-btn:hover{transform:translateY(-2px) rotate(-7deg);box-shadow:0 5px 14px rgba(32,58,54,.12)}
+.qq-edit-btn:active{transform:translateY(1px) rotate(4deg);box-shadow:var(--shadow-soft,0 3px 12px rgba(32,58,54,.08))}
+.qq-edit-icon{display:block;width:23px;height:23px;overflow:visible}
+.qq-edit-sparkle{fill:var(--orange,#b3543a);stroke:var(--ink,#203a36);stroke-width:.65;stroke-linejoin:round}
+.qq-edit-pencil{fill:#f1c873;stroke:var(--ink,#203a36);stroke-width:1.7;stroke-linejoin:round;stroke-linecap:round}
+.qq-edit-pencil-detail{fill:none;stroke:var(--ink,#203a36);stroke-width:1.2;stroke-linecap:round;stroke-linejoin:round}
 .qq-profile-form{margin-top:8px}
 .qq-form-actions{margin-top:14px}
 .qq-dialog{border:0;border-radius:20px;padding:0;max-width:360px;width:calc(100vw - 48px);box-shadow:0 12px 48px rgba(0,0,0,.2)}
@@ -25,11 +29,11 @@
 .qq-dialog-inner .dialog-heading h3{margin:0;font-size:1.15rem}
 .qq-avatar-preview-wrap{display:flex;justify-content:center;margin:8px 0 16px}
 .qq-avatar-preview-wrap img{width:120px;height:120px;border-radius:50%;object-fit:cover;box-shadow:0 2px 12px rgba(0,0,0,.12)}
-.qq-upload-btn{display:block;text-align:center;padding:12px;border-radius:14px;background:var(--ink,#1a1a1a);color:#fff;font-weight:700;cursor:pointer;transition:transform .15s,background .2s}
-.qq-upload-btn:hover{background:#000;transform:translateY(-1px)}
+.qq-upload-btn{display:block;text-align:center;padding:12px;border-radius:14px;background:var(--ink-2,#29413d);color:#fff;font-weight:700;cursor:pointer;transition:transform .15s,background .2s}
+.qq-upload-btn:hover{background:var(--ink,#203a36);transform:translateY(-1px)}
 .qq-dialog-inner small{display:block;text-align:center;margin:10px 0 4px;color:var(--muted-text,#837f7a)}
 .qq-dialog-inner .form-actions{display:flex;justify-content:space-between;align-items:center;margin-top:16px}
 .qq-dialog-inner label{display:block;margin-bottom:6px}
 .qq-dialog-inner input[name=qqNickname]{width:100%;padding:12px 14px;border:1px solid #dcdad8;border-radius:12px;font-size:1rem;margin-top:6px;box-sizing:border-box}
 .setup-block{margin-top:16px;padding:14px 16px;border:1px solid #efd2ca;border-radius:10px;background:#fff8f6}.setup-block p{margin:4px 0 8px}.setup-block code{overflow-wrap:anywhere}
-.login-locale{display:flex;gap:8px;justify-content:center;margin-top:16px}.login-locale button{border:1px solid #dcdad8;background:#fff;border-radius:999px;padding:6px 14px;font-size:13px;color:#50483d}.login-locale button.selected{background:#413a2f;border-color:#413a2f;color:#fff;font-weight:600}
+.login-locale{display:flex;gap:8px;justify-content:center;margin-top:16px}.login-locale button{border:1px solid #dcdad8;background:#fff;border-radius:999px;padding:6px 14px;font-size:13px;color:#50483d}.login-locale button.selected{background:var(--ink-2,#29413d);border-color:var(--ink-2,#29413d);color:#fff;font-weight:600}

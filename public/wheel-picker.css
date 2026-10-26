@@ -10,12 +10,12 @@
 .wheel-shortcuts{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
 /* two-row grid: captions on top, wheels below; the lavender band spans every column */
 .wheel-columns{position:relative;display:grid;grid-template-rows:auto auto;column-gap:2px;align-items:center;padding:14px 10px;margin-bottom:20px;border-radius:var(--radius-card);background:var(--surface-2)}
-.wheel-highlight{grid-row:2;grid-column:1/-1;align-self:center;height:48px;border-radius:var(--pill);background:var(--lavender)}
+.wheel-highlight{grid-row:2;grid-column:1/-1;align-self:center;height:48px;border-radius:var(--pill);background:var(--accent-soft)}
 .wheel-caption{text-align:center;padding-bottom:6px}
 .wheel-colon{font-size:clamp(24px,7vw,32px);font-weight:800;padding:0 2px;margin-top:-4px;position:relative;color:var(--ink)}
 .wheel-column{position:relative;width:100%;overflow:hidden;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;perspective:500px;border-radius:var(--pill);outline-offset:-2px}
 .wheel-column:active{cursor:grabbing}
-.wheel-column:focus-visible{outline:2px solid var(--ink)}
+.wheel-column:focus-visible{outline:2px solid var(--accent)}
 .wheel-track{position:absolute;left:0;right:0;top:0;will-change:transform}
 .wheel-item{height:48px;line-height:48px;text-align:center;font-size:clamp(22px,6.6vw,32px);font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.02em;color:var(--ink);white-space:nowrap;backface-visibility:hidden}
 .wheel-dialog .form-actions .primary{padding:16px 32px}
@@ -43,7 +43,7 @@
 .chip:active{transform:scale(.94)}
 .chip-wrap:has(.chip-star) .chip{border-radius:var(--pill) 0 0 var(--pill)}
 .chip-star{border:0;border-radius:0 var(--pill) var(--pill) 0;padding:10px 14px 10px 10px;font-size:11px;font-weight:800;letter-spacing:1px;background:transparent;color:var(--muted-text)}
-.chip-star[aria-pressed=true]{background:var(--lime);color:var(--ink)}
+.chip-star[aria-pressed=true]{background:var(--accent-soft);color:var(--accent-strong)}
 .chip.is-on{padding:0;gap:0}
 .chip-text,.chip-remove{background:none;border:0;color:inherit;padding:10px 6px 10px 16px;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;box-shadow:none}
 .chip-text:hover,.chip-remove:hover{background:none}
@@ -55,17 +55,17 @@
 .chip-tools{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;margin-bottom:8px}
 .chip-tools .link-button{font-size:13px;padding:4px 0;margin:0}
 
-/* ---------- (a) completion button: lime pill -> circle -> black tick -> particles ---------- */
+/* ---------- (a) completion button: teal circle -> white tick -> particles ---------- */
 .form-actions .primary{position:relative;transition:width .28s var(--ease-out),border-radius .28s,padding .28s,background .15s,color .1s}
 .primary.is-success:disabled{opacity:1;cursor:default}
-.primary.is-success{width:52px!important;height:52px;padding:0;border-radius:50%;background:var(--lime);border-color:var(--lime);color:transparent;overflow:visible}
-.success-tick{position:absolute;inset:0;margin:auto;width:26px;height:26px;fill:none;stroke:var(--ink);stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.primary.is-success{width:52px!important;height:52px;padding:0;border-radius:50%;background:var(--accent);border-color:var(--accent);color:transparent;overflow:visible}
+.success-tick{position:absolute;inset:0;margin:auto;width:26px;height:26px;fill:none;stroke:#fff;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
 .success-tick path{stroke-dasharray:24;stroke-dashoffset:24;animation:draw-tick .2s .15s ease-out forwards}
 .success-burst{position:absolute;left:50%;top:50%;pointer-events:none}
-.success-burst i{position:absolute;width:7px;height:7px;margin:-3.5px;border-radius:50%;background:var(--lime);opacity:0;animation:success-spark .4s .35s cubic-bezier(.2,.8,.2,1) both}
+.success-burst i{position:absolute;width:7px;height:7px;margin:-3.5px;border-radius:50%;background:var(--accent);opacity:0;animation:success-spark .4s .35s cubic-bezier(.2,.8,.2,1) both}
 .success-burst i:nth-child(4n+1){background:var(--ink)}
 .success-burst i:nth-child(4n+2){background:var(--orange)}
-.success-burst i:nth-child(4n+3){background:#b9a8ff}
+.success-burst i:nth-child(4n+3){background:#e4bf70}
 @keyframes draw-tick{to{stroke-dashoffset:0}}
 @keyframes success-spark{from{opacity:1;transform:rotate(var(--angle)) translateX(22px) scale(1)}to{opacity:0;transform:rotate(var(--angle)) translateX(50px) scale(.2)}}
 

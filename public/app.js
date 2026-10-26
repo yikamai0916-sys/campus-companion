@@ -1,4 +1,7 @@
+import { initTheme, updateThemeLabels } from './theme-switch.js?v=20261024-dual-theme';
 import { ensureHero, ensureDock, flyToDock } from './brand-icon.js';
+import { isArchivedTask, tasksForPeriod, periodProgress, nextHkMidnight } from './task-periods.js';
+import {renderMailBody} from './mail-reader.js';
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const I18N={
@@ -9,8 +12,8 @@ const I18N={
 let locale='zh-CN';
 let reminderDefaults={offsets:[4320,1440,120,30],repeat:1440,start:'08:00',end:'23:00'};
 function detectLocale(){const saved=localStorage.getItem('campus-locale');if(saved&&I18N[saved])return saved;const nav=String(navigator.language||navigator.languages?.[0]||'').toLowerCase();if(nav.startsWith('zh')){if(/(?:hk|tw|mo|hant)/.test(nav))return 'zh-TW';return 'zh-CN';}return 'en';}
-function applyLocale(next){locale=I18N[next]?next:'zh-CN';document.documentElement.lang=locale;document.title=I18N[locale].appName;const metaDescription=$('meta[name=description]');if(metaDescription&&I18N[locale].appDescription)metaDescription.content=I18N[locale].appDescription;for(const el of $$('[data-i18n]')){const value=I18N[locale][el.dataset.i18n];if(value!==undefined)el.innerHTML=value;}for(const el of $$('[data-i18n-placeholder]')){const value=I18N[locale][el.dataset.i18nPlaceholder];if(value!==undefined)el.placeholder=value;}for(const el of $$('[data-i18n-aria]')){const value=I18N[locale][el.dataset.i18nAria];if(value!==undefined)el.setAttribute('aria-label',value);}const staticText={'.login h1':'heroTitle','.login>p':'heroSubtitle','.private':'personalAccount','.tasks-eyebrow':'tasksEyebrow'};for(const [selector,key] of Object.entries(staticText)){const el=$(selector),value=I18N[locale][key];if(el&&value!==undefined)el.innerHTML=value;}const logoutButton=$('#logout');if(logoutButton)logoutButton.setAttribute('aria-label',tx('logout'));translateTextNodes();updateManifestLocale();}
-function updateManifestLocale(){const link=$('link[rel=manifest]');if(!link)return;if(!link.dataset.src)link.dataset.src=link.href;fetch(link.dataset.src).then(response=>response.ok?response.json():null).then(manifest=>{if(!manifest)return;manifest.name=I18N[locale].appName;manifest.short_name=I18N[locale].appName;manifest.lang=locale;if(I18N[locale].appDescription)manifest.description=I18N[locale].appDescription;link.href=URL.createObjectURL(new Blob([JSON.stringify(manifest)],{type:'application/manifest+json'}));}).catch(()=>{});}
+function applyLocale(next){locale=I18N[next]?next:'zh-CN';document.documentElement.lang=locale;document.title=I18N[locale].appName;const metaDescription=$('meta[name=description]');if(metaDescription&&I18N[locale].appDescription)metaDescription.content=I18N[locale].appDescription;for(const el of $$('[data-i18n]')){const value=I18N[locale][el.dataset.i18n];if(value!==undefined)el.innerHTML=value;}for(const el of $$('[data-i18n-placeholder]')){const value=I18N[locale][el.dataset.i18nPlaceholder];if(value!==undefined)el.placeholder=value;}for(const el of $$('[data-i18n-aria]')){const value=I18N[locale][el.dataset.i18nAria];if(value!==undefined)el.setAttribute('aria-label',value);}const staticText={'.login h1':'heroTitle','.login>p':'heroSubtitle','.private':'personalAccount','.tasks-eyebrow':'tasksEyebrow'};for(const [selector,key] of Object.entries(staticText)){const el=$(selector),value=I18N[locale][key];if(el&&value!==undefined)el.innerHTML=value;}const logoutButton=$('#logout');if(logoutButton)logoutButton.setAttribute('aria-label',tx('logout'));translateTextNodes();updateManifestLocale();updateThemeLabels();}
+function updateManifestLocale(){const link=$('link[rel=manifest]');if(!link)return;if(!link.dataset.src)link.dataset.src=link.href;fetch(link.dataset.src).then(response=>response.ok?response.json():null).then(manifest=>{if(!manifest)return;manifest.name=I18N[locale].appName;manifest.short_name=I18N[locale].appName;manifest.lang=locale;if(I18N[locale].appDescription)manifest.description=I18N[locale].appDescription;const dark=document.documentElement.dataset.theme==='dark';manifest.background_color=manifest.theme_color=dark?'#141817':'#f3f7f6';manifest.icons=manifest.icons.map(icon=>({...icon,src:`/icon-${icon.sizes.split('x')[0]}${dark?'-dark':''}.png?v=20261024-dual-theme`}));link.href=URL.createObjectURL(new Blob([JSON.stringify(manifest)],{type:'application/manifest+json'}));}).catch(()=>{});}
 const tx=key=>I18N[locale]?.[key]||I18N['zh-CN'][key]||key;
 
 Object.assign(I18N['zh-CN'],{
@@ -94,7 +97,8 @@ Object.assign(TEXTS,{"邮件提醒暂不可用": ["電郵提醒暫不可用", "E
 Object.assign(TEXTS,{"已完成，后续提醒已取消": ["已完成，後續提醒已取消", "Completed; future reminders cancelled"], "已重新打开待办": ["已重新開啟待辦", "Task reopened"], "已删除任务": ["已刪除任務", "Task deleted"], "账号已创建": ["帳號已建立", "Account created"], "候选已标记为不采用": ["候選已標記為不採用", "Candidate dismissed"], "可用时间已保存，成员提交状态与推荐已更新": ["可用時間已儲存，成員提交狀態與推薦已更新", "Availability saved; recommendations updated"], "候选时间已锁定，投票开始": ["候選時間已鎖定，投票開始", "Options locked; voting is open"], "投票已保存，可在结束前修改": ["投票已儲存，可在結束前修改", "Vote saved; you can change it before voting closes"], "会议时间已确认": ["會議時間已確認", "Meeting confirmed"], "至少保留一个可用时段": ["至少保留一個可用時段", "Keep at least one available interval"], "此设备已启用通知": ["此裝置已啟用通知", "Notifications enabled on this device"], "请从 iPhone 主屏幕打开，或使用支持通知的浏览器": ["請從 iPhone 主畫面開啟，或使用支援通知的瀏覽器", "Open from your iPhone Home Screen or use a browser that supports notifications"], "通知权限尚未允许，请在系统设置中启用": ["通知權限尚未允許，請在系統設定中啟用", "Allow notifications in your device settings"], "已导出日历副本；它不会自动同步": ["已匯出日曆副本；它不會自動同步", "Calendar copy exported; it does not sync automatically"], "确定永久删除这项已完成任务吗？": ["確定永久刪除此已完成任務嗎？", "Permanently delete this completed task?"], "已接受分工，提醒已生效": ["已接受分工，提醒已生效", "Assignment accepted; reminders enabled"], "已拒绝分工": ["已拒絕分工", "Assignment declined"], "会议时间收集已创建": ["會議時間收集已建立", "Meeting poll created"]});
 for(const [key,cn] of Object.entries(I18N['zh-CN']))if(I18N.en[key]&&I18N['zh-TW'][key])TEXTS[cn]=[I18N['zh-TW'][key],I18N.en[key]];
 Object.assign(TEXTS,{'来自已确认的邮件建议':['來自已確認的郵件建議','From a reviewed mail suggestion'],'来自小组分工':['來自小組分工','From a group assignment'],'还没有已完成任务':['還沒有已完成任務','No completed tasks yet'],'清单里，留一点从容':['清單裡，留一點從容','Make room for what matters'],'完成的任务会显示在这里，并可随时删除。':['完成的任務會顯示在這裡，並可隨時刪除。','Completed tasks appear here and can be deleted.'],'先添加一项待办，或在小组中接受一项已经确认的分工。':['先新增一項待辦，或在小組中接受一項已經確認的分工。','Add a task or accept a reviewed group assignment.']});
-Object.assign(TEXTS,{'中文':['中文','Chinese'],'同步中':['同步中','Syncing'],'已连接，等待首次同步':['已連接，等待首次同步','Connected; waiting for first sync'],'转发接收正常':['轉發接收正常','Forwarding ingestion OK'],'iPhone 自动转交正常':['iPhone 自動轉交正常','iPhone shortcut ingestion OK'],'成员与提交身份':['成員與提交身份','Members and submission identity'],'邮件分析只提供摘要和建议，不会自动创建待办。小组分工需经审核，并由负责人接受。':['郵件分析只提供摘要和建議，不會自動建立待辦。小組分工需經審核，並由負責人接受。','Mail analysis only offers summaries and suggestions; it never creates tasks automatically. Group assignments require review and acceptance by the assignee.']});
+Object.assign(TEXTS,{'过往代办':['過往待辦','Past tasks']});
+Object.assign(TEXTS,{'中文':['中文','Chinese'],'同步中':['同步中','Syncing'],'已连接，等待首次同步':['已連接，等待首次同步','Connected; waiting for first sync'],'转发接收正常':['轉發接收正常','Forwarding ingestion OK'],'iPhone 自动转交正常':['iPhone 自動轉交正常','iPhone shortcut ingestion OK'],'成员与提交身份':['成員與提交身份','Members and submission identity'],'邮件分析只提供摘要和建议；确认“加入我的待办”后才会创建任务。小组分工需经审核，并由负责人接受。':['郵件分析只提供摘要和建議；確認「加入我的待辦」後才會建立待辦。小組分工需經審核，並由負責人接受。','Mail summaries are suggestions; a task is created only after you choose “Add to My Tasks”. Group assignments require review and acceptance by the assignee.']});
 const textSources=new WeakMap();
 function translateCopy(value){
  const raw=String(value??''),key=raw.trim();if(!key)return raw;
@@ -117,7 +121,7 @@ function translateTextNodes(){
   const source=input.dataset.i18nPlaceholderSource||input.placeholder;input.dataset.i18nPlaceholderSource=source;
   const item=PLACEHOLDERS[source];if(item)input.placeholder=locale==='zh-CN'?source:locale==='zh-TW'?item[0]:item[1];
  }
- for(const el of $$('[aria-label]')){const source=el.dataset.labelSource||el.getAttribute('aria-label');el.dataset.labelSource=source;el.setAttribute('aria-label',translateCopy(source));}
+ for(const el of $$('[aria-label]')){if(el.classList.contains('theme-toggle'))continue;const source=el.dataset.labelSource||el.getAttribute('aria-label');el.dataset.labelSource=source;el.setAttribute('aria-label',translateCopy(source));}
 }
 
 
@@ -125,7 +129,7 @@ const dateLocale=()=>locale==='zh-TW'?'zh-TW':locale==='en'?'en-GB':'zh-CN';
 const local=(cn,tw,en)=>locale==='zh-TW'?tw:locale==='en'?en:cn;
 const fmt=n=>n?new Date(Number(n)).toLocaleString(dateLocale(),{timeZone:'Asia/Hong_Kong',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}):locale==='en'?'Deadline to confirm':locale==='zh-TW'?'截止時間待確認':'截止时间待确认';
 const localDate=n=>n?new Date(Number(n)+8*3600000).toISOString().slice(0,16):'';
-let tasks=[],status={},editing=null,showDone=false,activeView='tasks';
+let tasks=[],status={},editing=null,mailTaskDraft=null,taskTab='pending',activePeriod=null,periodTimer,activeView='tasks';
 let toastTimer;
 function toast(s){$('#toast').textContent=translateCopy(s);$('#toast').classList.remove('hidden');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.add('hidden'),4500);}
 function accountLabel(account){const nickname=String(account?.nickname||'').trim();return nickname||`${tx('defaultNickname')} ${String(account?.userCode||'0000')}`;}
@@ -137,25 +141,49 @@ function showLogin(){
   applyLocale(localStorage.getItem('campus-locale')||detectLocale());
   $$('[data-login-locale]').forEach(b=>b.classList.toggle('selected',b.dataset.loginLocale===locale));
 }
-function view(name){activeView=name;for(const v of ['tasks','groups','mail','digests','settings'])$('#'+v+'-view').classList.toggle('hidden',v!==name);$$('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===name));history.replaceState(null,'','/?view='+name);if(name==='groups')loadGroups();if(name==='mail')loadMail().then(translateTextNodes);if(name==='digests')loadDigests().then(translateTextNodes);if(name==='settings')loadSettings();}
+function view(name){activeView=name;for(const v of ['tasks','groups','mail','digests','settings'])$('#'+v+'-view').classList.toggle('hidden',v!==name);$$('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===name));history.replaceState(null,'','/?view='+name);if(name==='tasks'&&tasks.length)renderTasks();if(name==='groups')loadGroups();if(name==='mail')loadMail().then(translateTextNodes);if(name==='digests')loadDigests().then(translateTextNodes);if(name==='settings')loadSettings();}
+const periodName=period=>({today:local('今天','今天','Today'),week:local('本周','本週','This week'),future:local('未来全部','未來全部','All upcoming')})[period];
+function renderPeriodCards(now){
+  $('.period-grid').setAttribute('aria-label',local('待办进度','待辦進度','Task progress'));
+  $$('[data-period]').forEach(card=>{
+    const period=card.dataset.period,{done,total,percent}=periodProgress(tasks,period,now);
+    card.style.setProperty('--progress',percent);
+    card.querySelector('.period-name').textContent=periodName(period);
+    card.querySelector('.period-percent').textContent=percent+'%';
+    card.querySelector('.period-fraction').textContent=`${done}/${total}`;
+    card.setAttribute('aria-label',`${periodName(period)} · ${done}/${total} · ${percent}%`);
+    card.setAttribute('aria-expanded',String(activePeriod===period));
+  });
+  const detail=$('#period-details');detail.hidden=!activePeriod;
+  if(!activePeriod)return;
+  const matching=tasksForPeriod(tasks,activePeriod,now).sort((a,b)=>a.due-b.due);
+  $('#period-details-title').textContent=periodName(activePeriod);
+  $('#period-details-list').innerHTML=matching.length?matching.map(t=>`<li><button type="button" data-period-task="${esc(t.id)}"><strong data-user-content>${esc(t.title)}</strong><span>${esc(fmt(t.due))} · ${t.completed?local('已完成','已完成','Done'):local('进行中','進行中','Open')}</span></button></li>`).join(''):`<li class="period-empty">${local('暂无待办','暫無待辦','No tasks')}</li>`;
+  $$('[data-period-task]').forEach(button=>button.onclick=()=>openForm(tasks.find(t=>t.id===button.dataset.periodTask)));
+}
+function schedulePeriodRefresh(){
+  clearTimeout(periodTimer);
+  periodTimer=setTimeout(()=>{renderTasks();schedulePeriodRefresh();},Math.max(1000,nextHkMidnight()+1000-Date.now()));
+}
 function renderTasks(){
   const now=Date.now(),pending=tasks.filter(t=>!t.completed);
-  $('#pending').textContent=pending.length;$('#soon').textContent=pending.filter(t=>t.due&&t.due>now&&t.due<=now+3*86400000).length;$('#completed').textContent=tasks.length-pending.length;$('#nav-count').textContent=pending.length;$('#heading-count').textContent=pending.length?' / '+pending.length:'';
-  updateProgress(tasks.length-pending.length,tasks.length);
-  const visible=tasks.filter(t=>t.completed===showDone);
-  $('#task-list').innerHTML=visible.length?visible.map(t=>{const overdue=t.due&&t.due<now&&!t.completed,soon=t.due&&t.due>=now&&t.due<=now+3*86400000&&!t.completed,source=t.source==='candidate'?'来自小组分工':t.source==='meeting'?'来自已确认的小组会议':t.source==='email'?'来自已确认的邮件建议':'自己添加';return `<article class="task ${t.completed?'done':''}"><input class="task-check" type="checkbox" aria-label="${esc(t.completed?local('重新打开','重新開啟','Reopen'):local('完成','完成','Complete'))} ${esc(t.title)}" data-check="${esc(t.id)}" ${t.completed?'checked':''}><div><h3 data-user-content>${esc(t.title)}</h3><div class="meta"><span class="${overdue||soon?'badge urgent':''}">${overdue?local('已逾期 · ','已逾期 · ','Overdue · '):soon?local('即将截止 · ','即將截止 · ','Due soon · '):''}${esc(fmt(t.due))}</span><span class="badge ${t.priority===1?'high':''}">${['','重要','普通','较低'][t.priority]}</span><span>${source}</span></div>${t.notes?`<details><summary class="task-note">查看备注</summary><p class="task-note">${esc(t.notes)}</p></details>`:''}</div><div class="task-actions"><button data-edit="${esc(t.id)}">编辑</button>${t.due?`<button data-calendar="${esc(t.id)}">日历</button>`:''}${t.completed?`<button class="danger-text" data-delete-task="${esc(t.id)}">删除</button>`:''}</div></article>`;}).join(''):`<div class="empty"><span class="empty-mark">✓</span><h2>${showDone?'还没有已完成任务':'清单里，留一点从容'}</h2><p>${showDone?'完成的任务会显示在这里，并可随时删除。':'先添加一项待办，或在小组中接受一项已经确认的分工。'}</p></div>`;
-  $$('[data-check]').forEach(c=>c.onchange=async()=>{const task=tasks.find(t=>t.id===c.dataset.check);c.disabled=true;try{const completed=c.checked;await api('tasks/'+task.id,{method:'PATCH',body:{version:task.version,completed}});if(completed){updateProgress(tasks.filter(t=>t.completed).length+1,tasks.length);await celebrateTask(c);}await loadTasks();toast(completed?'已完成，后续提醒已取消':'已重新打开待办');if(completed)offerUndo(task.id);}catch(e){c.checked=!c.checked;toast(e.message);c.disabled=false;}});
+  $('#nav-count').textContent=pending.length;
+  renderPeriodCards(now);
+  const visible=tasks.filter(t=>taskTab==='archive'?isArchivedTask(t,now):taskTab==='done'?t.completed&&!isArchivedTask(t,now):!t.completed);
+  for(const [tab,id] of [['pending','show-pending'],['done','show-completed'],['archive','show-archived']])$('#'+id).classList.toggle('selected',taskTab===tab);
+  $('#task-list').innerHTML=visible.length?visible.map(t=>{const overdue=t.due&&t.due<now&&!t.completed,soon=t.due&&t.due>=now&&t.due<=now+3*86400000&&!t.completed,source=t.source==='candidate'?'来自小组分工':t.source==='meeting'?'来自已确认的小组会议':t.source==='email'?local('来自邮件日程','來自郵件日程','From email schedule'):'自己添加';return `<article class="task ${t.completed?'done':''}"><input class="task-check" type="checkbox" aria-label="${esc(t.completed?local('重新打开','重新開啟','Reopen'):local('完成','完成','Complete'))} ${esc(t.title)}" data-check="${esc(t.id)}" ${t.completed?'checked':''}><div><h3 data-user-content>${esc(t.title)}</h3><div class="meta"><span class="${overdue||soon?'badge urgent':''}">${overdue?local('已逾期 · ','已逾期 · ','Overdue · '):soon?local('即将截止 · ','即將截止 · ','Due soon · '):''}${esc(fmt(t.due))}</span><span class="badge ${t.priority===1?'high':''}">${['','重要','普通','较低'][t.priority]}</span><span>${source}</span></div>${t.notes?`<details><summary class="task-note">查看备注</summary><p class="task-note">${esc(t.notes)}</p></details>`:''}</div><div class="task-actions"><button data-edit="${esc(t.id)}">编辑</button>${t.due?`<button data-calendar="${esc(t.id)}">${esc(local('导出到系统日历','匯出到系統日曆','Export to calendar'))}</button>`:''}${t.completed?`<button class="danger-text" data-delete-task="${esc(t.id)}">删除</button>`:''}</div></article>`;}).join(''):`<div class="empty"><span class="empty-mark">✓</span><h2>${taskTab==='archive'?local('暂无过往代办','暫無過往待辦','No past tasks'):taskTab==='done'?local('暂无已完成待办','暫無已完成待辦','No completed tasks'):local('暂无进行中的待办','暫無進行中的待辦','No active tasks')}</h2></div>`;
+  $$('[data-check]').forEach(c=>c.onchange=async()=>{const task=tasks.find(t=>t.id===c.dataset.check);c.disabled=true;try{const completed=c.checked;await api('tasks/'+task.id,{method:'PATCH',body:{version:task.version,completed}});if(completed)await celebrateTask(c);await loadTasks();toast(completed?'已完成，后续提醒已取消':'已重新打开待办');if(completed)offerUndo(task.id);}catch(e){c.checked=!c.checked;toast(e.message);c.disabled=false;}});
   $$('[data-edit]').forEach(b=>b.onclick=()=>openForm(tasks.find(t=>t.id===b.dataset.edit)));
   $$('[data-calendar]').forEach(b=>b.onclick=()=>exportCalendar(tasks.find(t=>t.id===b.dataset.calendar)));
   $$('[data-delete-task]').forEach(b=>b.onclick=async()=>{if(!confirm(translateCopy('确定永久删除这项已完成任务吗？')))return;b.disabled=true;try{await api('tasks/'+b.dataset.deleteTask,{method:'DELETE',body:{}});await loadTasks();toast('已删除任务');}catch(e){toast(e.message);b.disabled=false;}});
 }
-async function loadTasks(){tasks=await api('tasks');renderTasks();translateTextNodes();}
+async function loadTasks(){tasks=await api('tasks');renderTasks();schedulePeriodRefresh();translateTextNodes();}
 // ES module imports are hoisted, so these work even though they are not at the very top.
 // (They sit here because test/localization.test.js evaluates the top of this file as a plain script.)
 import { TaskReminderPicker } from './task-reminders.js';
-import { playButtonSuccess, resetSuccessButton, circularTransition, progressColor, setupCardStack } from './motion.js';
+import { playButtonSuccess, resetSuccessButton, circularTransition, pageTransition, setupCardStack } from './motion.js?v=20261025-glass-motion-2';
 import { watchTimeInputs } from './native-pickers.js';
-import { digestOverview, daysUntil } from './digest-insights.js';
+import { digestOverview, daysUntil, suggestedTaskDue, digestTextForLocale, digestTitleForLocale } from './digest-insights.js';
 
 // Every native date/time input (task form, groups, meetings, settings) becomes a wheel picker.
 watchTimeInputs();
@@ -169,12 +197,17 @@ const reminderPicker = new TaskReminderPicker({
   notify: text => toast(text),
 });
 
-function openForm(task=null){
+function openForm(task=null,mailDraft=null){
   editing=task;
+  mailTaskDraft=mailDraft;
   const f=$('#task-form');
   f.reset();
+  $('#task-dialog').classList.toggle('mail-task-review',!!mailDraft);
   $('#form-error').textContent='';
-  $('#form-heading').textContent=task?'编辑待办':'添加待办';
+  $('#form-heading').textContent=task?local('编辑待办','編輯待辦','Edit task'):mailDraft?local('确认邮件待办','確認郵件待辦','Review email task'):local('添加待办','新增待辦','Add task');
+  f.querySelector('[type=submit]').textContent=mailDraft?local('确认并加入待办','確認並加入待辦','Add to My Tasks'):local('保存待办','儲存待辦','Save task');
+  const mailHint=$('#mail-task-hint');
+  if(mailHint){mailHint.textContent=mailDraft?local('已根据邮件内容预填标题和时间；未注明具体时刻时，暂按当天 23:59 预填。请核对或修改后再保存。','已根據郵件內容預填標題和時間；未註明具體時刻時，暫按當天 23:59 預填。請核對或修改後再儲存。','Title and time were prefilled from the email. If no exact time was stated, 23:59 is suggested for that date. Review or edit before saving.'):'';mailHint.classList.toggle('hidden',!mailDraft);}
   const r=task?task.reminders:reminderDefaults;
   if(task){
     f.elements.title.value=task.title;
@@ -182,12 +215,14 @@ function openForm(task=null){
     f.elements.priority.value=task.priority;
     f.elements.push.checked=r.push;
   }
+  if(mailDraft){f.elements.title.value=mailDraft.title;f.elements.notes.value=mailDraft.notes;f.elements.priority.value=mailDraft.priority;}
   f.elements.maxCount.value=r.maxCount||0;
   f.elements.start.value=r.start||'08:00';
   f.elements.end.value=r.end||'23:00';
   if(Array.isArray(r.days)&&r.days.length)$$('[name=day]').forEach(c=>c.checked=r.days.includes(Number(c.value)));
   f.elements.email.checked=false;
   reminderPicker.load(task); // due time, offsets, exact times, repeat
+  if(mailDraft)reminderPicker.setDue(mailDraft.due);
   translateTextNodes();
   $('#task-dialog').showModal();
 }
@@ -200,17 +235,21 @@ $('#task-form').onsubmit=async event=>{
     const data={title:f.elements.title.value,notes:f.elements.notes.value,due:picked.due,priority:Number(f.elements.priority.value),
       reminders:{offsets:picked.offsets,exact:picked.exact,repeat:picked.repeat,maxCount:Number(f.elements.maxCount.value)||0,start:f.elements.start.value,end:f.elements.end.value,days:$$('[name=day]:checked').map(c=>Number(c.value)),push:f.elements.push.checked,email:f.elements.email.checked}};
     if(editing)data.version=editing.version;
-    await api(editing?'tasks/'+editing.id:'tasks',{method:editing?'PATCH':'POST',body:data});
+    const mailDraft=mailTaskDraft;
+    const result=mailDraft?await api('tasks/from-mail',{method:'POST',body:{messageId:mailDraft.messageId,title:data.title,notes:data.notes,due:data.due,priority:data.priority}}):await api(editing?'tasks/'+editing.id:'tasks',{method:editing?'PATCH':'POST',body:data});
     await playButtonSuccess(save); // shrink → tick → particles (skipped with reduced motion)
+    mailTaskDraft=null;
     $('#task-dialog').close();
     resetSuccessButton(save);
-    await loadTasks();toast('待办已保存');
+    await loadTasks();toast(result?.alreadyAdded?local('这封邮件已在我的待办中','這封郵件已在我的待辦中','This email is already in My Tasks'):local('待办已保存','待辦已儲存','Task saved'));
   }catch(e){resetSuccessButton(save);$('#form-error').textContent=e.message;}
   finally{save.disabled=false;}
 };
 let mailNextBefore=null,mailLoadingMore=false;
 const categoryKey=c=>({1:'cat1',2:'cat2',3:'cat3',4:'cat4'}[c]||'cat3');
 const briefRequests=new Map();
+const containsCjk=value=>/[\u3400-\u9fff]/.test(String(value||''));
+const englishBriefIsUsable=brief=>!!brief&&![brief.title,brief.topic,...(brief.points||[]).map(p=>p.text),...(brief.actions||[]).map(p=>p.text)].some(containsCjk);
 function briefContent(m,compact=false){
   const b=m.brief;
   if(!b)return `<p class="quality">${esc(local('正在依据原文整理详细要点；若未生成，可稍后重试。','正在依據原文整理詳細重點；若未產生，可稍後重試。','Preparing detailed notes from the original email. Retry later if unavailable.'))}</p>`;
@@ -269,7 +308,11 @@ function briefFallback(m){
   return briefContent(m);
 }
 function mailCard(m){
-  return `<article class="mail-card" data-open-mail="${encodeURIComponent(m.id)}" tabindex="0" role="button"><div class="mail-card-head"><div class="meta"><span class="badge ${m.category===1?'high':''}">${esc(m.brief?.topic||local('待整理','待整理','Pending summary'))}</span><span>${esc(fmt(m.received))}</span></div><button class="icon-delete" data-delete-mail="${encodeURIComponent(m.id)}" aria-label="${esc(tx('deleteMail'))}">${esc(tx('delete'))}</button></div><h2>${esc(m.brief?.title||m.subject.replace(/^(?:(?:fw|fwd|re)\s*:\s*)+/i,''))}</h2><div class="sender">${esc(tx('originalSender'))} ${esc(m.sender)}<br>${esc(tx('source'))} ${esc(m.origin)}</div>${m.brief?briefContent(m):briefFallback(m)}</article>`;
+  const english=locale==='en',brief=english&&!englishBriefIsUsable(m.brief)?null:m.brief;
+  const safe=(value,fallback)=>english&&containsCjk(value)?fallback:value;
+  const subject=safe(String(m.subject||'').replace(/^(?:(?:fw|fwd|re)\s*:\s*)+/i,''),'Email summary unavailable');
+  const sender=safe(m.sender,'Sender unavailable'),origin=safe(m.origin,'Source not identified');
+  return `<article class="mail-card" data-open-mail="${encodeURIComponent(m.id)}" tabindex="0" role="button"><div class="mail-card-head"><div class="meta"><span class="badge ${m.category===1?'high':''}">${esc(safe(brief?.topic,'Email'))||esc(local('待整理','待整理','Pending summary'))}</span><span>${esc(fmt(m.received))}</span></div><button class="icon-delete" data-delete-mail="${encodeURIComponent(m.id)}" aria-label="${esc(tx('deleteMail'))}">${esc(tx('delete'))}</button></div><h2>${esc(brief?.title||subject)}</h2><div class="sender">${esc(tx('originalSender'))} ${esc(sender)}<br>${esc(tx('source'))} ${esc(origin)}</div>${brief?briefContent({...m,brief}):briefFallback({...m,brief:null,summary:safe(m.summary,'')})}</article>`;
 }
 function bindMailList(root){
   root.querySelectorAll('[data-open-mail]').forEach(card=>{
@@ -414,46 +457,57 @@ function formatMailFromTo(detail){
   return { from: fromDept, to: toText };
 }
 
-async function openMailDetail(id){
-  const dialog=$('#mail-detail-dialog');if(!dialog)return;
-  $('#mail-detail-title').textContent=tx('mailDetail');
-  $('#mail-detail-zh').textContent=local('加载中…','載入中…','Loading…');
-  $('#mail-detail-en').textContent='';
-  // dialog 可能已打开（日报跳转与列表加载双链路），已打开时直接刷新内容
-  if(!dialog.open)dialog.showModal();
+let readerRequest=0;
+function hideMailReader(){
+  readerRequest++;$('#mail-detail-dialog').classList.add('hidden');document.body.classList.remove('reader-open');$('#app').inert=false;
+}
+async function openMailDetail(id,{push=true}={}){
+  const page=$('#mail-detail-dialog'),request=++readerRequest;
+  if(push&&new URLSearchParams(location.search).get('message')!==id)history.pushState({mailReader:true},'','/?view=mail&message='+encodeURIComponent(id));
+  page.classList.remove('hidden');document.body.classList.add('reader-open');$('#app').inert=true;page.scrollTop=0;
+  $('#close-mail-detail').textContent=local('← 返回','← 返回','← Back');
+  $('#mail-detail-label').textContent=tx('mailDetail');
+  $('#mail-detail-title').textContent=local('加载中…','載入中…','Loading…');
+  $('#mail-detail-title').focus();$('#mail-detail-meta').textContent='';
+  $('#mail-detail-zh').textContent='';$('#mail-detail-en').textContent='';$('#mail-detail-outlook').hidden=true;
+  const summaryTab=page.querySelector('[data-mail-pane="zh"]'),originalTab=page.querySelector('[data-mail-pane="en"]');
+  const englishUi=locale==='en';
+  page.querySelector('.mail-detail-tabs').classList.toggle('hidden',englishUi);
+  summaryTab.hidden=englishUi;
+  summaryTab.textContent=local('中文','中文','Summary');originalTab.textContent=local('原文','原文','Original');
+  const selectPane=name=>{for(const tab of [summaryTab,originalTab]){const selected=tab.dataset.mailPane===name;tab.classList.toggle('selected',selected);tab.setAttribute('aria-selected',String(selected));}$('#mail-detail-zh').classList.toggle('hidden',name!=='zh');$('#mail-detail-en').classList.toggle('hidden',name!=='en');};
+  selectPane(englishUi?'en':'zh');summaryTab.onclick=()=>selectPane('zh');originalTab.onclick=()=>selectPane('en');
   try{
-    const detail=await api('messages/'+encodeURIComponent(id));
-    const zh=detail.chinese||detail.display;
-    $('#mail-detail-meta').innerHTML=`<span class="badge">${esc(tx(categoryKey(detail.category)))}</span><span>${esc(fmt(detail.received))}</span>`;
-    if(detail.translationEnabled&&zh){
-      // 中文页：显示英文原文的完整逐句翻译（非摘要）
-      const fullBody = zh.fullBody || '';
-      const fromTo = formatMailFromTo(detail);
-      const fromToHtml = (fromTo.from || fromTo.to) ?
-        `<p class="mail-fromto"><span class="mail-from">${esc(fromTo.from || '')}</span>${fromTo.from && fromTo.to ? '<span class="mail-arrow">→</span>' : ''}<span class="mail-to">${esc(fromTo.to || '')}</span></p>` : '';
-
-      $('#mail-detail-zh').innerHTML=`<h3 data-user-content>${esc(detail.display?.brief?.title||zh.subject)}</h3>${fromToHtml}${fullBody?`<div class="mail-body" data-user-content>${cleanMailBody(fullBody)}</div>`:`<p data-user-content>${esc(zh.summary)}</p><p>${esc(zh.action||'')}</p>`}`;
-      $$('[data-mail-pane]').forEach(b=>b.classList.toggle('hidden',false));
-    }else{
-      $('#mail-detail-zh').innerHTML=`<h3 data-user-content>${esc(detail.display?.brief?.title||detail.display?.subject||detail.english?.subject||'')}</h3>${detail.display?.brief?briefContent(detail.display):`<p data-user-content>${esc(detail.display?.summary||'')}</p>`}`;
-      const zhTab=document.querySelector('[data-mail-pane="zh"]');if(zhTab)zhTab.classList.add('hidden');
+    const detail=await api('messages/'+encodeURIComponent(id));if(request!==readerRequest)return;
+    const display=detail.display||detail.chinese||{},englishBrief=englishUi&&!englishBriefIsUsable(display.brief)?null:display.brief;
+    const safe=(value,fallback)=>englishUi&&containsCjk(value)?fallback:value;
+    const subject=String(detail.english?.subject||display.subject||'').replace(/^(?:(?:fw|fwd|re)\s*:\s*)+/i,'');
+    $('#mail-detail-title').textContent=englishBrief?.title||safe(subject,'Original email');
+    $('#mail-detail-meta').innerHTML=`<span class="badge">${esc(safe(englishBrief?.topic||tx(categoryKey(detail.category)),'Email'))}</span><span>${esc(safe(display.sender,'Sender unavailable'))}</span><span>${esc(safe(display.origin,'Source not identified'))}</span><time>${esc(fmt(detail.received))}</time>`;
+    $('#mail-detail-zh').innerHTML=englishUi?'':display.brief?briefContent(display):`<p data-user-content>${esc(display.summary||'')}</p>`;
+    $('#mail-detail-zh').classList.toggle('hidden',englishUi);
+    const original=renderMailBody(detail.english||{});
+    $('#mail-detail-en').replaceChildren(original);
+    if(!englishUi&&detail.chinese?.fullBody){
+      const translated=renderMailBody({body:detail.chinese.fullBody});
+      $('#mail-detail-zh').replaceChildren(translated);
+      for(const img of original.querySelectorAll('img'))if(![...translated.querySelectorAll('img')].some(i=>i.src===img.src))$('#mail-detail-zh').append(img.cloneNode(true));
+    }else if(!englishUi&&detail.translationEnabled){
+      if(!display.brief){
+        const summary=String(display.summary||'').trim();
+        $('#mail-detail-zh').replaceChildren();
+        if(summary&&!/^[_\-\s]*(?:From|发件人|寄件者)\s*[:：]/i.test(summary))$('#mail-detail-zh').append(Object.assign(document.createElement('p'),{textContent:summary}));
+      }
+      const notice=document.createElement('p');
+      notice.textContent=detail.translationStatus==='quota'
+        ?local('全文翻译暂不可用：AI 服务今日用量已达上限。英文原文仍可查看，额度恢复后再次打开即可生成译文。','全文翻譯暫不可用：AI 服務今日用量已達上限。英文原文仍可查看，額度恢復後再次開啟即可生成譯文。','Full translation is temporarily unavailable because the AI daily limit has been reached. The original is still available; reopen this email after the limit resets to generate a translation.')
+        :local('全文翻译暂时无法生成，英文原文仍可在「原文」中查看，请稍后重试。','全文翻譯暫時無法生成，英文原文仍可在「原文」中查看，請稍後重試。','The full translation could not be generated. The original is available in “Original”; please try again later.');
+      $('#mail-detail-zh').append(notice);
     }
-    const en=detail.english||{};
-    // 英文页：清理正文（去图片提示、渲染图片、美化链接），直观显示发件/收件
-    const fromTo = formatMailFromTo(detail);
-    const fromToHtml = (fromTo.from || fromTo.to) ?
-      `<p class="mail-fromto"><span class="mail-from">${esc(fromTo.from || '')}</span>${fromTo.from && fromTo.to ? '<span class="mail-arrow">→</span>' : ''}<span class="mail-to">${esc(fromTo.to || '')}</span></p>` : '';
-    $('#mail-detail-en').innerHTML=`<h3 data-user-content>${esc(en.subject||'')}</h3>${fromToHtml}<div class="mail-body" data-user-content>${cleanMailBody(en.body||'')}</div>${detail.englishSummaryEnabled&&en.summary?`<p class="quality">${esc(en.summary)}</p>`:''}`;
+    if(!detail.translationEnabled)selectPane('en');
     const link=$('#mail-detail-outlook');
-    if(link){if(/^https:\/\/(?:outlook\.live\.com|outlook\.office\.com|outlook\.office365\.com)\//.test(detail.url||'')){link.hidden=false;link.href=detail.url;link.textContent=tx('viewOriginal');}else{link.hidden=true;link.removeAttribute('href');}}
-    const showZh=detail.translationEnabled!==false&&!!detail.chinese;
-    document.querySelectorAll('[data-mail-pane]').forEach(b=>b.classList.toggle('selected',b.dataset.mailPane===(showZh?'zh':'en')));
-    $('#mail-detail-zh').classList.toggle('hidden',!showZh);
-    $('#mail-detail-en').classList.toggle('hidden',showZh);
-    // 异步增强裸链接：用 AI 总结替换无描述链接的显示文本
-    enhanceBareLinks($('#mail-detail-zh')).catch(()=>{});
-    enhanceBareLinks($('#mail-detail-en')).catch(()=>{});
-  }catch(e){$('#mail-detail-zh').textContent=e.message;}
+    if(/^https:\/\/(?:outlook\.live\.com|outlook\.office\.com|outlook\.office365\.com)\//.test(detail.url||'')){link.hidden=false;link.href=detail.url;link.textContent=tx('viewOriginal');}
+  }catch(e){if(request===readerRequest){$('#mail-detail-title').textContent=tx('mailDetail');$('#mail-detail-zh').textContent=e.message;}}
 }
 let currentMailQuery='';
 async function loadMail(opts={}){
@@ -488,7 +542,7 @@ async function loadMail(opts={}){
     },()=>locale===activeLocale&&!$('#mail-view').classList.contains('hidden'));
 
     const focusId=new URLSearchParams(location.search).get('message');
-    if(focusId&&!append)openMailDetail(focusId);
+
   }catch(e){$('#global-error').textContent=e.message;}
 }
 function wireMailSearch(){
@@ -496,12 +550,12 @@ function wireMailSearch(){
   if(!toggle||!input)return;
   let timer=null;
   const setQuery=q=>{currentMailQuery=q;loadMail({q});};
-  const open=()=>{input.hidden=false;void input.offsetWidth;input.classList.add('open');input.focus();toggle.classList.add('active');};
-  const close=()=>{input.classList.remove('open');toggle.classList.remove('active');setTimeout(()=>{if(!input.classList.contains('open'))input.hidden=true;},320);};
+  const open=()=>{input.classList.add('open');input.tabIndex=0;input.removeAttribute('aria-hidden');toggle.classList.add('active');toggle.setAttribute('aria-expanded','true');input.focus();};
+  const close=()=>{clearTimeout(timer);input.classList.remove('open');input.tabIndex=-1;input.setAttribute('aria-hidden','true');toggle.classList.remove('active');toggle.setAttribute('aria-expanded','false');};
   toggle.onclick=()=>{if(input.classList.contains('open')){if(input.value){input.value='';setQuery('');}close();}else open();};
   input.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(()=>setQuery(input.value.trim()),300);});
-  input.addEventListener('focusout',()=>{setTimeout(()=>{if(!input.value)close();},150);});
-  input.addEventListener('keydown',e=>{if(e.key==='Escape'){input.value='';setQuery('');close();}});
+  input.addEventListener('focusout',e=>{if(!input.value&&e.relatedTarget!==toggle)close();});
+  input.addEventListener('keydown',e=>{if(e.key==='Escape'){input.value='';setQuery('');close();toggle.focus();}});
 }
 // ---------- 日报 / Digest briefing ----------
 // A digest is a *briefing*, not a second mail list: a one-sentence lede, three counters, the next
@@ -509,6 +563,8 @@ function wireMailSearch(){
 let digestData=[],digestViews=[],digestFilter='all',digestBound=false,digestStackOpen=false;
 const digestOpen=new Set();
 const motionOk=()=>!matchMedia('(prefers-reduced-motion: reduce)').matches;
+const digestText=(value,fallback)=>digestTextForLocale(value,locale,fallback);
+const digestTitle=title=>digestTitleForLocale(title,locale);
 const tierLabel=t=>({act:local('需处理','需處理','Action'),upcoming:local('日程','日程','Dated'),info:local('资讯','資訊','Info')}[t]);
 function dayLabel(ts){
   const n=daysUntil(ts,Date.now()),date=new Date(ts).toLocaleDateString(dateLocale(),{timeZone:'Asia/Hong_Kong',month:'short',day:'numeric',weekday:'short'});
@@ -522,9 +578,10 @@ function digestLede(o){
   return local('这个时段只有资讯类邮件，没有需要处理的事项。','這個時段只有資訊類郵件，沒有需要處理的事項。','Only informational mail this time — nothing to act on.');
 }
 function digestBody(r,key){
-  const it=r.item,meta=[it.brief?.topic||(it.category?tx(categoryKey(it.category)):''),it.origin||it.sender,it.received?fmt(it.received):''].filter(Boolean);
+  const it=r.item,brief=locale==='en'&&!englishBriefIsUsable(it.brief)?null:it.brief;
+  const meta=[digestText(brief?.topic||(it.category?tx(categoryKey(it.category)):''),'Topic unavailable'),digestText(it.origin||it.sender,'Sender unavailable'),it.received?fmt(it.received):''].filter(Boolean);
   let html=meta.length?`<p class="dg-meta" data-user-content>${esc(meta.join(' · '))}</p>`:'';
-  if(it.brief)html+=digestBriefContent(it);
+  if(brief)html+=digestBriefContent({...it,brief});
   else if(it.briefLoading)html+=`<div class="dg-skel" role="status" aria-label="${esc(local('正在从原文整理要点','正在從原文整理重點','Reading the original email'))}"><span></span><span></span><span></span></div><p class="dg-note">${esc(local('正在从原文整理要点…','正在從原文整理重點…','Reading the original email…'))}</p>`;
   else{
     // 没有 AI 摘要时，先展示已有的速览（extractive summary），而不是一直"正在整理"。
@@ -535,6 +592,8 @@ function digestBody(r,key){
   }
   const buttons=[];
   if(it.id)buttons.push(`<button type="button" class="dg-btn primary" data-dg-open="${key}">${esc(local('查看邮件','查看郵件','Open email'))}<span aria-hidden="true"> ↗</span></button>`);
+  if(r.when!==null&&it.id&&!it.ignored){const added=tasks.some(t=>t.source==='email'&&t.source_id===`digest-mail:${it.id}`);buttons.push(`<button type="button" class="dg-btn" data-dg-add-task="${key}" ${added?'disabled':''}>${esc(local(added?'已加入我的待办':'加入我的待办',added?'已加入我的待辦':'加入我的待辦',added?'Added to my tasks':'Add to my tasks'))}</button>`);}
+  if(it.id&&(r.tier==='act'||it.ignored))buttons.push(`<button type="button" class="dg-btn" data-dg-ignore="${key}">${esc(local(it.ignored?'恢复提醒':'忽略',it.ignored?'恢復提醒':'忽略',it.ignored?'Restore reminders':'Ignore'))}</button>`);
   if(it.id&&!it.brief&&!it.briefLoading)buttons.push(`<button type="button" class="dg-btn" data-dg-brief="${key}">${esc(it.briefError?local('重试','重試','Retry'):local('生成详细要点','產生詳細重點','Prepare notes'))}</button>`);
   return html+(buttons.length?`<div class="dg-actions">${buttons.join('')}</div>`:'');
 }
@@ -548,7 +607,7 @@ function digestCard(d,di){
   const stats=[['act',c.act,local('需处理','需處理','Need action')],['upcoming',c.upcoming,local('日程提醒','日程提醒','Dates ahead')],['total',c.total,local('封邮件','封郵件','Emails')]].map(([k,v,label])=>`<div class="dg-stat is-${k}"><b data-count="${v}">${v}</b><span>${esc(label)}</span></div>`).join('');
   const chips=[['all',local('全部','全部','All'),c.total],['act',tierLabel('act'),c.act],['upcoming',tierLabel('upcoming'),c.upcoming],['info',tierLabel('info'),c.info]].map(([k,label,n])=>`<button type="button" data-dg-filter="${k}" class="${digestFilter===k?'selected':''}" aria-pressed="${digestFilter===k}"${k!=='all'&&!n?' disabled':''}>${esc(label)} <i>${n}</i></button>`).join('');
   const timeline=o.timeline.length?`<ol class="dg-timeline" aria-label="${esc(local('即将到来','即將到來','Coming up'))}">${o.timeline.map(r=>{const w=dayLabel(r.when),n=o.rows.indexOf(r);return `<li><button type="button" data-dg-jump="${di}:${n}"><time class="${w.soon?'soon':''}" title="${esc(w.title)}">${esc(w.text)}</time><span data-user-content>${esc(r.headline)}</span></button></li>`;}).join('')}</ol>`:'';
-  return `<article class="mail-card digest-card dg-card" data-dg-card="${di}"><div class="meta"><span class="badge">${esc(fmt(d.created))}</span></div><h2>${esc(d.title)}</h2><p class="dg-lede">${esc(digestLede(o))}</p><div class="dg-stats">${stats}</div>${timeline}<div class="dg-toolbar"><div class="dg-filter" role="group" aria-label="${esc(local('筛选','篩選','Filter'))}"><span class="dg-ind" aria-hidden="true"></span>${chips}</div><button type="button" class="dg-btn ghost" data-dg-all="${di}"></button></div><ul class="dg-list">${o.rows.map((r,n)=>digestRow(r,di,n)).join('')}</ul></article>`;
+  return `<article class="mail-card digest-card dg-card" data-dg-card="${di}"><div class="meta"><span class="badge">${esc(fmt(d.created))}</span></div><h2>${esc(digestTitle(d.title))}</h2><p class="dg-lede">${esc(digestLede(o))}</p><div class="dg-stats">${stats}</div>${timeline}<div class="dg-toolbar"><div class="dg-filter" role="group" aria-label="${esc(local('筛选','篩選','Filter'))}"><span class="dg-ind" aria-hidden="true"></span>${chips}</div><button type="button" class="dg-btn ghost" data-dg-all="${di}"></button></div><ul class="dg-list">${o.rows.map((r,n)=>digestRow(r,di,n)).join('')}</ul></article>`;
 }
 function moveIndicators(){
   $$('#digest-list .dg-filter').forEach(box=>{
@@ -589,8 +648,12 @@ function renderDigests(animate){
   const root=$('#digest-list');
   if(!digestData.length){root.innerHTML=`<div class="empty"><span class="empty-mark">◷</span><h2>${esc(tx('digestHistoryEmpty'))}</h2><p>${esc(tx('digestHistoryHelp'))}</p></div>`;return;}
   digestViews=digestData.map(d=>digestOverview(Array.isArray(d.items)?d.items:[],Date.now()));
+  if(locale==='en')for(const view of digestViews)for(const row of view.rows){
+    row.headline=digestText(row.headline,'Email summary unavailable');
+    if(containsCjk(row.gist.text))row.gist={...row.gist,text:'English summary unavailable. Open the email for details.'};
+  }
   const stacked=digestData.length>1;
-  const list=digestData.map((d,di)=>Array.isArray(d.items)&&d.items.length?digestCard(d,di):`<article class="mail-card digest-card dg-card"><div class="meta"><span class="badge">${esc(fmt(d.created))}</span></div><h2>${esc(d.title)}</h2><p class="body-text" data-user-content>${esc(d.body||tx('noDigestItems'))}</p></article>`).join('');
+  const list=digestData.map((d,di)=>Array.isArray(d.items)&&d.items.length?digestCard(d,di):`<article class="mail-card digest-card dg-card"><div class="meta"><span class="badge">${esc(fmt(d.created))}</span></div><h2>${esc(digestTitle(d.title))}</h2><p class="body-text" data-user-content>${esc(digestText(d.body||tx('noDigestItems'),'No mail items in this digest.'))}</p></article>`).join('');
   root.classList.toggle('dg-animate',!!animate&&motionOk());
   root.innerHTML=(stacked?`<button type="button" class="stack-toggle chip-button" aria-expanded="false"></button><div class="card-stack">`:'')+list+(stacked?'</div>':'');
   if(stacked)setupCardStack($('#digest-list .card-stack'),$('#digest-list .stack-toggle'),{open:local(`展开全部 ${digestData.length} 份日报`,`展開全部 ${digestData.length} 份日報`,`Show all ${digestData.length} digests`),close:local('收起','收起','Collapse')});
@@ -605,31 +668,19 @@ function bindDigestEvents(){
   const root=$('#digest-list');
   addEventListener('resize',moveIndicators);
   root.addEventListener('click',()=>{const t=root.querySelector('.stack-toggle');if(t)digestStackOpen=t.getAttribute('aria-expanded')==='true';});
-  root.addEventListener('click',e=>{
+  root.addEventListener('click',async e=>{
     if(e.target.closest('.card-stack.is-collapsed'))return; // first click only unfolds the stack
     const find=sel=>e.target.closest(sel);
     const rowOf=key=>{const [di,n]=key.split(':').map(Number);return {row:root.querySelector(`[data-dg-row="${key}"]`),r:digestViews[di]?.rows[n]};};
     const head=find('.dg-head');
     if(head){
-      // 点击日报行直接跳转到邮件详情页（用户要求）
       try{
         const row=head.closest('.dg-row');
         if(!row)return;
-        const {r}=rowOf(row.dataset.dgRow);
-        const mailId=r?.item?.id;
-        if(mailId){
-          // 先切到邮件视图，再写 deep-link 参数：loadMail 加载完列表后会自动打开对应邮件；
-          // 同时立即打开详情（带加载中提示），dialog.open 守卫保证两次调用不冲突
-          view('mail');
-          history.replaceState(null,'','/?view=mail&message='+encodeURIComponent(mailId));
-          openMailDetail(mailId).catch(e=>console.warn('openMailDetail failed',e));
-        }else{
-          // 旧日报条目没有关联邮件 id：展开行内摘要，保证点击一定有反馈
-          const open=!row.classList.contains('open');
-          row.classList.toggle('open',open);
-          head.setAttribute('aria-expanded',String(open));
-          syncToggleAll(row.closest('.dg-card'));
-        }
+        const open=!row.classList.contains('open');
+        row.classList.toggle('open',open);
+        head.setAttribute('aria-expanded',String(open));
+        syncToggleAll(row.closest('.dg-card'));
       }catch(e){console.warn('digest row click failed',e);}
       return;
     }
@@ -649,6 +700,34 @@ function bindDigestEvents(){
       syncToggleAll(row.closest('.dg-card'));row.scrollIntoView({behavior:motionOk()?'smooth':'auto',block:'center'});
       row.classList.remove('dg-flash');void row.offsetWidth;row.classList.add('dg-flash');return;
     }
+    const ignore=find('[data-dg-ignore]');
+    if(ignore){
+      const {row,r}=rowOf(ignore.dataset.dgIgnore);if(!r?.item.id)return;
+      ignore.disabled=true;
+      const ignored=!r.item.ignored,wasOpen=row?.classList.contains('open');
+      let collapse=Promise.resolve();
+      if(ignored&&wasOpen){
+        const head=row.querySelector('.dg-head'),body=row.querySelector('.dg-body');
+        digestOpen.delete(r.item.id);row.classList.remove('open');head.setAttribute('aria-expanded','false');syncToggleAll(row.closest('.dg-card'));
+        if(motionOk())collapse=new Promise(resolve=>{
+          let done=false;const finish=()=>{if(done)return;done=true;clearTimeout(timer);body.removeEventListener('transitionend',onEnd);resolve();};
+          const onEnd=event=>{if(event.target===body&&event.propertyName==='grid-template-rows')finish();};
+          const timer=setTimeout(finish,460);body.addEventListener('transitionend',onEnd);
+        });
+      }
+      try{
+        await Promise.all([api('digests/ignore',{method:ignored?'POST':'DELETE',body:{messageId:r.item.id}}),collapse]);
+        for(const digest of digestData)for(const item of digest.items||[])if(item.id===r.item.id)item.ignored=ignored;
+        if(!ignored)digestOpen.add(r.item.id);
+        renderDigests(false);
+      }catch(error){
+        if(ignored&&wasOpen&&row){digestOpen.add(r.item.id);row.classList.add('open');row.querySelector('.dg-head')?.setAttribute('aria-expanded','true');syncToggleAll(row.closest('.dg-card'));}
+        ignore.disabled=false;$('#global-error').textContent=error.message;
+      }
+      return;
+    }
+    const addTask=find('[data-dg-add-task]');
+    if(addTask){const {r}=rowOf(addTask.dataset.dgAddTask);if(!r||r.when===null||r.item.ignored||!r.item.id)return;openForm(null,{messageId:r.item.id,title:r.headline.slice(0,200),notes:[r.gist.text||r.item.summary||'',`${local('来源邮件：','來源郵件：','Source email: ')}${r.item.subject||r.headline}`].filter(Boolean).join('\n'),due:suggestedTaskDue(r.item,r.when),priority:r.tier==='act'?1:2});return;}
     const open=find('[data-dg-open]');
     if(open){const {r}=rowOf(open.dataset.dgOpen);if(r?.item.id){history.replaceState(null,'','/?view=mail&message='+encodeURIComponent(r.item.id));view('mail');openMailDetail(r.item.id);}return;}
     const brief=find('[data-dg-brief]');
@@ -666,6 +745,7 @@ function bindDigestEvents(){
 async function loadDigests(opts={}){
   try{
     digestData=await api('digests');
+    digestData.sort((a,b)=>(Number(b.created)||0)-(Number(a.created)||0));
     bindDigestEvents();
     renderDigests(true);
     if(opts.generate!==false){
@@ -723,7 +803,7 @@ function renderGroups(){
   if(!groups.length){root.innerHTML='<div class="empty"><span class="empty-mark">◎</span><h2>从一个真实的小组项目开始</h2><p>创建小组后，可以确认每个人的分工，并收集共同空闲时间。</p></div>';translateTextNodes();return;}
   if(!groupState){root.innerHTML=`<div class="groups-layout">${groupIndex()}<div class="workspace-placeholder"><p>选择一个小组，查看分工与会议时间。</p></div></div>`;bindGroupIndex();translateTextNodes();return;}
   const {group,members,candidates,tasks,meetingPolls,announcements}=groupState,isOwner=group.role==='owner';
-  root.innerHTML=`<div class="groups-layout">${groupIndex()}<div class="group-panel"><div class="group-panel-head"><div><h2 data-user-content>${esc(group.name)}</h2><p>${members.length} ${local('位成员','位成員','members')} · ${esc(accountLabel(status.account))} · ${isOwner?local('组长','組長','Owner'):local('成员','成員','Member')}</p></div><span class="state-pill">${isOwner?'可审核分工与确认会议':'可提交建议、接受分工与参与投票'}</span></div>${announcements?.length?`<section class="group-section announcements"><div class="section-heading"><h2>小组公告</h2><p>未来可直接接入群聊置顶</p></div>${announcements.map(item=>`<article class="announcement"><strong>${esc(announcementText(item).title)}</strong><p>${esc(announcementText(item).body)}</p></article>`).join('')}</section>`:''}<section class="group-section"><div class="section-heading"><h2>成员与提交身份</h2><p>所有操作绑定登录账号，不绑定“关联邮箱”</p></div><div class="member-list">${members.map(member=>`<span class="member-chip ${member.user_id===status.account.id?'current':''}"><b>${esc(member.nickname||local('用户 ','用戶 ','User ')+member.user_id.slice(-4))}</b>${esc(member.role==='owner'?local('创建者','建立者','Owner'):local('成员','成員','Member'))}${member.user_id===status.account.id?local(' · 当前账号',' · 目前帳號',' · You'):''}</span>`).join('')}</div>${membershipControls(isOwner)}${isOwner?`<form id="member-form" class="compact-form"><label>用注册邮箱邀请成员<input name="email" type="email" required></label><button type="submit">邀请成员</button></form>`:''}</section><section class="group-section"><div class="section-heading"><h2>分工确认</h2><p>候选 → 组长审核 → 负责人接受 → 全组可见</p></div><form id="candidate-form" class="candidate-form"><label>候选任务<input name="title" maxlength="200" required></label><div class="form-row"><label>建议负责人<select name="assignee"><option value="">由组长审核时决定</option>${memberOptions()}</select></label><label>截止时间（可留空）<input name="due" type="datetime-local"></label></div><label>任务说明<textarea name="notes" rows="2"></textarea></label><label>依据<textarea name="evidence" rows="2" required></textarea></label><div class="form-actions"><button type="submit" class="primary">提交候选</button></div></form>${candidates.length?candidates.map(candidate=>candidateCard(candidate,isOwner)).join(''):'<p class="form-help">还没有候选分工。候选不会自动变成正式任务。</p>'}</section><section class="group-section"><div class="section-heading"><h2>全组分工看板</h2><p>每位成员都能看到负责人和当前状态</p></div>${tasks.length?tasks.map(taskCard).join(''):'<p class="form-help">暂无正式分工。组长审核候选后，负责人会在这里接受或拒绝。</p>'}</section><section class="group-section"><div class="section-heading"><h2>共同会议时间</h2><p>收集时间 → 推荐方案 → 全员投票 → 加入待办</p></div><form id="meeting-form" class="meeting-form"><label>会议名称<input name="name" maxlength="120" required></label><div class="form-row"><label>可选范围开始<input name="rangeStart" type="datetime-local" required></label><label>可选范围结束<input name="rangeEnd" type="datetime-local" required></label></div><div class="form-row"><label>会议时长<select name="duration"><option value="30">30 分钟</option><option value="45">45 分钟</option><option value="60" selected>60 分钟</option><option value="90">90 分钟</option></select></label><label>前后缓冲<select name="buffer"><option value="0">不需要</option><option value="15" selected>15 分钟</option><option value="30">30 分钟</option></select></label></div><div class="form-actions"><button class="primary" type="submit">发起时间收集</button></div></form>${meetingPolls.length?meetingPolls.map(poll=>`<article class="poll-card"><span class="state-pill ${esc(poll.phase||poll.status)}">${esc(stateLabel(poll.phase||poll.status))}</span><h3 data-user-content>${esc(poll.name)}</h3><p>${esc(fmt(poll.range_start))} – ${esc(fmt(poll.range_end))} · ${poll.duration_minutes} ${local('分钟','分鐘','minutes')}</p><button type="button" data-open-poll="${esc(poll.id)}">${poll.status==='confirmed'?'查看结果':poll.phase==='voting'?'参与投票':'提交时间 / 查看推荐'}</button></article>`).join(''):'<p class="form-help">还没有会议时间收集。</p>'}${pollWorkspace()}${meetingControls()}</section></div></div>`;
+  root.innerHTML=`<div class="groups-layout">${groupIndex()}<div class="group-panel"><div class="group-panel-head"><div><h2 data-user-content>${esc(group.name)}</h2><p>${members.length} ${local('位成员','位成員','members')} · ${esc(accountLabel(status.account))} · ${isOwner?local('组长','組長','Owner'):local('成员','成員','Member')}</p></div></div>${announcements?.length?`<section class="group-section announcements"><div class="section-heading"><h2>小组公告</h2></div>${announcements.map(item=>`<article class="announcement"><strong>${esc(announcementText(item).title)}</strong><p>${esc(announcementText(item).body)}</p></article>`).join('')}</section>`:''}<section class="group-section"><div class="section-heading"><h2>成员与提交身份</h2></div><div class="member-list">${members.map(member=>`<span class="member-chip ${member.user_id===status.account.id?'current':''}"><b>${esc(member.nickname||local('用户 ','用戶 ','User ')+member.user_id.slice(-4))}</b>${esc(member.role==='owner'?local('创建者','建立者','Owner'):local('成员','成員','Member'))}${member.user_id===status.account.id?local(' · 当前账号',' · 目前帳號',' · You'):''}</span>`).join('')}</div>${membershipControls(isOwner)}${isOwner?`<form id="member-form" class="compact-form"><label>用注册邮箱邀请成员<input name="email" type="email" required></label><button type="submit">邀请成员</button></form>`:''}</section><section class="group-section"><div class="section-heading"><h2>分工确认</h2></div><form id="candidate-form" class="candidate-form"><label>候选任务<input name="title" maxlength="200" required></label><div class="form-row"><label>建议负责人<select name="assignee"><option value="">由组长审核时决定</option>${memberOptions()}</select></label><label>截止时间（可留空）<input name="due" type="datetime-local"></label></div><label>任务说明<textarea name="notes" rows="2"></textarea></label><label>依据<textarea name="evidence" rows="2" required></textarea></label><div class="form-actions"><button type="submit" class="primary">提交候选</button></div></form>${candidates.length?candidates.map(candidate=>candidateCard(candidate,isOwner)).join(''):'<p class="form-help">还没有候选分工。候选不会自动变成正式任务。</p>'}</section><section class="group-section"><div class="section-heading"><h2>全组分工看板</h2></div>${tasks.length?tasks.map(taskCard).join(''):'<p class="form-help">暂无正式分工。组长审核候选后，负责人会在这里接受或拒绝。</p>'}</section><section class="group-section"><div class="section-heading"><h2>共同会议时间</h2></div><form id="meeting-form" class="meeting-form"><label>会议名称<input name="name" maxlength="120" required></label><div class="form-row"><label>可选范围开始<input name="rangeStart" type="datetime-local" required></label><label>可选范围结束<input name="rangeEnd" type="datetime-local" required></label></div><div class="form-row"><label>会议时长<select name="duration"><option value="30">30 分钟</option><option value="45">45 分钟</option><option value="60" selected>60 分钟</option><option value="90">90 分钟</option></select></label><label>前后缓冲<select name="buffer"><option value="0">不需要</option><option value="15" selected>15 分钟</option><option value="30">30 分钟</option></select></label></div><div class="form-actions"><button class="primary" type="submit">发起时间收集</button></div></form>${meetingPolls.length?meetingPolls.map(poll=>`<article class="poll-card"><span class="state-pill ${esc(poll.phase||poll.status)}">${esc(stateLabel(poll.phase||poll.status))}</span><h3 data-user-content>${esc(poll.name)}</h3><p>${esc(fmt(poll.range_start))} – ${esc(fmt(poll.range_end))} · ${poll.duration_minutes} ${local('分钟','分鐘','minutes')}</p><button type="button" data-open-poll="${esc(poll.id)}">${poll.status==='confirmed'?'查看结果':poll.phase==='voting'?'参与投票':'提交时间 / 查看推荐'}</button></article>`).join(''):'<p class="form-help">还没有会议时间收集。</p>'}${pollWorkspace()}${meetingControls()}</section></div></div>`;
   bindGroupActions();
   translateTextNodes();
   bindUpgradeControls();
@@ -758,7 +838,7 @@ async function loadGroups(force=false,keepPoll=false){
 
 async function loadSettings(){return loadSettingsProfile();}
 async function enablePush(){try{if(!('serviceWorker'in navigator)||!('PushManager'in window))throw Error('请从 iPhone 主屏幕打开，或使用支持通知的浏览器');const permission=await Notification.requestPermission();if(permission!=='granted')throw Error('通知权限尚未允许，请在系统设置中启用');const registration=await navigator.serviceWorker.register('/sw.js');await navigator.serviceWorker.ready;const raw=atob(status.vapid.replace(/-/g,'+').replace(/_/g,'/'));const applicationServerKey=Uint8Array.from(raw,c=>c.charCodeAt(0));const sub=await registration.pushManager.getSubscription()||await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey});await api('subscriptions',{method:'POST',body:sub.toJSON()});toast('此设备已启用通知');}catch(e){toast(e.message);}}
-function exportCalendar(t){if(!t.due)return;const quote=s=>String(s).replace(/\\/g,'\\\\').replace(/\r?\n/g,'\\n').replace(/,/g,'\\,').replace(/;/g,'\\;');const stamp=n=>new Date(n).toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z/,'Z');const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Campus Companion//Tasks//ZH','BEGIN:VEVENT','UID:'+t.id+'@campus-companion','DTSTAMP:'+stamp(Date.now()),'DTSTART:'+stamp(t.due),'DTEND:'+stamp(t.due+1800000),'SUMMARY:'+quote('截止：'+t.title),'DESCRIPTION:'+quote(t.notes+'\n一次性日历副本，完成或改期请在校园清单操作。'),'END:VEVENT','END:VCALENDAR'];const blob=new Blob([lines.join('\r\n')+'\r\n'],{type:'text/calendar;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='待办截止日期.ics';a.click();setTimeout(()=>URL.revokeObjectURL(url),5000);toast('已导出日历副本；它不会自动同步');}
+function exportCalendar(t){if(!t.due)return;const quote=s=>String(s).replace(/\\/g,'\\\\').replace(/\r?\n/g,'\\n').replace(/,/g,'\\,').replace(/;/g,'\\;');const stamp=n=>new Date(n).toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z/,'Z');const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Campus Companion//Tasks//ZH','BEGIN:VEVENT','UID:'+t.id+'@campus-companion','DTSTAMP:'+stamp(Date.now()),'DTSTART:'+stamp(t.due),'DTEND:'+stamp(t.due+1800000),'SUMMARY:'+quote(local('截止：','截止：','Due: ')+t.title),'DESCRIPTION:'+quote(t.notes+'\n'+local('一次性日历副本，完成或改期请在校园清单操作。','一次性日曆副本，完成或改期請在校園清單操作。','One-time calendar copy. Update or complete the task in Campus Companion.')),'END:VEVENT','END:VCALENDAR'];const blob=new Blob([lines.join('\r\n')+'\r\n'],{type:'text/calendar;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=local('待办截止日期.ics','待辦截止日期.ics','task-deadline.ics');a.click();setTimeout(()=>URL.revokeObjectURL(url),5000);toast(local('日历文件已下载，可导入系统日历；不会自动同步','日曆檔案已下載，可匯入系統日曆；不會自動同步','Calendar file downloaded for import; it will not sync automatically'));}
 $('#login-form').onsubmit=async event=>{event.preventDefault();const form=event.currentTarget,b=form.querySelector('button');b.disabled=true;b.classList.add('pending');const original=b.textContent;b.textContent=local('提交中…','提交中…','Submitting…');try{await api('login',{method:'POST',body:{email:form.elements.email.value,password:form.elements.password.value}});form.reset();await flyToDock(boot);}catch(e){$('#login-error').textContent=e.message;}finally{b.disabled=false;b.classList.remove('pending');b.textContent=original;}};
 $('#register-form').onsubmit=async event=>{event.preventDefault();const form=event.currentTarget,b=form.querySelector('[type=submit]');b.disabled=true;b.classList.add('pending');const original=b.textContent;b.textContent=local('提交中…','提交中…','Submitting…');$('#register-error').textContent='';try{await api('register',{method:'POST',body:{email:form.elements.email.value,password:form.elements.password.value,question:form.elements.question.value,answer:form.elements.answer.value}});form.reset();await flyToDock(boot);toast('账号已创建');}catch(e){$('#register-error').textContent=e.message;}finally{b.disabled=false;b.classList.remove('pending');b.textContent=original;}};
 $$('[data-auth]').forEach(button=>button.onclick=()=>{$$('[data-auth]').forEach(b=>b.classList.toggle('selected',b===button));$('#login-form').classList.toggle('hidden',button.dataset.auth!=='login');$('#register-form').classList.toggle('hidden',button.dataset.auth!=='register');});
@@ -769,14 +849,19 @@ $('#recovery-form').onsubmit=async event=>{event.preventDefault();const f=event.
 async function logout(){try{await api('logout',{method:'POST',body:{}});}finally{tasks=[];location.replace('/');}}
 $('#logout').onclick=logout;
 $('#add-task').onclick=()=>openForm();$('#close-dialog').onclick=$('#cancel-task').onclick=()=>$('#task-dialog').close();
+$('#task-dialog').addEventListener('close',()=>{mailTaskDraft=null;$('#task-dialog').classList.remove('mail-task-review');$('#mail-task-hint')?.classList.add('hidden');});
 $('#new-group').onclick=()=>{$('#group-form').reset();$('#group-form-error').textContent='';$('#group-dialog').showModal();};$('#close-group-dialog').onclick=$('#cancel-group').onclick=()=>$('#group-dialog').close();
 $('#group-form').onsubmit=async event=>{event.preventDefault();const form=event.currentTarget,button=form.querySelector('[type=submit]');button.disabled=true;try{const group=await api('groups',{method:'POST',body:{name:form.elements.name.value}});selectedGroupId=group.id;$('#group-dialog').close();toast('小组已创建');await loadGroups(true);}catch(error){$('#group-form-error').textContent=error.message;}finally{button.disabled=false;}};
-$('#show-pending').onclick=()=>{showDone=false;$('#show-pending').classList.add('selected');$('#show-completed').classList.remove('selected');renderTasks();};
-$('#show-completed').onclick=()=>{showDone=true;$('#show-completed').classList.add('selected');$('#show-pending').classList.remove('selected');renderTasks();};
-$$('[data-view]').forEach(b=>b.onclick=event=>{if(b.dataset.view===activeView)view(b.dataset.view);else circularTransition(event,()=>view(b.dataset.view));});
+for(const [id,tab] of [['show-pending','pending'],['show-completed','done'],['show-archived','archive']])$('#'+id).onclick=()=>{taskTab=tab;renderTasks();};
+$$('[data-period]').forEach(card=>card.onclick=()=>{activePeriod=activePeriod===card.dataset.period?null:card.dataset.period;renderPeriodCards(Date.now());if(activePeriod)$('#period-details').scrollIntoView({block:'nearest',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});});
+$('#close-period-details').onclick=()=>{activePeriod=null;renderPeriodCards(Date.now());};
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&tasks.length){renderTasks();schedulePeriodRefresh();}});
+$$('[data-view]').forEach(b=>b.onclick=event=>{if(b.dataset.view===activeView)view(b.dataset.view);else pageTransition(()=>view(b.dataset.view));});
 function wireMailDetail(){
   const dialog=$('#mail-detail-dialog');if(!dialog||dialog.dataset.wired)return;dialog.dataset.wired='1';
-  const close=()=>dialog.close();
+  const close=()=>{if(history.state?.mailReader)history.back();else{hideMailReader();view('mail');}};
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!dialog.classList.contains('hidden'))close();});
+  window.addEventListener('popstate',()=>{const id=new URLSearchParams(location.search).get('message');if(id)openMailDetail(id,{push:false});else hideMailReader();});
   $('#close-mail-detail')?.addEventListener('click',close);
   $('#mail-detail-done')?.addEventListener('click',close);
   dialog.querySelectorAll('[data-mail-pane]').forEach(btn=>btn.onclick=()=>{
@@ -785,7 +870,7 @@ function wireMailDetail(){
     $('#mail-detail-en').classList.toggle('hidden',btn.dataset.mailPane!=='en');
   });
 }
-async function boot(){wireMailDetail();wireMailSearch();try{status=await api('status');const profile=await api('profile');reminderDefaults=profile.reminders||reminderDefaults;applyLocale(status.account.locale||localStorage.getItem('campus-locale')||'zh-CN');localStorage.setItem('campus-locale',locale);$('#login').classList.add('hidden');$('#app').classList.remove('hidden');ensureDock();$('#account-label').textContent=accountLabel(status.account);setAvatar(status.account.avatar,accountLabel(status.account).slice(0,1).toUpperCase());$('#date-label').textContent=new Date().toLocaleDateString(dateLocale(),{timeZone:'Asia/Hong_Kong',year:'numeric',month:'long',day:'numeric',weekday:'long'});await loadTasks();const v=new URLSearchParams(location.search).get('view');view(['groups','mail','digests','settings'].includes(v)?v:'tasks');}catch(e){if(!$('#app').classList.contains('hidden'))$('#global-error').textContent=e.message;else showLogin();}}
+async function boot(){wireMailDetail();wireMailSearch();try{status=await api('status');const profile=await api('profile');reminderDefaults=profile.reminders||reminderDefaults;applyLocale(status.account.locale||localStorage.getItem('campus-locale')||'zh-CN');localStorage.setItem('campus-locale',locale);$('#login').classList.add('hidden');$('#app').classList.remove('hidden');ensureDock();$('#account-label').textContent=accountLabel(status.account);setAvatar(status.account.avatar,accountLabel(status.account).slice(0,1).toUpperCase());$('#date-label').textContent=new Date().toLocaleDateString(dateLocale(),{timeZone:'Asia/Hong_Kong',year:'numeric',month:'long',day:'numeric',weekday:'long'});await loadTasks();const params=new URLSearchParams(location.search),v=params.get('view'),message=params.get('message');view(['groups','mail','digests','settings'].includes(v)?v:'tasks');if(message){history.replaceState(null,'','/?view=mail&message='+encodeURIComponent(message));openMailDetail(message,{push:false});}}catch(e){if(!$('#app').classList.contains('hidden'))$('#global-error').textContent=e.message;else showLogin();}}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!$('#app').classList.contains('hidden'))loadTasks().catch(e=>toast(e.message));});
 
 function announcementText(item){if(item.kind==='meeting-change')return {title:item.title,body:item.body==='cancel'?local('会议已取消','會議已取消','Meeting cancelled'):local('会议已改期，请重新提交可用时间','會議已改期，請重新提交可用時間','Meeting rescheduled. Submit availability again.')};if(item.kind==='meeting'){const poll=groupState.meetingPolls.find(p=>p.id===item.source_id);if(poll)return {title:local('会议时间已确认：','會議時間已確認：','Meeting confirmed: ')+poll.name,body:fmt(poll.confirmed_start)+' · '+poll.duration_minutes+' '+local('分钟','分鐘','minutes')};}return item;}
@@ -806,9 +891,10 @@ function bindUpgradeControls(){
 }
 async function renderMailSuggestions(){
  const suggestions=await api('mail-suggestions');
- $('#mail-suggestions').innerHTML=suggestions.length?`<section class="setting-card"><h2>${local('待确认的邮件任务','待確認的郵件任務','Mail tasks to review')}</h2><p>${local('核对标题、原文依据和截止时间，确认后才会创建待办与提醒。','核對標題、原文依據和截止時間，確認後才會建立待辦與提醒。','Check the title, source evidence and deadline. Tasks and reminders are created only after confirmation.')}</p>${suggestions.map(s=>`<form class="candidate-review" data-mail-review="${s.id}"><label>${tx('taskTitle')}<input name="title" required maxlength="200" value="${esc(s.title)}"></label><label>${local('截止时间（可留空）','截止時間（可留空）','Deadline (optional)')}<input name="due" type="datetime-local" value="${hkValue(s.due)}"></label><label>${local('备注','備註','Notes')}<textarea name="notes">${esc(s.notes)}</textarea></label><p data-user-content>${esc(evidenceText(s.evidence))}</p><button type="submit" class="primary">${local('确认并加入我的待办','確認並加入我的待辦','Confirm and add to my tasks')}</button> <button type="button" data-dismiss-mail="${s.id}">${local('不采用','不採用','Dismiss')}</button></form>`).join('')}</section>`:'';
+ $('#mail-suggestions').innerHTML=suggestions.length?`<section class="setting-card mail-suggestions-section"><h2>${local('待确认的邮件任务','待確認的郵件任務','Mail tasks to review')}</h2><p>${local('核对标题、原文依据和截止时间，确认后才会创建待办与提醒。','核對標題、原文依據和截止時間，確認後才會建立待辦與提醒。','Check the title, source evidence and deadline. Tasks and reminders are created only after confirmation.')}</p><div class="mail-suggestion-list">${suggestions.map(s=>`<form class="mail-suggestion-card" data-mail-review="${esc(s.id)}"><div class="mail-suggestion-head"><span class="state-pill pending">${local('邮件待办建议','郵件待辦建議','Suggested task')}</span><button type="button" class="mail-source-link" data-source-mail="${esc(s.message_id)}">${local('来源邮件：','來源電郵：','Source email: ')}${esc(String(s.message_subject||local('查看中文与原文','查看中文與原文','View summary and original')).replace(/^(?:(?:fw|fwd|re)\s*:\s*)+/i,''))} ↗</button></div><div class="mail-suggestion-fields"><label>${tx('taskTitle')}<input name="title" required maxlength="200" value="${esc(s.title)}"></label><label>${local('截止时间（可留空）','截止時間（可留空）','Deadline (optional)')}<input name="due" type="datetime-local" value="${hkValue(s.due)}"></label></div><label class="mail-suggestion-notes">${local('备注','備註','Notes')}<textarea name="notes" rows="2">${esc(s.notes)}</textarea></label><p class="mail-suggestion-evidence" data-user-content>${esc(evidenceText(s.evidence))}</p><div class="inline-actions"><button type="submit" class="primary">${local('确认并加入我的待办','確認並加入我的待辦','Confirm and add to my tasks')}</button><button type="button" data-dismiss-mail="${esc(s.id)}">${local('不采用','不採用','Dismiss')}</button></div></form>`).join('')}</div></section>`:'';
  $$('[data-mail-review]').forEach(f=>f.onsubmit=e=>{e.preventDefault();runAction(f.querySelector('[type=submit]'),()=>api('mail-suggestions/'+f.dataset.mailReview,{method:'POST',body:{decision:'confirm',title:f.elements.title.value,notes:f.elements.notes.value,due:hkTime(f.elements.due.value)}}),async()=>{await renderMailSuggestions();await loadTasks();});});
  $$('[data-dismiss-mail]').forEach(b=>b.onclick=()=>runAction(b,()=>api('mail-suggestions/'+b.dataset.dismissMail,{method:'POST',body:{decision:'reject'}}),renderMailSuggestions));
+ $$('[data-source-mail]').forEach(b=>b.onclick=()=>openMailDetail(b.dataset.sourceMail));
 }
 
 loadSettings=loadSettingsProfile;
@@ -816,6 +902,8 @@ const localeObserver=new MutationObserver(()=>translateTextNodes());
 localeObserver.observe(document.body,{childList:true,subtree:true,characterData:true});
 $$('[data-login-locale]').forEach(button=>button.onclick=()=>{localStorage.setItem('campus-locale',button.dataset.loginLocale);applyLocale(button.dataset.loginLocale);$$('[data-login-locale]').forEach(b=>b.classList.toggle('selected',b===button));});
 applyLocale(detectLocale());
+initTheme();
+document.addEventListener('campus-theme-change',updateManifestLocale);
 $$('[data-login-locale]').forEach(b=>b.classList.toggle('selected',b.dataset.loginLocale===locale));
 boot();
 
@@ -840,7 +928,13 @@ async function loadSettingsProfile(){
         <div class="qq-profile-info">
           <div class="qq-name-row">
             <span class="qq-name" id="qq-name-display" data-user-content>${esc(displayName)}</span>
-            <button type="button" class="qq-edit-btn" id="qq-name-edit-btn" aria-label="${esc(local('修改昵称','修改暱稱','Edit nickname'))}">🖊️</button>
+            <button type="button" class="qq-edit-btn" id="qq-name-edit-btn" aria-label="${esc(local('修改昵称','修改暱稱','Edit nickname'))}">
+              <svg class="qq-edit-icon" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+                <path class="qq-edit-sparkle" d="M6 5.5 7.1 8.4 10 9.5 7.1 10.6 6 13.5 4.9 10.6 2 9.5l2.9-1.1L6 5.5Z"/>
+                <path class="qq-edit-pencil" d="m8.2 22.8 2-7.1L22.4 3.5a2.1 2.1 0 0 1 3 0l3.1 3.1a2.1 2.1 0 0 1 0 3L16.3 21.8l-8.1 1Z"/>
+                <path class="qq-edit-pencil-detail" d="m10.2 15.7 6.1 6.1M22.4 3.5l6.1 6.1M8.2 22.8l4.1-4.1"/>
+              </svg>
+            </button>
           </div>
         </div>
       </div>
@@ -883,17 +977,20 @@ async function loadSettingsProfile(){
     // ---------- QQ 风格头像：点击进二级界面 ----------
     const qqAvatarBtn=$('#qq-avatar-btn'),avatarPage=$('#avatar-page');
     if(qqAvatarBtn&&avatarPage){
+      let avatarCloseTimer=0;
       // 打开头像二级页面（从右侧滑入）
       const openAvatarPage=()=>{
+        window.clearTimeout(avatarCloseTimer);
+        avatarCloseTimer=0;
         updateAvatarPagePreview();
         avatarPage.hidden=false;
         void avatarPage.offsetWidth;
         avatarPage.classList.add('open');
-        document.body.style.overflow='hidden';
       };
       const closeAvatarPage=()=>{
         avatarPage.classList.remove('open');
-        setTimeout(()=>{avatarPage.hidden=true;document.body.style.overflow='';},320);
+        window.clearTimeout(avatarCloseTimer);
+        avatarCloseTimer=window.setTimeout(()=>{avatarPage.hidden=true;avatarCloseTimer=0;},320);
       };
       qqAvatarBtn.onclick=openAvatarPage;
       $('#avatar-page-back').onclick=closeAvatarPage;
@@ -944,31 +1041,28 @@ async function loadSettingsProfile(){
     // ---------- 名字内联编辑：点击笔变成文本框（流畅高级） ----------
     const qqNameBtn=$('#qq-name-edit-btn'),qqNameDisplay=$('#qq-name-display'),qqNameRow=qqNameBtn?.closest('.qq-name-row');
     if(qqNameBtn&&qqNameDisplay&&qqNameRow){
-      let editing=false,originalName='';
+      let editing=false,closing=false,originalName='';
       const startEdit=()=>{
-        if(editing)return;
+        if(editing||closing)return;
         editing=true;
         originalName=qqNameDisplay.textContent;
-        // 创建输入框，样式如邮件搜索框般精致
         const input=document.createElement('input');
         input.type='text';
         input.className='qq-name-input';
         input.value=$('#profile-form').elements.nickname.value||originalName;
         input.maxLength=80;
-        input.setAttribute('aria-label','修改昵称');
-        // 替换显示为输入框（带淡入动画）
-        qqNameDisplay.style.opacity='0';
-        setTimeout(()=>{
-          qqNameDisplay.hidden=true;
-          qqNameRow.insertBefore(input,qqNameBtn);
-          void input.offsetWidth;
-          input.classList.add('open');
-          input.focus();
-          input.select();
-        },150);
+        input.setAttribute('aria-label',local('修改昵称','修改暱稱','Edit nickname'));
+        qqNameRow.insertBefore(input,qqNameBtn);
+        void input.offsetWidth;
+        qqNameDisplay.classList.add('editing');
+        qqNameDisplay.setAttribute('aria-hidden','true');
+        input.classList.add('open');
+        input.focus();
+        input.select();
         const finish=(save)=>{
           if(!editing)return;
           editing=false;
+          closing=true;
           const val=input.value.trim().slice(0,80);
           if(save&&val){
             $('#profile-form').elements.nickname.value=val;
@@ -976,18 +1070,18 @@ async function loadSettingsProfile(){
             qqNameDisplay.textContent=val||fallback;
           }
           input.classList.remove('open');
+          qqNameDisplay.classList.remove('editing');
           setTimeout(()=>{
             input.remove();
-            qqNameDisplay.hidden=false;
-            void qqNameDisplay.offsetWidth;
-            qqNameDisplay.style.opacity='1';
-          },200);
+            qqNameDisplay.removeAttribute('aria-hidden');
+            closing=false;
+          },380);
         };
         input.addEventListener('keydown',e=>{
           if(e.key==='Enter'){finish(true);}
           else if(e.key==='Escape'){input.value=originalName;finish(false);}
         });
-        input.addEventListener('blur',()=>setTimeout(()=>finish(true),150));
+        input.addEventListener('blur',()=>finish(true));
       };
       qqNameBtn.onclick=startEdit;
     }
@@ -1025,14 +1119,6 @@ const renderSettingsLocalized=loadSettingsProfile;
 loadSettingsProfile=async()=>{await renderSettingsLocalized();translateTextNodes();};
 loadSettings=loadSettingsProfile;
 
-function updateProgress(done,total){
- const percent=total?Math.round(done/total*100):0,ring=$('.progress-ring');
- ring.setAttribute('aria-valuenow',String(percent));ring.setAttribute('aria-label',local('全部待办完成率','全部待辦完成率','All tasks completion rate'));
- ring.style.setProperty('--progress',percent);$('#progress-percent').textContent=percent+'%';
- $('#progress-fraction').textContent=`${done}/${total}`;
- $('.progress-panel').style.backgroundColor=progressColor(percent); // lavender → yellow → lime
- const counter=$('#completed');if(counter.dataset.previous!==String(done)&&!matchMedia('(prefers-reduced-motion: reduce)').matches)counter.animate([{transform:'translateY(8px)',opacity:.3},{transform:'translateY(0)',opacity:1}],{duration:280});counter.textContent=done;counter.dataset.previous=String(done);
-}
 async function celebrateTask(control){
  if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;
  const card=control.closest('.task');card.classList.add('just-completed');
@@ -1045,3 +1131,4 @@ function offerUndo(id){
  const button=document.createElement('button');button.type='button';button.textContent=local('撤销','復原','Undo');$('#toast').append(button);clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.add('hidden'),8000);
  button.onclick=async()=>{button.disabled=true;try{const current=tasks.find(t=>t.id===id);if(!current)throw Error(local('任务不存在','任務不存在','Task not found'));await api('tasks/'+id,{method:'PATCH',body:{version:current.version,completed:false}});await loadTasks();toast('已重新打开待办');}catch(e){toast(e.message);}};
 }
+

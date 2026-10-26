@@ -69,9 +69,24 @@ export function cleanTitle(subject = '') {
   return String(subject).replace(/^(?:(?:\s*(?:fw|fwd|re|转发|轉寄|回复|回覆)\s*[:：])\s*)+/i, '').replace(/\s+/g, ' ').trim();
 }
 
+const containsCjk = value => /[\u3400-\u9fff]/.test(String(value || ''));
+export const digestTextForLocale = (value, locale, fallback) => locale === 'en' && containsCjk(value) ? fallback : String(value || '');
+export function digestTitleForLocale(title, locale) {
+  if (locale !== 'en' || !containsCjk(title)) return title;
+  const date = String(title || '').match(/\b20\d{2}-\d{2}-\d{2}\b/)?.[0];
+  const label = /晚间补充|晚間補充/.test(title) ? 'Evening digest' : /学校邮件日报|學校郵件日報/.test(title) ? 'Daily mail digest' : 'Daily digest';
+  return date ? `${date} ${label}` : label;
+}
+
 const norm = s => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
 const DEADLINE = /(deadline|due\b|apply by|register by|registration|rsvp|submit|submission|截止|逾期|報名|报名|申請|申请|提交|繳交|缴交|填寫|填写)/i;
 const GENERIC_ACTION = /^(请核对作业要求与截止时间|請核對作業要求與截止時間|请查看原邮件确认是否需要处理|請查看原郵件確認是否需要處理|无需操作|無需操作)$/;
+const BOOKING_SUCCESS = /\b(?:booking|reservation)\b.{0,24}\b(?:confirmed|accepted|successful|succeeded)\b|\b(?:confirmed|accepted)\s+(?:booking|reservation)\b|(?:预订|預訂|预约|預約).{0,12}(?:已接受|已确认|已確認|已预订|已預訂|成功)/i;
+const BOOKING_CANCELLED = /\b(?:cancel(?:led|ed|lation)?|failed|declined)\b|取消(?:预约|預約|预订|預訂)/i;
+const isBookingConfirmation = item => {
+  const subject = String(item.subject || item.brief?.title || '');
+  return !BOOKING_CANCELLED.test(subject) && BOOKING_SUCCESS.test(subject);
+};
 
 /** Text used for date detection: subject, brief title and point texts, stored summary. */
 function sourceText(item) {
@@ -85,6 +100,16 @@ export function nextDate(item, now = Date.now()) {
   return extractDates(sourceText(item), item.received || now).find(ts => ts >= today) ?? null;
 }
 
+/** Suggest the end of an explicitly mentioned time, or 23:59 for a date without a time. */
+export function suggestedTaskDue(item, day) {
+  if (day == null || day === '' || !Number.isFinite(Number(day))) return null;
+  const text = sourceText(item);
+  const times = [...text.matchAll(/\b(\d{1,2})(?::([0-5]\d))?\s*(AM|PM)\b/gi)];
+  if (!times.length) return Number(day) + 23 * 3600000 + 59 * 60000;
+  const match = times.at(-1), hour = Number(match[1]) % 12 + (match[3].toUpperCase() === 'PM' ? 12 : 0);
+  return Number(day) + hour * 3600000 + Number(match[2] || 0) * 60000;
+}
+
 /**
  * 'act'      – the email asks for something (AI-found request, or a deadline-type mail with a
  *              date in the next 14 days);
@@ -96,6 +121,7 @@ export function tierOf(item, now = Date.now()) {
   const hasRequest = !!item.brief?.actions?.length;
   const text = sourceText(item);
   const near = when !== null && daysUntil(when, now) <= 14;
+  if (item.ignored || isBookingConfirmation(item)) return 'info';
   if (hasRequest) return 'act';
   if (near && (DEADLINE.test(text) || item.category === 1 || item.category === 2)) return 'act';
   if (when !== null) return 'upcoming';
@@ -132,7 +158,7 @@ export function digestOverview(items, now = Date.now()) {
   const rows = (Array.isArray(items) ? items : []).map(item => ({
     item,
     tier: tierOf(item, now),
-    when: nextDate(item, now),
+    when: item.ignored || isBookingConfirmation(item) ? null : nextDate(item, now),
     headline: headlineOf(item),
     gist: gistOf(item),
   }));
