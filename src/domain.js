@@ -63,7 +63,8 @@ export function originalSender(body,outer,school,selfAddresses=[]) {
     if(parts.length===2)return `${parts[1].trim()}（由 ${parts[0].trim()} 代发）`.slice(0,400);
     return (/@/.test(selected)?selected:selected+'（邮箱未注明）').slice(0,400);
   }
-  if(outer.toLowerCase().includes(school.toLowerCase())) return '原始发件人无法确认（学校账号仅为转发者）';
+  const schoolLower=String(school||'').toLowerCase();
+  if(schoolLower&&outer.toLowerCase().includes(schoolLower)) return '原始发件人无法确认（学校账号仅为转发者）';
   return outer || '原始发件人无法确认';
 }
 export function classify(subject,body) {

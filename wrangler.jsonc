@@ -13,6 +13,7 @@
     "OWNER_EMAIL": "mayikai0916@gmail.com",
     "APP_ORIGIN": "https://campus-companion.campus-companion.workers.dev",
     "ENABLE_AI": "true",
-    "MS_CLIENT_ID": "eeb24f96-510a-48e0-a792-0b81333703d5"
+    "MS_CLIENT_ID": "eeb24f96-510a-48e0-a792-0b81333703d5",
+    "SCHOOL_EMAIL": "yikaima@ln.hk"
   }
 }
