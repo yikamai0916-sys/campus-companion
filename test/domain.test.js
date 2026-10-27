@@ -54,3 +54,8 @@ test('invalid schedules rejected; explicit reminders work without deadline',()=>
   const at=Date.parse('2026-10-02T15:00:00+08:00');
   assert.deepEqual(initialTimes(validateTask({title:'x',reminders:{exact:[at]}}),at-1000),[at]);
 });
+
+test('originalSender does not crash when the school address is not configured', () => {
+  assert.equal(originalSender('no headers', 'someone@example.com', undefined), 'someone@example.com');
+  assert.match(originalSender('no headers', '', undefined), /无法确认/);
+});
