@@ -410,8 +410,15 @@ button:hover:not(.primary):not(.link-button):not(.dg-head):not(nav button):not(.
 /* Selected group keeps its dark chip: the liquid-glass button selector stacks
    five :not()s, so it outranks plain class selectors for backgrounds and would
    otherwise wash the white group name out. The #groups-view scope outranks it. */
-#groups-view .group-index button.active,#groups-view .group-index button.active:hover{background:var(--ink);color:#fff}
-#groups-view .group-index button.active small,#groups-view .group-index button.active:hover small{color:rgba(255,255,255,.78)}
+#groups-view .group-index button.active,#groups-view .group-index button.active:hover{background:var(--ink);color:var(--surface)}
+#groups-view .group-index button.active small,#groups-view .group-index button.active:hover small{color:color-mix(in srgb,var(--surface) 78%,transparent)}
+/* Same glass-specificity story for two more dark chips with light text:
+   the mail reader language tabs (inside #mail-detail-dialog, not
+   #mail-view) and the login language switcher (inside #login). Without
+   their page scope the glass button rule wins the background and the
+   selected label turns invisible. */
+#mail-detail-dialog .mail-detail-tabs button.selected,#mail-detail-dialog .mail-detail-tabs button.selected:hover{background:var(--ink);color:var(--surface)}
+#login .login-locale button.selected,#login .login-locale button.selected:hover{background:var(--ink-2,#29413d);border-color:var(--ink-2,#29413d);color:#fff}
 /* Priority switcher in the task dialog: a segmented control in the app's
    own pill language, instead of the system select popup. Same specificity
    story as above, so these live under #task-dialog. */

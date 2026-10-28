@@ -143,10 +143,23 @@ function showLogin(){
 }
 function view(name){activeView=name;for(const v of ['tasks','groups','mail','digests','settings'])$('#'+v+'-view').classList.toggle('hidden',v!==name);$$('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===name));history.replaceState(null,'','/?view='+name);if(name==='tasks'&&tasks.length)renderTasks();if(name==='groups')loadGroups();if(name==='mail')loadMail().then(translateTextNodes);if(name==='digests')loadDigests().then(translateTextNodes);if(name==='settings')loadSettings();}
 const periodName=period=>({today:local('今天','今天','Today'),week:local('本周','本週','This week'),future:local('未来全部','未來全部','All upcoming')})[period];
+// Last rendered percent per period, so the ring firework fires only on the
+// transition into 100% — never on first paint for an already-full period.
+const prevPeriodPercent={};
+function celebrateRing(card){
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  if(card.offsetParent===null)return;
+  const ring=card.querySelector('.period-ring');if(!ring||ring.querySelector('.ring-burst'))return;
+  const burst=document.createElement('span');burst.className='ring-burst';burst.setAttribute('aria-hidden','true');
+  for(let i=0;i<12;i++){const dot=document.createElement('i');dot.style.setProperty('--angle',i*30+'deg');burst.append(dot);}
+  ring.append(burst);setTimeout(()=>burst.remove(),1200);
+}
 function renderPeriodCards(now){
   $('.period-grid').setAttribute('aria-label',local('待办进度','待辦進度','Task progress'));
   $$('[data-period]').forEach(card=>{
     const period=card.dataset.period,{done,total,percent}=periodProgress(tasks,period,now);
+    if(percent===100&&prevPeriodPercent[period]!==undefined&&prevPeriodPercent[period]<100)celebrateRing(card);
+    prevPeriodPercent[period]=percent;
     card.style.setProperty('--progress',percent);
     card.querySelector('.period-name').textContent=periodName(period);
     card.querySelector('.period-percent').textContent=percent+'%';

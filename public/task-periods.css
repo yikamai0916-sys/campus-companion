@@ -8,6 +8,15 @@
 .period-ring circle{fill:none;stroke-width:7}
 .period-ring .ring-track{stroke:var(--surface-3)}
 .period-ring .ring-value{stroke:var(--accent);stroke-linecap:round;stroke-dasharray:213.63;stroke-dashoffset:calc(213.63 - 213.63 * var(--progress,0) / 100);transition:stroke-dashoffset .7s var(--ease-out)}
+/* Firework when a period ring reaches 100%: twelve dots burst out of the
+   ring, modelled on the add-task success burst. The .5s delay lets the
+   ring sweep finish first, so the burst lands on the completed circle. */
+.ring-burst{position:absolute;left:50%;top:50%;pointer-events:none;z-index:2}
+.ring-burst i{position:absolute;width:8px;height:8px;margin:-4px;border-radius:50%;background:var(--accent);opacity:0;animation:ring-spark .5s .5s cubic-bezier(.2,.8,.2,1) both}
+.ring-burst i:nth-child(4n+1){background:var(--ink)}
+.ring-burst i:nth-child(4n+2){background:var(--orange)}
+.ring-burst i:nth-child(4n+3){background:#e4bf70}
+@keyframes ring-spark{from{opacity:1;transform:rotate(var(--angle)) translateX(30px) scale(1)}to{opacity:0;transform:rotate(var(--angle)) translateX(64px) scale(.2)}}
 .period-percent{font-size:14px;font-weight:800;font-variant-numeric:tabular-nums}
 .period-copy{display:flex;flex-direction:column;gap:4px;min-width:0}
 .period-name{font-size:14px;font-weight:700;color:var(--muted-text)}
@@ -27,4 +36,4 @@
 .period-details .period-empty{margin:18px 0 4px;color:var(--muted-text)}
 @media(max-width:900px){.period-grid{gap:9px}.period-card{min-height:136px;padding:16px;gap:10px}.period-ring{width:62px;height:62px}.period-fraction{font-size:25px}}
 @media(max-width:700px){.period-card{min-height:130px;flex-direction:column;align-items:flex-start;justify-content:center;gap:8px;padding:12px}.period-ring{width:58px;height:58px}.period-percent{font-size:11px}.period-copy{gap:1px}.period-name{font-size:11px}.period-fraction{font-size:20px}.period-arrow{right:10px;top:9px;font-size:13px}.period-details{padding:17px}.period-details li button{align-items:flex-start;flex-direction:column;gap:5px}.list-heading .tabs{width:100%;justify-content:space-between}.list-heading .tabs button{font-size:13px;padding:9px 11px}}
-@media(prefers-reduced-motion:reduce){.period-card,.period-ring .ring-value{transition:none}}
+@media(prefers-reduced-motion:reduce){.period-card,.period-ring .ring-value{transition:none}.ring-burst{display:none}}

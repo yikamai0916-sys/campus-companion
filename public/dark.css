@@ -42,6 +42,13 @@ html[data-theme="dark"],html[data-theme="dark"] body,html[data-theme="dark"] .sh
 [data-theme="dark"] .ring-track{stroke:#4b5d4a}
 [data-theme="dark"] .group-index button.active,[data-theme="dark"] .mail-detail-tabs button.selected{background:var(--accent);color:#172016}
 [data-theme="dark"] .group-index button.active small{color:#334022}
+/* The theme.css ID-scoped chip rules above would otherwise win in dark
+   mode too (an ID beats these class selectors), turning the dark chips
+   light-on-light. Re-assert the accent chip under the same ID scope. */
+[data-theme="dark"] #groups-view .group-index button.active,[data-theme="dark"] #groups-view .group-index button.active:hover{background:var(--accent);color:#172016}
+[data-theme="dark"] #groups-view .group-index button.active small,[data-theme="dark"] #groups-view .group-index button.active:hover small{color:#334022}
+[data-theme="dark"] #mail-detail-dialog .mail-detail-tabs button.selected,[data-theme="dark"] #mail-detail-dialog .mail-detail-tabs button.selected:hover{background:var(--accent);color:#172016}
+[data-theme="dark"] #login .login-locale button.selected,[data-theme="dark"] #login .login-locale button.selected:hover{background:var(--accent);border-color:var(--accent);color:#172016}
 [data-theme="dark"] .task-check:checked{background:var(--accent);border-color:var(--accent)}
 [data-theme="dark"] .task-check:checked::after{border-color:#172016}
 [data-theme="dark"] .urgent{color:#ffd0b4}
