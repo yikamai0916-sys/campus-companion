@@ -93,3 +93,17 @@ html[data-theme="dark"],html[data-theme="dark"] body,html[data-theme="dark"] .sh
 [data-theme="dark"] .dg-brief-label.is-action{background:#a9533a;color:#fff}
 @media(max-width:700px){[data-theme="dark"] aside{background:var(--bg)}[data-theme="dark"] nav{background:var(--surface);border-color:var(--surface-3)}}
 @media(prefers-reduced-motion:reduce){::view-transition-old(root),::view-transition-new(root){animation:none!important}}
+
+/* Selected controls retain a dark surface and a visible green selection ring. */
+[data-theme="dark"] #login .login-locale button.selected,
+[data-theme="dark"] #login .login-locale button.selected:hover,
+[data-theme="dark"] .choices label:has(input:checked),
+[data-theme="dark"] .chip:has(input:checked),
+[data-theme="dark"] .chip.is-on,
+[data-theme="dark"] #task-dialog .priority-segments button.selected,
+[data-theme="dark"] #task-dialog .priority-segments button.selected:hover,
+[data-theme="dark"] #groups-view .group-index button.active,
+[data-theme="dark"] #groups-view .group-index button.active:hover{background:var(--surface-2);color:var(--ink);box-shadow:inset 0 0 0 2px var(--accent)}
+[data-theme="dark"] #groups-view .group-index button.active small,
+[data-theme="dark"] #groups-view .group-index button.active:hover small{color:var(--muted-text)}
+[data-theme="dark"] #digest-list .stack-toggle.chip-button{background:var(--surface-2);color:var(--ink);box-shadow:inset 0 0 0 2px var(--accent)}
