@@ -31,6 +31,7 @@ try {
   }
   for (const theme of ['light','dark']) {
     await page.evaluate(t=>document.documentElement.dataset.theme=t,theme);
+    if(theme==='light')check(await page.locator('#login-form .primary').evaluate(e=>getComputedStyle(e).backgroundImage)==='none','Light primary action must have a solid fill');
     for (const tab of ['login','register']) {
       await page.locator(`[data-auth="${tab}"]`).click();
       await page.mouse.move(0,0);
