@@ -224,6 +224,7 @@ function openForm(task=null,mailDraft=null){
   reminderPicker.load(task); // due time, offsets, exact times, repeat
   if(mailDraft)reminderPicker.setDue(mailDraft.due);
   translateTextNodes();
+  syncPrioritySegments();
   $('#task-dialog').showModal();
 }
 $('#task-form').onsubmit=async event=>{
@@ -245,6 +246,28 @@ $('#task-form').onsubmit=async event=>{
   }catch(e){resetSuccessButton(save);$('#form-error').textContent=e.message;}
   finally{save.disabled=false;}
 };
+// Priority switcher in the task dialog: three pill segments backed by the
+// hidden priority field, so the submit handler keeps reading
+// f.elements.priority.value exactly as before.
+function syncPrioritySegments(){
+  const value=$('#task-form').elements.priority.value;
+  $$('#priority-segments button').forEach(button=>{
+    const selected=button.dataset.priority===String(value);
+    button.classList.toggle('selected',selected);
+    button.setAttribute('aria-checked',selected?'true':'false');
+  });
+}
+$('#priority-segments').addEventListener('click',event=>{
+  const button=event.target.closest('button');if(!button)return;
+  $('#task-form').elements.priority.value=button.dataset.priority;
+  syncPrioritySegments();
+});
+$('#priority-segments').addEventListener('keydown',event=>{
+  if(event.key!=='ArrowLeft'&&event.key!=='ArrowRight')return;
+  const buttons=$$('#priority-segments button'),index=buttons.findIndex(button=>button.classList.contains('selected'));
+  const next=buttons[(index+(event.key==='ArrowRight'?1:-1)+buttons.length)%buttons.length];
+  if(next){next.focus();$('#task-form').elements.priority.value=next.dataset.priority;syncPrioritySegments();event.preventDefault();}
+});
 let mailNextBefore=null,mailLoadingMore=false;
 const categoryKey=c=>({1:'cat1',2:'cat2',3:'cat3',4:'cat4'}[c]||'cat3');
 const briefRequests=new Map();

@@ -407,6 +407,18 @@ button:hover:not(.primary):not(.link-button):not(.dg-head):not(nav button):not(.
   border-color:color-mix(in srgb,var(--accent) 22%,var(--surface-3));
   box-shadow:inset 0 1px 0 var(--glass-edge),var(--shadow-float);
 }
+/* Selected group keeps its dark chip when hovered: the liquid-glass hover
+   tint is light, so it would otherwise wash the white group name out. The
+   member count on the dark chip also gets a lighter tone for contrast. */
+.group-index button.active,.group-index button.active:hover{background:var(--ink);color:#fff}
+.group-index button.active small,.group-index button.active:hover small{color:rgba(255,255,255,.78)}
+/* Priority switcher in the task dialog: a segmented control in the app's
+   own pill language, instead of the system select popup. */
+.priority-segments{display:flex;gap:4px;padding:4px;border-radius:var(--pill);background:var(--surface-2)}
+.priority-segments button{flex:1;border:0;border-radius:var(--pill);padding:11px 8px;background:transparent;-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:none;color:var(--ink);font-weight:700}
+.priority-segments button:hover{background:color-mix(in srgb,var(--surface) 65%,transparent)}
+.priority-segments button.selected{background:var(--ink);color:var(--surface);box-shadow:var(--shadow-soft)}
+.priority-segments button.selected:hover{background:var(--ink)}
 .primary{background-image:linear-gradient(145deg,var(--glass-sheen),transparent 70%);-webkit-backdrop-filter:blur(9px) saturate(1.18);backdrop-filter:blur(9px) saturate(1.18);box-shadow:inset 0 1px 0 var(--glass-edge),var(--shadow-soft)}
 nav button:not(.active):hover,nav .active{background-image:linear-gradient(145deg,var(--glass-sheen),transparent 70%);-webkit-backdrop-filter:blur(9px) saturate(1.18);backdrop-filter:blur(9px) saturate(1.18)}
 .link-button{background-image:none;-webkit-backdrop-filter:none;backdrop-filter:none}
