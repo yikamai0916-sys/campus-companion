@@ -59,11 +59,11 @@ export function circularTransition(event, update) {
 }
 
 /**
- * Background of the progress card: lavender at 0 %, yellow at 50 %, lime at 100 %,
+ * Background of the progress card: soft aqua deepens slightly as progress increases,
  * blended smoothly in between. Returns an 'rgb(r, g, b)' string.
  */
 export function progressColor(percent) {
-  const stops = [[0, [232, 227, 255]], [50, [255, 214, 10]], [100, [212, 255, 0]]]; // #E8E3FF, #FFD60A, #D4FF00
+  const stops = [[0, [239, 245, 243]], [50, [231, 242, 238]], [100, [220, 239, 235]]]; // #EFF5F3 → #E7F2EE → #DCEFEB
   const p = Math.min(100, Math.max(0, Number(percent) || 0));
   const [from, to] = p <= 50 ? [stops[0], stops[1]] : [stops[1], stops[2]];
   const t = (p - from[0]) / (to[0] - from[0]);

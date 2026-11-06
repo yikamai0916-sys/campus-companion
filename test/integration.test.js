@@ -7,7 +7,7 @@ import worker from '../src/worker.js';
 import { hash,b64,random,seal,unseal,makePasswordHash } from '../src/security.js';
 import { deliver } from '../src/jobs.js';
 function database(){
-  const sqlite=new DatabaseSync(':memory:');for(const name of ['0001.sql','0002_accounts.sql','0003_profile.sql','0004_message_localizations.sql','0005_localization_version.sql','0006_outlook_connections.sql','0007_mail_preferences.sql','0008_account_scoped_records.sql','0009_collaboration.sql','0010_meeting_planner.sql','0011_meeting_votes_and_announcements.sql','0012_review_and_membership.sql','0013_preferred_zh_name.sql','0014_name_aliases.sql'])sqlite.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));
+  const sqlite=new DatabaseSync(':memory:');for(const name of ['0001.sql','0002_accounts.sql','0003_profile.sql','0004_message_localizations.sql','0005_localization_version.sql','0006_outlook_connections.sql','0007_mail_preferences.sql','0008_account_scoped_records.sql','0009_collaboration.sql','0010_meeting_planner.sql','0011_meeting_votes_and_announcements.sql','0012_review_and_membership.sql','0013_preferred_zh_name.sql','0014_name_aliases.sql','0015_group_description.sql','0016_group_projects.sql'])sqlite.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));
   const db={prepare(sql){let args=[];const obj={bind(...a){args=a;return obj;},async first(){return sqlite.prepare(sql).get(...args)||null;},async all(){return {results:sqlite.prepare(sql).all(...args)};},async run(){const r=sqlite.prepare(sql).run(...args);return {meta:{changes:r.changes}};}};return obj;},async batch(stmts){sqlite.exec('BEGIN');try{const r=[];for(const s of stmts)r.push(await s.run());sqlite.exec('COMMIT');return r;}catch(e){sqlite.exec('ROLLBACK');throw e;}}};return db;
 }
 test('meeting workflow migration preserves historical confirmed state',()=>{
@@ -134,7 +134,7 @@ test('group candidate review and assignee acceptance are separate transitions',a
   assert.equal((await call(ownerToken,`groups/${group.id}/members`,'POST',{email:'member@example.com'})).status,201);
   assert.equal((await call(memberToken,`groups/${group.id}`)).status,404);
   const invites=await (await call(memberToken,'invitations')).json();
-  assert.equal(invites.length,1);
+  assert.equal(invites.length,1);assert.equal(invites[0].members.length,1);assert.equal(invites[0].members[0].user_id,'owner');assert.ok('description' in invites[0]);assert.ok('avatar' in invites[0].members[0]);
   assert.equal((await call(outsiderToken,`invitations/${invites[0].id}`,'POST',{decision:'accept'})).status,404);
   assert.equal((await call(memberToken,`invitations/${invites[0].id}`,'POST',{decision:'accept'})).status,200);
   assert.equal((await call(memberToken,`invitations/${invites[0].id}`,'POST',{decision:'accept'})).status,404);
@@ -308,11 +308,31 @@ test('digest history is visible only to the account that received it',async()=>{
   const env={DB:database()},origin='https://campus.example',firstToken=random(),secondToken=random();
   await env.DB.prepare("INSERT INTO users(id,email,password_hash,created) VALUES('first','first@example.com','unused',0),('second','second@example.com','unused',0)").run();
   await env.DB.prepare('INSERT INTO sessions(id,expires,user_id) VALUES(?,?,?),(?,?,?)').bind(await hash(firstToken),Date.now()+3600000,'first',await hash(secondToken),Date.now()+3600000,'second').run();
-  await env.DB.prepare("INSERT INTO kv(key,value) VALUES('digest:first:daily:2026-09-24:18:30',?),('digest:second:daily:2026-09-24:18:30',?)").bind(JSON.stringify({title:'First digest',body:'private one',created:1}),JSON.stringify({title:'Second digest',body:'private two',created:2})).run();
+  await env.DB.prepare("INSERT INTO kv(key,value) VALUES('digest:first:daily:2026-09-24:18:30',?),('digest:first:late:2026-09-23:00:00',?),('digest:second:daily:2026-09-24:18:30',?)").bind(JSON.stringify({title:'Daily digest',body:'private one',created:3}),JSON.stringify({title:'Older evening digest',body:'private evening',created:2}),JSON.stringify({title:'Second digest',body:'private two',created:2})).run();
   const get=token=>worker.fetch(new Request(origin+'/api/digests',{headers:{Cookie:'campus_session='+token}}),env);
   const first=await (await get(firstToken)).json(),second=await (await get(secondToken)).json();
-  assert.equal(first.length,1);assert.equal(first[0].title,'First digest');
+  assert.equal(first.length,2);assert.equal(first[0].title,'Daily digest');assert.equal(first[1].title,'Older evening digest');
   assert.equal(second.length,1);assert.equal(second[0].title,'Second digest');
+});
+
+test('digest emails can be ignored and restored without crossing accounts',async()=>{
+  const env={DB:database()},origin='https://campus.example',firstToken=random(),secondToken=random();
+  await env.DB.prepare("INSERT INTO users(id,email,password_hash,created) VALUES('first','first@example.com','unused',0),('second','second@example.com','unused',0)").run();
+  await env.DB.prepare('INSERT INTO sessions(id,expires,user_id) VALUES(?,?,?),(?,?,?)').bind(await hash(firstToken),Date.now()+3600000,'first',await hash(secondToken),Date.now()+3600000,'second').run();
+  await env.DB.prepare("INSERT INTO messages(id,subject,received,sender,origin,category,summary,action,url,quality,user_id) VALUES('mail-1','Seminar',0,'sender','origin',3,'summary','action','','test','first')").run();
+  await env.DB.prepare("INSERT INTO kv(key,value) VALUES('digest:first:daily:2026-10-22',?)").bind(JSON.stringify({created:1,title:'Daily',items:[{id:'mail-1',subject:'Seminar',summary:'summary',category:3,received:0}]})).run();
+  const call=(token,method='GET',data)=>worker.fetch(new Request(origin+'/api/'+(method==='GET'?'digests':'digests/ignore'),{method,headers:{Cookie:'campus_session='+token,Origin:origin,'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined}),env);
+  let records=await (await call(firstToken)).json();
+  assert.equal(records[0].items[0].ignored,false);
+  assert.equal((await call(secondToken,'POST',{messageId:'mail-1'})).status,404);
+  assert.equal((await call(firstToken,'POST',{messageId:'mail-1'})).status,200);
+  records=await (await call(firstToken)).json();
+  assert.equal(records[0].items[0].ignored,true);
+  assert.equal((await env.DB.prepare("SELECT value FROM kv WHERE key='digest_ignore:first:mail-1'").first()).value,'1');
+  assert.equal((await call(firstToken,'DELETE',{messageId:'mail-1'})).status,200);
+  records=await (await call(firstToken)).json();
+  assert.equal(records[0].items[0].ignored,false);
+  assert.equal(await env.DB.prepare("SELECT value FROM kv WHERE key='digest_ignore:first:mail-1'").first(),null);
 });
 
 test('mail suggestions are private, deduplicated and require explicit confirmation',async()=>{
@@ -408,4 +428,66 @@ test('brief generation is account scoped and unavailable AI is reported without 
  await env.DB.prepare("INSERT INTO messages(id,subject,received,sender,origin,category,summary,action,url,quality,user_id) VALUES('own','FW: One',1,'s','o',2,'s','a','','q','brief-a'),('other','FW: Two',1,'s','o',2,'s','a','','q','brief-b')").run();
  const response=await worker.fetch(new Request(origin+'/api/mail/briefs',{method:'POST',headers:{Cookie:'campus_session='+token,Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({ids:['own','other']})}),env);
  assert.equal(response.status,200);assert.deepEqual((await response.json()).results,[{id:'own',error:true}]);
+});
+
+test('two tabs keep separate accounts with a shared login cookie and exchange invitations',async()=>{
+ const env={DB:database()},origin='https://campus.example',ta=random(),tb=random(),tabA=crypto.randomUUID(),tabB=crypto.randomUUID();
+ for(const [id,email,token] of [['a','a@example.com',ta],['b','b@example.com',tb]]){await env.DB.prepare('INSERT INTO users(id,email,password_hash,created) VALUES(?,?,?,0)').bind(id,email,'unused').run();await env.DB.prepare('INSERT INTO sessions(id,expires,user_id) VALUES(?,?,?)').bind(await hash(token),Date.now()+3600000,id).run();}
+ const cookies=`campus_session=${tb}; campus_session_${tabA}=${ta}; campus_session_${tabB}=${tb}`;
+ const call=(tab,path,method='GET',data)=>worker.fetch(new Request(origin+'/api/'+path,{method,headers:{Cookie:cookies,Origin:origin,'Content-Type':'application/json','X-Session-Tab':tab},body:data?JSON.stringify(data):undefined}),env);
+ const group=await (await call(tabA,'groups','POST',{name:'Two tab group'})).json();
+ assert.equal((await call(tabA,`groups/${group.id}/members`,'POST',{email:'b@example.com'})).status,201);
+ const invites=await (await call(tabB,'invitations')).json();assert.equal(invites.length,1);
+ assert.equal((await call(tabB,`invitations/${invites[0].id}`,'POST',{decision:'accept'})).status,200);
+ assert.equal((await (await call(tabB,'groups')).json())[0].id,group.id);
+ assert.equal((await (await call(tabA,`groups/${group.id}`)).json()).members.length,2);
+ assert.equal((await call(tabB,`groups/${group.id}`,'PATCH',{name:'Forbidden',description:'x'})).status,403);
+ assert.equal((await call(tabA,`groups/${group.id}`,'PATCH',{name:'Renamed',description:'Our project'})).status,200);
+ const info=await (await call(tabB,`groups/${group.id}`)).json();assert.equal(info.group.name,'Renamed');assert.equal(info.group.description,'Our project');assert.ok('avatar' in info.members[0]);
+});
+
+test('project assignment invitation and member application are scoped and exclusive',async()=>{
+ const {createGroup,addGroupMember,respondInvitation,listInvitations,projectAction,applyForTask,reviewTaskCandidate,respondToAssignment,groupSnapshot}=await import('../src/collaboration.js');
+ const env={DB:database()};
+ for(const id of ['owner','member','other'])await env.DB.prepare('INSERT INTO users(id,email,password_hash,created) VALUES(?,?,?,0)').bind(id,id+'@example.com','unused').run();
+ await env.DB.prepare("INSERT INTO subscriptions(id,data,created,user_id) VALUES('member-push','{}',0,'member')").run();
+ const group=await createGroup(env,'owner',{name:'Project team'});
+ await addGroupMember(env,'owner',group.id,'member@example.com');
+ assert.equal((await env.DB.prepare("SELECT COUNT(*) n FROM jobs WHERE user_id='member'").first()).n,1);
+ const invitation=(await listInvitations(env,'member'))[0];await respondInvitation(env,'member',invitation.id,'accept');
+ const project=await projectAction(env,'owner',group.id,{title:'Course project'});
+ await assert.rejects(()=>projectAction(env,'member',group.id,{title:'Forbidden'}),{status:403});
+ const open=await projectAction(env,'owner',group.id,{projectId:project.id,title:'Research'});
+ await assert.rejects(()=>applyForTask(env,'other',open.id),{status:404});
+ await applyForTask(env,'member',open.id);
+ await assert.rejects(()=>applyForTask(env,'member',open.id),{status:409});
+ const assignment=await reviewTaskCandidate(env,'owner',open.id,{decision:'confirm',changes:{proposedAssigneeId:'member'}});
+ assert.equal(assignment.acceptance_status,'pending');
+ await assert.rejects(()=>applyForTask(env,'member',open.id),{status:409});
+ await assert.rejects(()=>respondToAssignment(env,'owner',assignment.id,'accept'),{status:404});
+ const accepted=await respondToAssignment(env,'member',assignment.id,'accept');assert.equal(accepted.acceptance_status,'accepted');
+ const invited=await projectAction(env,'owner',group.id,{projectId:project.id,title:'Write-up',proposedAssigneeId:'member'});
+ await assert.rejects(()=>applyForTask(env,'member',invited.id),{status:409});
+ const snapshot=await groupSnapshot(env,'member',group.id);assert.equal(snapshot.projects.length,1);assert.equal(snapshot.tasks.length,2);
+ assert.equal(snapshot.applications[0].status,'approved');
+ assert.ok((await env.DB.prepare("SELECT COUNT(*) n FROM group_notifications WHERE user_id='owner'").first()).n>=2);
+});
+
+test('school sender address is account scoped and saved configuration wins',async()=>{
+ const {schoolAddress}=await import('../src/mail.js');const env={DB:database(),LOGIN_EMAIL:'owner@example.com',SCHOOL_EMAIL:'owner@ln.hk'};
+ for(const [id,email] of [['owner','owner@example.com'],['member','member@ln.hk'],['other','other@example.com']])await env.DB.prepare('INSERT INTO users(id,email,password_hash,created) VALUES(?,?,?,0)').bind(id,email,'unused').run();
+ assert.equal(await schoolAddress(env,'owner'),'owner@ln.hk');assert.equal(await schoolAddress(env,'member'),'member@ln.hk');assert.equal(await schoolAddress(env,'other'),'');
+ await env.DB.prepare('INSERT INTO kv(key,value) VALUES(?,?)').bind('school_email:other','student@ln.hk').run();assert.equal(await schoolAddress(env,'other'),'student@ln.hk');assert.equal(await schoolAddress(env,'owner'),'owner@ln.hk');
+});
+
+test('OAuth provider failure shows a retry page and preserves existing mailbox',async()=>{
+ const env={DB:database()},token=random(),origin='https://campus.example';
+ await env.DB.prepare("INSERT INTO users(id,email,password_hash,created) VALUES('oauth-user','test@example.com','unused',0)").run();
+ const session=await hash(token);
+ await env.DB.prepare('INSERT INTO sessions(id,expires,user_id) VALUES(?,?,?)').bind(session,Date.now()+3600000,'oauth-user').run();
+ await env.DB.prepare('INSERT INTO oauth(state,verifier,session,expires,user_id) VALUES(?,?,?,?,?)').bind('test-state','v',session,Date.now()+600000,'oauth-user').run();
+ const response=await worker.fetch(new Request(origin+'/api/outlook/callback?error=server_error&state=test-state',{headers:{Cookie:'campus_session='+token}}),env);
+ assert.match(response.headers.get('content-type'),/text\/html/);
+ const html=await response.text();assert.match(html,/Microsoft/);assert.match(html,/重新连接/);assert.doesNotMatch(html,/登录请求失效/);
+ assert.equal(await env.DB.prepare('SELECT * FROM oauth WHERE state=?').bind('test-state').first(),null);
 });

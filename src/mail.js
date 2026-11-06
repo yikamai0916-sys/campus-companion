@@ -2,7 +2,7 @@ import { saveMailSuggestion } from './suggestions.js';
 import { hash, random, seal, unseal } from './security.js';
 import { originalSender, classify } from './domain.js';
 import { applyNameAliases, applyPreferredNameToFields, buildAliasRules, preferredNamePromptHint } from './names.js';
-import { extractiveSummary } from './digest-format.js';
+import { extractiveSummary, stripMailHeaders } from './digest-format.js';
 import { compactPlainBody } from '../public/mail-reader.js';
 export const getKV=async(env,key)=> (await env.DB.prepare('SELECT value FROM kv WHERE key=?').bind(key).first())?.value;
 export const setKV=(env,key,value)=>env.DB.prepare('INSERT INTO kv(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').bind(key,value).run();
@@ -50,7 +50,13 @@ async function tokenRequest(env,data) {
 export async function finishOAuth(env,url,session) {
   const state=url.searchParams.get('state')||'';
   const row=await env.DB.prepare('DELETE FROM oauth WHERE state=? AND session=? AND user_id=? AND expires>? RETURNING *').bind(state,session.id,session.user_id,Date.now()).first();
-  if(!row||!url.searchParams.get('code'))throw new Error('登录请求失效，请重试');
+  if(!row)throw new Error('登录请求失效，请重试');
+  const providerError=url.searchParams.get('error');
+  if(providerError){
+    const error=new Error(providerError==='access_denied'?'未完成 Microsoft 授权，请重新连接并确认授权。':['server_error','temporarily_unavailable'].includes(providerError)?'Microsoft 登录服务暂时未能完成授权，请稍后重新连接。':'Microsoft 未能完成授权，请返回设置重新连接。');
+    error.oauthFailure=true;throw error;
+  }
+  if(!url.searchParams.get('code'))throw new Error('登录请求缺少授权码，请重新连接');
   const token=await tokenRequest(env,{grant_type:'authorization_code',code:url.searchParams.get('code'),code_verifier:row.verifier,redirect_uri:env.APP_ORIGIN+'/api/outlook/callback'});
   const me=await fetch('https://graph.microsoft.com/v1.0/me?$select=mail,userPrincipalName',{headers:{Authorization:'Bearer '+token.access_token},signal:AbortSignal.timeout(20000)});
   if(!me.ok)throw new Error('无法核对 Outlook 账号');
@@ -132,8 +138,9 @@ export async function analyze(env,m,body,nameInfo={rules:[],preferred:''}) {
   const taskText=`${m.subject||''}\n${body}`;
   const assignment=category===2&&/(?:assignment|homework|coursework|作业|作業).{0,140}(?:due|deadline|submit|submission|complete|截止|提交|完成)|(?:due|deadline|submit|submission|截止|提交).{0,140}(?:assignment|homework|coursework|作业|作業)/is.test(taskText);
   const explicit=explicitDeadline(body);
-  const short=extractiveSummary(m.subject,body.trim().slice(0,900));
-  const fallback={sender,origin:'来源未确认',category,summary:applyNameAliases(short||body.trim().slice(0,650),rules),action:assignment?'请核对作业要求与截止时间':'请查看原邮件确认是否需要处理',quality:'规则提取 · 请核对原文',assignment,title:String(m.subject||'课程作业').slice(0,200),due:assignment?explicit?.due??null:null,evidence:{title:String(m.subject||''),deadline:explicit?.evidence||''}};
+  const cleanBody=stripMailHeaders(body);
+  const short=extractiveSummary(m.subject,cleanBody.slice(0,900));
+  const fallback={sender,origin:'来源未确认',category,summary:applyNameAliases(short||cleanBody.slice(0,650),rules),action:assignment?'请核对作业要求与截止时间':'请查看原邮件确认是否需要处理',quality:'规则提取 · 请核对原文',assignment,title:String(m.subject||'课程作业').slice(0,200),due:assignment?explicit?.due??null:null,evidence:{title:String(m.subject||''),deadline:explicit?.evidence||''}};
   if(env.ENABLE_AI!=='true'||!env.AI)return fallback;
   try {
     const nameHint=nameHintFor(rules);
@@ -239,11 +246,19 @@ export async function ingestShortcutEmail(env,data,userId) {
   await setKV(env,'mail_status','iPhone 自动转交正常');await setKV(env,'mail_last',String(received));
   return {duplicate:false,category:a.category,suggestion:a.assignment,task:false};
 }
+export async function schoolAddress(env,userId){
+ const saved=await getKV(env,'school_email:'+userId);if(saved)return saved;
+ const user=await env.DB.prepare('SELECT email FROM users WHERE id=?').bind(userId).first();
+ const email=String(user?.email||'').toLowerCase(),legacy=String(env.SCHOOL_EMAIL||'').toLowerCase();
+ if(email&&legacy&&email.split('@')[1]===legacy.split('@')[1])return email;
+ if(!env.LOGIN_EMAIL||email===String(env.LOGIN_EMAIL).toLowerCase()||email===String(env.OWNER_EMAIL||'').toLowerCase())return legacy;
+ return '';
+}
 export async function syncMail(env,userId) {
   const connection=await outlookConnection(env,userId);if(!connection)return {imported:0,pages:0,more:false};
   if(!userId)throw new Error('主账号尚未初始化，请先登录网站');
-  const schoolEmail=String(env.SCHOOL_EMAIL||'').trim().toLowerCase();
-  if(!schoolEmail)throw new Error('同步配置缺少学校邮箱地址，请联系网站管理员');
+  const schoolEmail=await schoolAddress(env,userId);
+  if(!schoolEmail)throw new Error('请在设置中填写你自己的学校邮箱地址');
   const now=Date.now();let cursor=connection.cursor,cutoff=connection.cutoff,imported=0,pages=0;const importedIds=[];
   if(!cursor){
     cutoff=new Date(now).toISOString();
@@ -477,11 +492,10 @@ export async function fetchMessageOriginal(env,userId,messageId,{rich=false,incl
       recipients=(m.toRecipients||[]).map(r=>r.emailAddress||{});
       if(rich&&m.body?.contentType?.toLowerCase()==='html'){
         englishHtml=String(m.body.content||'').slice(0,250000);
-        const cids=[...englishHtml.matchAll(/cid:([^"'\s>]+)/gi)].map(x=>x[1]);
-        if(includeImages&&cids.length)try{
+        if(includeImages&&/cid:/i.test(englishHtml))try{
           const page=await graph(env,userId,'me/messages/'+encodeURIComponent(messageId)+'/attachments?$select=id,contentId,contentType,size,isInline');
           let total=0;
-          for(const a of (page.value||[]).filter(a=>cids.includes(a.contentId)&&/^image\/(png|jpeg|gif|webp)$/i.test(a.contentType||'')).slice(0,12)){
+          for(const a of (page.value||[]).filter(a=>a.contentId&&/^image\/(png|jpeg|gif|webp)$/i.test(a.contentType||'')).slice(0,12)){
             if(a.size>3000000||total+a.size>8000000)continue;
             const file=await graph(env,userId,'me/messages/'+encodeURIComponent(messageId)+'/attachments/'+encodeURIComponent(a.id));
             if(file.contentBytes&&file.contentBytes.length<4000000){images[a.contentId]='data:'+a.contentType+';base64,'+file.contentBytes;total+=a.size||0;}

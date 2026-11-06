@@ -36,7 +36,7 @@ export class TaskReminderPicker {
   /** Fill the form for a new task (task = null) or for editing an existing task. */
   load(task) {
     const defaults = this.getDefaults();
-    const reminders = task ? task.reminders : defaults;
+    const reminders = task ? task.reminders : { ...defaults, offsets: [], repeat: 0 };
     this.setDue(task?.due ?? null);
     this.selected = new Set(normalizeOffsets(reminders.offsets));
     this.exact = task ? normalizeExact(reminders.exact) : [];
@@ -82,7 +82,7 @@ export class TaskReminderPicker {
   renderOffsets() {
     const presets = normalizePresets(this.getDefaults().presets);
     const box = this.$('#offset-chips');
-    box.replaceChildren(...chipOffsets(presets, [...this.selected]).map(minutes => {
+    box.replaceChildren(...chipOffsets(presets, [...this.selected]).sort((a, b) => a - b).map(minutes => {
       const wrap = document.createElement('span');
       wrap.className = 'chip-wrap';
       const chip = document.createElement('label');
@@ -102,8 +102,8 @@ export class TaskReminderPicker {
         star.type = 'button';
         star.className = 'chip-star';
         star.setAttribute('aria-pressed', String(saved));
-        star.textContent = saved ? L('★ 默认', '★ 預設', '★ Default') : L('设为默认', '設為預設', 'Set default');
-        star.title = saved ? L('点击取消默认', '點擊取消預設', 'Remove from defaults') : L('以后新建待办也显示这个选项', '以後新增待辦也顯示這個選項', 'Show this option for future tasks');
+        star.textContent = saved ? L('★ 已保存', '★ 已儲存', '★ Saved') : L('保存选项', '儲存選項', 'Save option');
+        star.title = saved ? L('点击移除此选项', '點擊移除此選項', 'Remove this option') : L('以后新建待办也显示这个选项', '以後新增待辦也顯示這個選項', 'Show this option for future tasks');
         star.setAttribute('aria-label', `${offsetLabel(minutes, lang())} ${star.title}`);
         star.onclick = () => this.togglePreset(minutes, !saved);
         wrap.append(star);
@@ -215,6 +215,9 @@ export class TaskReminderPicker {
     const button = this.$('#repeat-button');
     button.textContent = minutes ? L('每 ', '每 ', 'Every ') + offsetLabel(minutes, lang()) : L('选择间隔', '選擇間隔', 'Choose interval');
     this.$('#repeat-field').hidden = this.form.elements.repeat.value !== 'custom';
+    this.repeatLabels = {0: L('不重复', '不重複', 'Do not repeat'), 30: L('每 30 分钟', '每 30 分鐘', 'Every 30 minutes'), 60: L('每小时', '每小時', 'Every hour'), 120: L('每 2 小时', '每 2 小時', 'Every 2 hours'), 1440: L('每天', '每天', 'Every day'), custom: L('自定义间隔', '自訂間隔', 'Custom interval')};
+    if (this.repeatTrigger) this.repeatTrigger.textContent = this.repeatLabels[this.form.elements.repeat.value];
+    this.repeatMenu?.querySelectorAll('button').forEach(option => { option.textContent = this.repeatLabels[option.dataset.value]; });
   }
 
   async pickRepeat(previous) {
@@ -236,18 +239,26 @@ export class TaskReminderPicker {
 
   bind() {
     const select = this.form.elements.repeat;
-    let previousRepeat = select.value;
-    select.addEventListener('focus', () => { previousRepeat = select.value; });
-    select.addEventListener('change', () => {
-      this.setCustomRepeat(Number(this.form.elements.customRepeat.value) || null);
-      if (select.value === 'custom') this.pickRepeat(previousRepeat);
-      else previousRepeat = select.value;
-    });
+    select.hidden = true;
+    const trigger = document.createElement('button');
+    trigger.type = 'button'; trigger.className = 'repeat-trigger'; trigger.setAttribute('aria-expanded', 'false');
+    const menu = document.createElement('div'); menu.className = 'repeat-menu'; menu.hidden = true;
+    this.repeatTrigger = trigger; this.repeatMenu = menu;
+    this.setCustomRepeat(null);
+    for (const [value, label] of Object.entries(this.repeatLabels)) {
+      const option = document.createElement('button'); option.type = 'button'; option.dataset.value = value; option.textContent = label;
+      option.onclick = () => { const previous = select.value; select.value = value; this.setCustomRepeat(Number(this.form.elements.customRepeat.value) || null); menu.hidden = true; trigger.setAttribute('aria-expanded', 'false'); if (value === 'custom') this.pickRepeat(previous); };
+      menu.append(option);
+    }
+    select.after(trigger, menu);
+    trigger.onclick = () => { menu.hidden = !menu.hidden; trigger.setAttribute('aria-expanded', String(!menu.hidden)); };
+    document.addEventListener('click', event => { if (!trigger.parentElement?.contains(event.target)) { menu.hidden = true; trigger.setAttribute('aria-expanded', 'false'); } });
+    select.addEventListener('change', () => this.setCustomRepeat(Number(this.form.elements.customRepeat.value) || null));
     this.$('#repeat-button').onclick = () => this.pickRepeat();
     this.$('#due-button').onclick = () => this.pickDue();
     this.$('#due-clear').onclick = () => { this.setDue(null); this.$('#due-button').focus(); };
     this.$('#add-offset').onclick = () => this.addCustomOffset();
-    this.$('#save-offset-defaults').onclick = () => this.saveSelectionAsDefault();
+    this.$('#save-offset-defaults').hidden = true;
     this.$('#add-exact').onclick = () => this.pickExact();
   }
 }

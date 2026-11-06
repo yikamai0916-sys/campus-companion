@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {cleanSubject,validateBrief,attachBriefs,parseBriefResponse,isEnglishBrief} from '../src/mail-briefs.js';
+import {cleanSubject,validateBrief,attachBriefs,parseBriefResponse,isEnglishBrief,fallbackBrief} from '../src/mail-briefs.js';
 test('forward and reply chains are removed, internal colons preserved',()=>{
  assert.equal(cleanSubject('FW: Re: Fwd: Budget: update'),'Budget: update');
 });
@@ -27,4 +27,12 @@ test('English brief cache rejects Chinese content',()=>{
  assert.equal(isEnglishBrief(valid),true);
  assert.equal(isEnglishBrief({...valid,title:'报名周五截止'}),false);
  assert.equal(isEnglishBrief({...valid,points:[{text:'请周五前提交。'}]}),false);
+});
+
+test('brief fallback uses localized stored summary and removes forwarded headers',()=>{
+ const brief=fallbackBrief({englishSubject:'FW: Vaccination campaign',englishBody:'________________________________\nFrom: Student Affairs\nSent: Today\nTo: Student\nSubject: Campaign\n\nThe event takes place on 5 November.',row:{summary:'疫苗接种活动将于11月5日在校园举行。'}},'zh-CN');
+ assert.equal(brief.fallback,true);
+ assert.match(brief.points[0].text,/疫苗接种活动/);
+ assert.doesNotMatch(brief.points[0].text,/From:|Sent:/);
+ assert.ok(isEnglishBrief(fallbackBrief({englishSubject:'Reminder',englishBody:'Please submit the form by Friday.'},'en')));
 });

@@ -1,10 +1,14 @@
+import {startLoading} from './loading.js?v=20261102b';
+import {initPullRefresh} from './pull-refresh.js?v=rollback-20261105';
+import {ensureHero,ensureDock} from './brand-icon.js?v=20261102';
+import { initTheme, updateThemeLabels } from './theme-switch.js';
 import {renderMailBody} from './mail-reader.js';
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const I18N={
-  'zh-CN':{appName:'校园清单',appDescription:'学校邮件、作业与日常待办，在一个清单里。',clearDue:'清除截止时间',mainNav:'主导航',taskStatus:'任务状态',remindBefore:'截止前提醒',exactReminders:'指定提醒时间（香港）',remindWindow:'允许提醒的时段（香港时间）',remindChannel:'提醒方式',mailZh:'中文',close:'关闭',mailSearch:'搜索邮件',mailSearchPlaceholder:'搜索邮件…',addAlias:'添加英文名变体',aliasSuggestionsLabel:'邮件里识别到的相似写法，点击即可添加：',aliasRemove:'移除这个变体',aliasPlaceholder:'输入英文名写法',aliasZhPlaceholder:'输入对应中文名',heroTitle:'把要紧的事<br>放在眼前。',heroSubtitle:'作业、提醒和学校邮件，随时回来查看。',login:'登录',register:'注册',loginEmail:'登录邮箱',registerEmail:'注册邮箱',password:'访问密码',setPassword:'设置密码（至少 12 个字符）',securityQuestion:'自定义密保问题',securityAnswer:'密保答案',openList:'打开我的清单',forgot:'忘记密码？',createAccount:'创建账号',standaloneLogin:'独立登录 · 不需要打开 ChatGPT',tasks:'我的待办',mail:'邮件',settings:'设置',personalAccount:'个人账号',hkTime:'香港时间 · UTC+8',tasksEyebrow:'留出时间，做好重要的事',mailEyebrow:'先看重要的，再看感兴趣的',settingsEyebrow:'管理你的账号与连接',mailNotice:'每日 20:00 日报 · 00:00 按需补充晚间新邮件。原始发件人会单独标出。',profile:'个人空间',logout:'退出登录',save:'保存',language:'界面语言',nickname:'昵称',avatar:'头像',linkedEmail:'关联邮箱',reminderDefaults:'默认提醒设置',offsets:'提前提醒分钟数（逗号分隔）',repeat:'截止后重复间隔（分钟）',start:'提醒开始时间',end:'提醒结束时间',defaultNickname:'用户'},
-  'zh-TW':{appName:'校園清單',appDescription:'學校郵件、作業與日常待辦，在一個清單裏。',clearDue:'清除截止時間',mainNav:'主導航',taskStatus:'任務狀態',remindBefore:'截止前提醒',exactReminders:'指定提醒時間（香港）',remindWindow:'允許提醒的時段（香港時間）',remindChannel:'提醒方式',mailZh:'中文',close:'關閉',mailSearch:'搜尋郵件',mailSearchPlaceholder:'搜尋郵件…',addAlias:'新增英文名寫法',aliasSuggestionsLabel:'郵件裏識別到的相似寫法，點擊即可新增：',aliasRemove:'移除這個寫法',aliasPlaceholder:'輸入英文名寫法',aliasZhPlaceholder:'輸入對應中文名',heroTitle:'把重要的事<br>放在眼前。',heroSubtitle:'作業、提醒和學校郵件，隨時回來查看。',login:'登入',register:'註冊',loginEmail:'登入電郵',registerEmail:'註冊電郵',password:'登入密碼',setPassword:'設定密碼（至少 12 個字元）',securityQuestion:'自訂密保問題',securityAnswer:'密保答案',openList:'開啟我的清單',forgot:'忘記密碼？',createAccount:'建立帳號',standaloneLogin:'獨立登入 · 不需要開啟 ChatGPT',tasks:'我的待辦',mail:'郵件',settings:'設定',personalAccount:'個人帳號',hkTime:'香港時間 · UTC+8',tasksEyebrow:'留出時間，做好重要的事',mailEyebrow:'先看重要的，再看感興趣的',settingsEyebrow:'管理你的帳號與連接',mailNotice:'每日 20:00 日報 · 00:00 按需補充晚間新郵件。原始發件人會單獨標出。',profile:'個人空間',logout:'登出',save:'儲存',language:'介面語言',nickname:'暱稱',avatar:'頭像',linkedEmail:'關聯電郵',reminderDefaults:'預設提醒設定',offsets:'提前提醒分鐘數（逗號分隔）',repeat:'截止後重複間隔（分鐘）',start:'提醒開始時間',end:'提醒結束時間',defaultNickname:'用戶'},
-  en:{appName:'Campus Companion',appDescription:'School email, assignments, and daily to-dos in one place.',clearDue:'Clear deadline',mainNav:'Main navigation',taskStatus:'Task status',remindBefore:'Remind before due',exactReminders:'Specific reminder times (Hong Kong)',remindWindow:'Allowed reminder window (Hong Kong time)',remindChannel:'Reminder channel',mailZh:'Chinese',close:'Close',mailSearch:'Search mail',mailSearchPlaceholder:'Search mail…',addAlias:'Add name variant',aliasSuggestionsLabel:'Similar spellings found in your mail — click to add:',aliasRemove:'Remove this variant',aliasPlaceholder:'Enter name as written',aliasZhPlaceholder:'Enter corresponding Chinese name',heroTitle:'Keep important things<br>in front of you.',heroSubtitle:'Assignments, reminders, and school email in one place.',login:'Sign in',register:'Create account',loginEmail:'Email',registerEmail:'Email',password:'Password',setPassword:'Password (12 characters minimum)',securityQuestion:'Security question',securityAnswer:'Security answer',openList:'Open my list',forgot:'Forgot password?',createAccount:'Create account',standaloneLogin:'Independent sign-in · no ChatGPT required',tasks:'My tasks',mail:'Mail',settings:'Settings',personalAccount:'Personal account',hkTime:'Hong Kong time · UTC+8',tasksEyebrow:'Make time for what matters',mailEyebrow:'Important first, then interesting',settingsEyebrow:'Manage your account and connections',mailNotice:'Daily digest at 20:00 · evening additions at 00:00. Original senders are shown separately.',profile:'Personal space',logout:'Sign out',save:'Save',language:'Interface language',nickname:'Nickname',avatar:'Avatar',linkedEmail:'Linked email',reminderDefaults:'Default reminders',offsets:'Reminder offsets in minutes (comma separated)',repeat:'Repeat interval after due time (minutes)',start:'Reminder start time',end:'Reminder end time',defaultNickname:'User'}
+  'zh-CN':{appName:'校园清单',appDescription:'学校邮件、作业与日常待办，在一个清单里。',clearDue:'清除截止时间',mainNav:'主导航',taskStatus:'任务状态',remindBefore:'截止前提醒',exactReminders:'指定提醒时间（香港）',remindWindow:'允许提醒的时段（香港时间）',remindChannel:'提醒方式',mailZh:'中文',close:'关闭',mailSearch:'搜索邮件',mailSearchPlaceholder:'搜索邮件…',addAlias:'添加英文名变体',aliasSuggestionsLabel:'邮件里识别到的相似写法，点击即可添加：',aliasRemove:'移除这个变体',aliasPlaceholder:'输入英文名写法',aliasZhPlaceholder:'输入对应中文名',heroTitle:'校园清单',heroSubtitle:'待办、邮件和小组任务',login:'登录',register:'注册',loginEmail:'登录邮箱',registerEmail:'注册邮箱',password:'访问密码',setPassword:'设置密码（至少 12 个字符）',securityQuestion:'自定义密保问题',securityAnswer:'密保答案',openList:'打开我的清单',forgot:'忘记密码？',createAccount:'创建账号',standaloneLogin:'独立登录 · 不需要打开 ChatGPT',tasks:'我的待办',mail:'邮件',settings:'设置',personalAccount:'个人账号',hkTime:'香港时间 · UTC+8',tasksEyebrow:'留出时间，做好重要的事',mailEyebrow:'先看重要的，再看感兴趣的',settingsEyebrow:'管理你的账号与连接',mailNotice:'每日 20:00 日报 · 00:00 按需补充晚间新邮件。原始发件人会单独标出。',profile:'个人空间',logout:'退出登录',save:'保存',language:'界面语言',nickname:'昵称',avatar:'头像',linkedEmail:'关联邮箱',reminderDefaults:'默认提醒设置',offsets:'提前提醒分钟数（逗号分隔）',repeat:'截止后重复间隔（分钟）',start:'提醒开始时间',end:'提醒结束时间',defaultNickname:'用户'},
+  'zh-TW':{appName:'校園清單',appDescription:'學校郵件、作業與日常待辦，在一個清單裏。',clearDue:'清除截止時間',mainNav:'主導航',taskStatus:'任務狀態',remindBefore:'截止前提醒',exactReminders:'指定提醒時間（香港）',remindWindow:'允許提醒的時段（香港時間）',remindChannel:'提醒方式',mailZh:'中文',close:'關閉',mailSearch:'搜尋郵件',mailSearchPlaceholder:'搜尋郵件…',addAlias:'新增英文名寫法',aliasSuggestionsLabel:'郵件裏識別到的相似寫法，點擊即可新增：',aliasRemove:'移除這個寫法',aliasPlaceholder:'輸入英文名寫法',aliasZhPlaceholder:'輸入對應中文名',heroTitle:'校園清單',heroSubtitle:'待辦、郵件和小組任務',login:'登入',register:'註冊',loginEmail:'登入電郵',registerEmail:'註冊電郵',password:'登入密碼',setPassword:'設定密碼（至少 12 個字元）',securityQuestion:'自訂密保問題',securityAnswer:'密保答案',openList:'開啟我的清單',forgot:'忘記密碼？',createAccount:'建立帳號',standaloneLogin:'獨立登入 · 不需要開啟 ChatGPT',tasks:'我的待辦',mail:'郵件',settings:'設定',personalAccount:'個人帳號',hkTime:'香港時間 · UTC+8',tasksEyebrow:'留出時間，做好重要的事',mailEyebrow:'先看重要的，再看感興趣的',settingsEyebrow:'管理你的帳號與連接',mailNotice:'每日 20:00 日報 · 00:00 按需補充晚間新郵件。原始發件人會單獨標出。',profile:'個人空間',logout:'登出',save:'儲存',language:'介面語言',nickname:'暱稱',avatar:'頭像',linkedEmail:'關聯電郵',reminderDefaults:'預設提醒設定',offsets:'提前提醒分鐘數（逗號分隔）',repeat:'截止後重複間隔（分鐘）',start:'提醒開始時間',end:'提醒結束時間',defaultNickname:'用戶'},
+  en:{appName:'Campus Companion',appDescription:'School email, assignments, and daily to-dos in one place.',clearDue:'Clear deadline',mainNav:'Main navigation',taskStatus:'Task status',remindBefore:'Remind before due',exactReminders:'Specific reminder times (Hong Kong)',remindWindow:'Allowed reminder window (Hong Kong time)',remindChannel:'Reminder channel',mailZh:'Chinese',close:'Close',mailSearch:'Search mail',mailSearchPlaceholder:'Search mail…',addAlias:'Add name variant',aliasSuggestionsLabel:'Similar spellings found in your mail — click to add:',aliasRemove:'Remove this variant',aliasPlaceholder:'Enter name as written',aliasZhPlaceholder:'Enter corresponding Chinese name',heroTitle:'Campus Companion',heroSubtitle:'Tasks, mail and group projects',login:'Sign in',register:'Create account',loginEmail:'Email',registerEmail:'Email',password:'Password',setPassword:'Password (12 characters minimum)',securityQuestion:'Security question',securityAnswer:'Security answer',openList:'Open my list',forgot:'Forgot password?',createAccount:'Create account',standaloneLogin:'Independent sign-in · no ChatGPT required',tasks:'My tasks',mail:'Mail',settings:'Settings',personalAccount:'Personal account',hkTime:'Hong Kong time · UTC+8',tasksEyebrow:'Make time for what matters',mailEyebrow:'Important first, then interesting',settingsEyebrow:'Manage your account and connections',mailNotice:'Daily digest at 20:00 · evening additions at 00:00. Original senders are shown separately.',profile:'Personal space',logout:'Sign out',save:'Save',language:'Interface language',nickname:'Nickname',avatar:'Avatar',linkedEmail:'Linked email',reminderDefaults:'Default reminders',offsets:'Reminder offsets in minutes (comma separated)',repeat:'Repeat interval after due time (minutes)',start:'Reminder start time',end:'Reminder end time',defaultNickname:'User'}
 };
 let locale='zh-CN';
 let reminderDefaults={offsets:[4320,1440,120,30],repeat:1440,start:'08:00',end:'23:00'};
@@ -14,28 +18,28 @@ function updateManifestLocale(){const link=$('link[rel=manifest]');if(!link)retu
 const tx=key=>I18N[locale]?.[key]||I18N['zh-CN'][key]||key;
 
 Object.assign(I18N['zh-CN'],{
-  originalSender:'原始发件人：',source:'来源：',viewOriginal:'查看原邮件 ↗',deleteMail:'删除邮件记录',confirmDeleteMail:'确定删除这条邮件摘要吗？原 Outlook 邮件不会被删除。',mailDeleted:'已删除邮件摘要',mailEmptyTitle:'邮件摘要会在这里汇合',mailEmptyText:'连接 Outlook 后，学校转发邮件会自动进入这里。成功提交回执和纯宗教内容会自动略过。',
+  originalSender:'原始发件人：',source:'来源：',viewOriginal:'查看原邮件 ↗',deleteMail:'删除邮件记录',confirmDeleteMail:'确定删除这条邮件摘要吗？原 Outlook 邮件不会被删除。',mailDeleted:'已删除邮件摘要',mailEmptyTitle:'邮件摘要会在这里汇合',mailEmptyText:'连接邮箱 后，学校转发邮件会自动进入这里。成功提交回执和纯宗教内容会自动略过。',
   cat1:'奖学金 / 金钱 / ITSC',cat2:'课程与作业',cat3:'学校活动',cat4:'课程与 ILP 推荐',
-  outlookMail:'关联邮箱',schoolEmail:'学校邮箱',synced:'同步完成',outlookNotConnected:'尚未连接 Outlook',reconnect:'重新连接',connectOutlook:'连接 Outlook',accountSecurity:'账号安全',currentPassword:'当前密码',newPassword:'新密码（至少 12 个字符）',changePassword:'修改密码',customQuestion:'自定义问题',answer:'答案',saveSecurity:'保存密保',signOutHere:'退出账号',signOutHint:'退出当前账号并返回首页。',
+  outlookMail:'关联邮箱',schoolEmail:'学校邮箱',synced:'同步完成',outlookNotConnected:'尚未连接邮箱',reconnect:'重新连接',connectOutlook:'连接邮箱',accountSecurity:'账号安全',currentPassword:'当前密码',newPassword:'新密码（至少 12 个字符）',changePassword:'修改密码',customQuestion:'自定义问题',answer:'答案',saveSecurity:'保存密保',signOutHere:'退出账号',signOutHint:'退出当前账号并返回首页。',
   avatarType:'PNG、JPEG、WEBP 或 GIF',avatarPreview:'头像预览',profileSaved:'个人资料已保存',passwordSaved:'密码已更新',securitySaved:'密保问题已保存',avatarInvalid:'头像必须是 PNG、JPEG、WEBP 或 GIF',
   taskAdded:'添加待办',taskEdited:'编辑待办',taskTitle:'任务名称',taskSaved:'待办已保存',settingsTitle:'设置',settingsEyebrow:'管理你的账号与连接'
-  ,connectedAs:'已连接账号：',connectOutlookHint:'连接你接收学校转发邮件的个人 Outlook 邮箱。授权时请在 Microsoft 页面选择自己的账号；请勿连接学校邮箱。',outlookEmail:'要连接的 Outlook 邮箱',outlookSetupNeeded:'Outlook 授权尚未配置，请联系网站管理员。',disconnectOutlook:'断开 Outlook',disconnectOutlookHint:'断开连接不会删除已有摘要和待办。',confirmDisconnectOutlook:'确定断开此 Outlook 邮箱吗？之后可以随时重新连接。',outlookDisconnected:'Outlook 已断开',syncNow:'立即同步',syncing:'正在同步…',syncFinished:'同步完成：新增 {count} 封学校邮件',syncSchoolOnly:'当前同步范围：学校转发邮件。'
+  ,connectedAs:'已连接账号：',connectOutlookHint:'目前支持微软个人邮箱（Outlook / Hotmail），不读取 Gmail 收件箱。',outlookEmail:'邮箱地址',outlookSetupNeeded:'Outlook 授权尚未配置，请联系网站管理员。',disconnectOutlook:'断开邮箱',disconnectOutlookHint:'断开连接不会删除已有摘要和待办。',confirmDisconnectOutlook:'确定断开此 Outlook 邮箱吗？之后可以随时重新连接。',outlookDisconnected:'邮箱已断开',syncNow:'立即同步',syncing:'正在同步…',syncFinished:'同步完成：新增 {count} 封学校邮件',syncSchoolOnly:'当前同步范围：学校转发邮件。'
 });
 Object.assign(I18N['zh-TW'],{
-  originalSender:'原始發件人：',source:'來源：',viewOriginal:'查看原郵件 ↗',deleteMail:'刪除郵件記錄',confirmDeleteMail:'確定刪除這則郵件摘要嗎？原 Outlook 郵件不會被刪除。',mailDeleted:'已刪除郵件摘要',mailEmptyTitle:'郵件摘要會在這裡匯合',mailEmptyText:'連接 Outlook 後，學校轉發郵件會自動進入這裡。成功提交回執和純宗教內容會自動略過。',
+  originalSender:'原始發件人：',source:'來源：',viewOriginal:'查看原郵件 ↗',deleteMail:'刪除郵件記錄',confirmDeleteMail:'確定刪除這則郵件摘要嗎？原 Outlook 郵件不會被刪除。',mailDeleted:'已刪除郵件摘要',mailEmptyTitle:'郵件摘要會在這裡匯合',mailEmptyText:'連接電郵 後，學校轉發郵件會自動進入這裡。成功提交回執和純宗教內容會自動略過。',
   cat1:'獎學金 / 金錢 / ITSC',cat2:'課程與作業',cat3:'學校活動',cat4:'課程與 ILP 推薦',
-  outlookMail:'關聯電郵',schoolEmail:'學校電郵',synced:'同步完成',outlookNotConnected:'尚未連接 Outlook',reconnect:'重新連接',connectOutlook:'連接 Outlook',accountSecurity:'帳號安全',currentPassword:'目前密碼',newPassword:'新密碼（至少 12 個字元）',changePassword:'修改密碼',customQuestion:'自訂問題',answer:'答案',saveSecurity:'儲存密保',signOutHere:'登出帳號',signOutHint:'登出目前帳號並返回首頁。',
+  outlookMail:'關聯電郵',schoolEmail:'學校電郵',synced:'同步完成',outlookNotConnected:'尚未連接電郵',reconnect:'重新連接',connectOutlook:'連接電郵',accountSecurity:'帳號安全',currentPassword:'目前密碼',newPassword:'新密碼（至少 12 個字元）',changePassword:'修改密碼',customQuestion:'自訂問題',answer:'答案',saveSecurity:'儲存密保',signOutHere:'登出帳號',signOutHint:'登出目前帳號並返回首頁。',
   avatarType:'PNG、JPEG、WEBP 或 GIF',avatarPreview:'頭像預覽',profileSaved:'個人資料已儲存',passwordSaved:'密碼已更新',securitySaved:'密保問題已儲存',avatarInvalid:'頭像必須是 PNG、JPEG、WEBP 或 GIF',
   taskAdded:'新增待辦',taskEdited:'編輯待辦',taskTitle:'任務名稱',taskSaved:'待辦已儲存',settingsTitle:'設定',settingsEyebrow:'管理你的帳號與連接'
-  ,connectedAs:'已連接帳號：',connectOutlookHint:'連接你接收學校轉發郵件的個人 Outlook 電郵。授權時請在 Microsoft 頁面選擇自己的帳號；請勿連接學校電郵。',outlookEmail:'要連接的 Outlook 電郵',outlookSetupNeeded:'Outlook 授權尚未設定，請聯絡網站管理員。',disconnectOutlook:'中斷 Outlook 連接',disconnectOutlookHint:'中斷連接不會刪除已有摘要和待辦。',confirmDisconnectOutlook:'確定中斷此 Outlook 電郵嗎？之後可以隨時重新連接。',outlookDisconnected:'Outlook 已中斷連接',syncNow:'立即同步',syncing:'正在同步…',syncFinished:'同步完成：新增 {count} 封學校郵件',syncSchoolOnly:'目前同步範圍：學校轉發郵件。'
+  ,connectedAs:'已連接帳號：',connectOutlookHint:'目前支援 Microsoft 個人電郵（Outlook / Hotmail），不讀取 Gmail 收件箱。',outlookEmail:'電郵地址',outlookSetupNeeded:'Outlook 授權尚未設定，請聯絡網站管理員。',disconnectOutlook:'中斷電郵連接',disconnectOutlookHint:'中斷連接不會刪除已有摘要和待辦。',confirmDisconnectOutlook:'確定中斷此 Outlook 電郵嗎？之後可以隨時重新連接。',outlookDisconnected:'電郵已中斷連接',syncNow:'立即同步',syncing:'正在同步…',syncFinished:'同步完成：新增 {count} 封學校郵件',syncSchoolOnly:'目前同步範圍：學校轉發郵件。'
 });
 Object.assign(I18N.en,{
   originalSender:'Original sender:',source:'Source:',viewOriginal:'View original mail ↗',deleteMail:'Delete mail record',confirmDeleteMail:'Delete this mail summary? The original Outlook email will not be deleted.',mailDeleted:'Mail summary deleted',mailEmptyTitle:'Mail summaries appear here',mailEmptyText:'Forwarded school mail appears here after Outlook is connected. Submission receipts and purely religious mail are skipped.',
   cat1:'Scholarships / money / ITSC',cat2:'Courses & assignments',cat3:'School activities',cat4:'Course & ILP recommendations',
-  outlookMail:'Connected email',schoolEmail:'School email',synced:'Synced',outlookNotConnected:'Outlook is not connected',reconnect:'Reconnect',connectOutlook:'Connect Outlook',accountSecurity:'Account security',currentPassword:'Current password',newPassword:'New password (12 characters minimum)',changePassword:'Change password',customQuestion:'Custom question',answer:'Answer',saveSecurity:'Save security question',signOutHere:'Sign out',signOutHint:'Sign out of this account and return home.',
+  outlookMail:'Connected email',schoolEmail:'School email',synced:'Synced',outlookNotConnected:'Email is not connected',reconnect:'Reconnect',connectOutlook:'Connect email',accountSecurity:'Account security',currentPassword:'Current password',newPassword:'New password (12 characters minimum)',changePassword:'Change password',customQuestion:'Custom question',answer:'Answer',saveSecurity:'Save security question',signOutHere:'Sign out',signOutHint:'Sign out of this account and return home.',
   avatarType:'PNG, JPEG, WEBP, or GIF',avatarPreview:'Avatar preview',profileSaved:'Profile saved',passwordSaved:'Password updated',securitySaved:'Security question saved',avatarInvalid:'Avatar must be PNG, JPEG, WEBP, or GIF',
   taskAdded:'Add task',taskEdited:'Edit task',taskTitle:'Task title',taskSaved:'Task saved',settingsTitle:'Settings',settingsEyebrow:'Manage your account and connections'
-  ,connectedAs:'Connected account:',connectOutlookHint:'Connect the personal Outlook mailbox that receives your forwarded school mail. Choose your own account on Microsoft’s page; do not connect your school mailbox.',outlookEmail:'Outlook email to connect',outlookSetupNeeded:'Outlook authorization is not configured. Please contact the site administrator.',disconnectOutlook:'Disconnect Outlook',disconnectOutlookHint:'Existing summaries and tasks are kept when you disconnect.',confirmDisconnectOutlook:'Disconnect this Outlook mailbox? You can reconnect it at any time.',outlookDisconnected:'Outlook disconnected',syncNow:'Sync now',syncing:'Syncing…',syncFinished:'Sync complete: {count} new school email(s)',syncSchoolOnly:'Sync scope: school-forwarded email.'
+  ,connectedAs:'Connected account:',connectOutlookHint:'Supports Microsoft personal mailboxes (Outlook / Hotmail), not Gmail inboxes.',outlookEmail:'Email address',outlookSetupNeeded:'Outlook authorization is not configured. Please contact the site administrator.',disconnectOutlook:'Disconnect email',disconnectOutlookHint:'Existing summaries and tasks are kept when you disconnect.',confirmDisconnectOutlook:'Disconnect this Outlook mailbox? You can reconnect it at any time.',outlookDisconnected:'Email disconnected',syncNow:'Sync now',syncing:'Syncing…',syncFinished:'Sync complete: {count} new school email(s)',syncSchoolOnly:'Sync scope: school-forwarded email.'
 });
 
 
@@ -56,11 +60,11 @@ Object.assign(I18N.en,{preferredZhName:'Preferred Chinese name',preferredZhNameH
 
 
 const TEXTS={
-'校园清单':['校園清單','校園清單','Campus Companion'],'登录':['登录','登入','Sign in'],'注册':['注册','註冊','Create account'],'登录邮箱':['登入電郵','登入電郵','Email'],'注册邮箱':['註冊電郵','註冊電郵','Email'],'访问密码':['登入密碼','登入密碼','Password'],'打开我的清单':['開啟我的清單','開啟我的清單','Open my list'],'忘记密码？':['忘記密碼？','忘記密碼？','Forgot password?'],'创建账号':['建立帳號','建立帳號','Create account'],'独立登录 · 不需要打开 ChatGPT':['獨立登入 · 不需要開啟 ChatGPT','獨立登入 · 不需要開啟 ChatGPT','Independent sign-in · no ChatGPT required'],'我的待办':['我的待辦','我的待辦','My tasks'],'邮件':['邮件','郵件','Mail'],'提醒与连接':['提醒與連接','提醒與連接','Reminders & connections'],'个人空间':['個人空間','個人空間','Personal space'],'个人账号':['個人帳號','個人帳號','Personal account'],'香港时间 · UTC+8':['香港時間 · UTC+8','香港時間 · UTC+8','Hong Kong time · UTC+8'],'留出时间，做好重要的事':['留出時間，做好重要的事','留出時間，做好重要的事','Make time for what matters'],'先看重要的，再看感兴趣的':['先看重要的，再看感興趣的','先看重要的，再看感興趣的','Important first, then interesting'],'让提醒按你的节奏来':['讓提醒按你的節奏來','讓提醒按你的節奏來','Set reminders at your pace'],'每日 20:00 日报 · 00:00 按需补充晚间新邮件。原始发件人会单独标出。':['每日 20:00 日報 · 00:00 按需補充晚間新郵件。原始發件人會單獨標出。','每日 20:00 日報 · 00:00 按需補充晚間新郵件。原始發件人會單獨標出。','Daily digest at 20:00 · evening additions at 00:00. Original senders are shown separately.'],'未完成':['未完成','未完成','Open'],'三天内截止':['三天內截止','三天內截止','Due within 3 days'],'已完成':['已完成','已完成','Completed'],'进行中':['進行中','進行中','In progress'],'按截止时间排列':['按截止時間排列','按截止時間排列','Sorted by due date'],'自动待办仅来自作业类邮件。活动与课程推荐保留在学校邮件中。':['自動待辦僅來自作業類郵件。活動與課程推薦保留在學校郵件中。','自動待辦僅來自作業類郵件。活動與課程推薦保留在學校郵件中。','Automatic tasks come from assignment mail only. Activities and course recommendations stay in School mail.'],'添加待办':['新增待辦','新增待辦','Add task'],'编辑':['編輯','編輯','Edit'],'日历':['日曆','日曆','Calendar'],'删除':['刪除','刪除','Delete'],'重要':['重要','重要','Important'],'普通':['普通','普通','Normal'],'较低':['較低','較低','Low'],'来自作业邮件':['來自作業郵件','來自作業郵件','From assignment email'],'自己添加':['自己新增','自己新增','Added manually'],'查看备注':['查看備註','查看備註','View notes'],'邮件摘要会在这里汇合':['郵件摘要會在這裡匯合','郵件摘要會在這裡匯合','Mail summaries appear here'],'连接 Outlook 后，学校转发邮件会自动进入这里。成功提交回执和纯宗教内容会自动略过。':['連接 Outlook 後，學校轉發郵件會自動進入這裡。成功提交回執和純宗教內容會自動略過。','連接 Outlook 後，學校轉發郵件會自動進入這裡。成功提交回執和純宗教內容會自動略過。','After Outlook is connected, forwarded school mail appears here. Successful submission receipts and purely religious messages are skipped.'],'奖学金 / 金钱 / ITSC':['獎學金 / 金錢 / ITSC','獎學金 / 金錢 / ITSC','Scholarships / money / ITSC'],'课程与作业':['課程與作業','課程與作業','Courses & assignments'],'学校活动':['學校活動','學校活動','School activities'],'课程与 ILP 推荐':['課程與 ILP 推薦','課程與 ILP 推薦','Course & ILP recommendations'],'原始发件人：':['原始發件人：','原始發件人：','Original sender:'],'来源：':['來源：','來源：','Source:'],'查看原邮件 ↗':['查看原郵件 ↗','查看原郵件 ↗','View original mail ↗'],'删除邮件记录':['刪除郵件記錄','刪除郵件記錄','Delete mail record'],'保存':['儲存','儲存','Save'],'取消':['取消','取消','Cancel'],'截止时间（香港）':['截止時間（香港）','截止時間（香港）','Due time (Hong Kong)'],'重要程度':['重要程度','重要程度','Priority'],'备注':['備註','備註','Notes'],'截止前提醒':['截止前提醒','截止前提醒','Reminders before due'],'指定提醒时间（香港，可多行）':['指定提醒時間（香港，可多行）','指定提醒時間（香港，可多行）','Specific reminder times (Hong Kong, one per line)'],'截止后（无截止则从首次指定时间起）':['截止後（無截止則從首次指定時間起）','截止後（無截止則從首次指定時間起）','After due (or from the first specified time)'],'不重复':['不重複','不重複','No repeat'],'每 30 分钟':['每 30 分鐘','每 30 分鐘','Every 30 minutes'],'每小时':['每小時','每小時','Every hour'],'每 2 小时':['每 2 小時','每 2 小時','Every 2 hours'],'每天':['每天','每天','Daily'],'允许提醒的时段（香港时间）':['允許提醒的時段（香港時間）','允許提醒的時段（香港時間）','Allowed reminder hours (Hong Kong time)'],'提醒方式':['提醒方式','提醒方式','Reminder channels'],'手机系统通知':['手機系統通知','手機系統通知','System notification'],'邮件':['郵件','郵件','Email'],'账号安全':['帳號安全','帳號安全','Account security'],'修改密码':['修改密碼','修改密碼','Change password'],'设置密保问题':['設定密保問題','設定密保問題','Set security question'],'自定义密保问题':['自訂密保問題','自訂密保問題','Security question'],'密保答案':['密保答案','密保答案','Security answer'],'答案':['答案','答案','Answer'],'重置密码':['重設密碼','重設密碼','Reset password'],'总提醒次数（0 表示不限制）':['總提醒次數（0 表示不限制）','總提醒次數（0 表示不限制）','Total reminders (0 means unlimited)'],'其他提前分钟数（逗号分隔）':['其他提前分鐘數（逗號分隔）','其他提前分鐘數（逗號分隔）','Other advance minutes (comma separated)'],'任务名称':['任務名稱','任務名稱','Task name'],'开始':['開始','開始','Start'],'结束':['結束','結束','End'],'指定提醒请使用 YYYY-MM-DD HH:mm 格式':['指定提醒請使用 YYYY-MM-DD HH:mm 格式','指定提醒請使用 YYYY-MM-DD HH:mm 格式','Use YYYY-MM-DD HH:mm for specific reminders']};
+'校园清单':['校園清單','校園清單','Campus Companion'],'登录':['登录','登入','Sign in'],'注册':['注册','註冊','Create account'],'登录邮箱':['登入電郵','登入電郵','Email'],'注册邮箱':['註冊電郵','註冊電郵','Email'],'访问密码':['登入密碼','登入密碼','Password'],'打开我的清单':['開啟我的清單','開啟我的清單','Open my list'],'忘记密码？':['忘記密碼？','忘記密碼？','Forgot password?'],'创建账号':['建立帳號','建立帳號','Create account'],'独立登录 · 不需要打开 ChatGPT':['獨立登入 · 不需要開啟 ChatGPT','獨立登入 · 不需要開啟 ChatGPT','Independent sign-in · no ChatGPT required'],'我的待办':['我的待辦','我的待辦','My tasks'],'邮件':['邮件','郵件','Mail'],'提醒与连接':['提醒與連接','提醒與連接','Reminders & connections'],'个人空间':['個人空間','個人空間','Personal space'],'个人账号':['個人帳號','個人帳號','Personal account'],'香港时间 · UTC+8':['香港時間 · UTC+8','香港時間 · UTC+8','Hong Kong time · UTC+8'],'留出时间，做好重要的事':['留出時間，做好重要的事','留出時間，做好重要的事','Make time for what matters'],'先看重要的，再看感兴趣的':['先看重要的，再看感興趣的','先看重要的，再看感興趣的','Important first, then interesting'],'让提醒按你的节奏来':['讓提醒按你的節奏來','讓提醒按你的節奏來','Set reminders at your pace'],'每日 20:00 日报 · 00:00 按需补充晚间新邮件。原始发件人会单独标出。':['每日 20:00 日報 · 00:00 按需補充晚間新郵件。原始發件人會單獨標出。','每日 20:00 日報 · 00:00 按需補充晚間新郵件。原始發件人會單獨標出。','Daily digest at 20:00 · evening additions at 00:00. Original senders are shown separately.'],'未完成':['未完成','未完成','Open'],'三天内截止':['三天內截止','三天內截止','Due within 3 days'],'已完成':['已完成','已完成','Completed'],'进行中':['進行中','進行中','In progress'],'按截止时间排列':['按截止時間排列','按截止時間排列','Sorted by due date'],'自动待办仅来自作业类邮件。活动与课程推荐保留在学校邮件中。':['自動待辦僅來自作業類郵件。活動與課程推薦保留在學校郵件中。','自動待辦僅來自作業類郵件。活動與課程推薦保留在學校郵件中。','Automatic tasks come from assignment mail only. Activities and course recommendations stay in School mail.'],'添加待办':['新增待辦','新增待辦','Add task'],'编辑':['編輯','編輯','Edit'],'日历':['日曆','日曆','Calendar'],'删除':['刪除','刪除','Delete'],'重要':['重要','重要','Important'],'普通':['普通','普通','Normal'],'较低':['較低','較低','Low'],'来自作业邮件':['來自作業郵件','來自作業郵件','From assignment email'],'自己添加':['自己新增','自己新增','Added manually'],'查看备注':['查看備註','查看備註','View notes'],'邮件摘要会在这里汇合':['郵件摘要會在這裡匯合','郵件摘要會在這裡匯合','Mail summaries appear here'],'连接邮箱 后，学校转发邮件会自动进入这里。成功提交回执和纯宗教内容会自动略过。':['連接電郵 後，學校轉發郵件會自動進入這裡。成功提交回執和純宗教內容會自動略過。','連接電郵 後，學校轉發郵件會自動進入這裡。成功提交回執和純宗教內容會自動略過。','After Outlook is connected, forwarded school mail appears here. Successful submission receipts and purely religious messages are skipped.'],'奖学金 / 金钱 / ITSC':['獎學金 / 金錢 / ITSC','獎學金 / 金錢 / ITSC','Scholarships / money / ITSC'],'课程与作业':['課程與作業','課程與作業','Courses & assignments'],'学校活动':['學校活動','學校活動','School activities'],'课程与 ILP 推荐':['課程與 ILP 推薦','課程與 ILP 推薦','Course & ILP recommendations'],'原始发件人：':['原始發件人：','原始發件人：','Original sender:'],'来源：':['來源：','來源：','Source:'],'查看原邮件 ↗':['查看原郵件 ↗','查看原郵件 ↗','View original mail ↗'],'删除邮件记录':['刪除郵件記錄','刪除郵件記錄','Delete mail record'],'保存':['儲存','儲存','Save'],'取消':['取消','取消','Cancel'],'截止时间（香港）':['截止時間（香港）','截止時間（香港）','Due time (Hong Kong)'],'重要程度':['重要程度','重要程度','Priority'],'备注':['備註','備註','Notes'],'截止前提醒':['截止前提醒','截止前提醒','Reminders before due'],'指定提醒时间（香港，可多行）':['指定提醒時間（香港，可多行）','指定提醒時間（香港，可多行）','Specific reminder times (Hong Kong, one per line)'],'截止后（无截止则从首次指定时间起）':['截止後（無截止則從首次指定時間起）','截止後（無截止則從首次指定時間起）','After due (or from the first specified time)'],'不重复':['不重複','不重複','No repeat'],'每 30 分钟':['每 30 分鐘','每 30 分鐘','Every 30 minutes'],'每小时':['每小時','每小時','Every hour'],'每 2 小时':['每 2 小時','每 2 小時','Every 2 hours'],'每天':['每天','每天','Daily'],'允许提醒的时段（香港时间）':['允許提醒的時段（香港時間）','允許提醒的時段（香港時間）','Allowed reminder hours (Hong Kong time)'],'提醒方式':['提醒方式','提醒方式','Reminder channels'],'手机系统通知':['手機系統通知','手機系統通知','System notification'],'邮件':['郵件','郵件','Email'],'账号安全':['帳號安全','帳號安全','Account security'],'修改密码':['修改密碼','修改密碼','Change password'],'设置密保问题':['設定密保問題','設定密保問題','Set security question'],'自定义密保问题':['自訂密保問題','自訂密保問題','Security question'],'密保答案':['密保答案','密保答案','Security answer'],'答案':['答案','答案','Answer'],'重置密码':['重設密碼','重設密碼','Reset password'],'总提醒次数（0 表示不限制）':['總提醒次數（0 表示不限制）','總提醒次數（0 表示不限制）','Total reminders (0 means unlimited)'],'其他提前分钟数（逗号分隔）':['其他提前分鐘數（逗號分隔）','其他提前分鐘數（逗號分隔）','Other advance minutes (comma separated)'],'任务名称':['任務名稱','任務名稱','Task name'],'开始':['開始','開始','Start'],'结束':['結束','結束','End'],'指定提醒请使用 YYYY-MM-DD HH:mm 格式':['指定提醒請使用 YYYY-MM-DD HH:mm 格式','指定提醒請使用 YYYY-MM-DD HH:mm 格式','Use YYYY-MM-DD HH:mm for specific reminders']};
 Object.assign(TEXTS,{
   '提醒与连接':['設定','Settings'],
   '让提醒按你的节奏来':['管理你的帳號與連接','Manage your account and connections'],
-  '设置':['設定','Settings'],'管理你的账号与连接':['管理你的帳號與連接','Manage your account and connections'],'Outlook 学校邮件':['Outlook 學校郵件','Outlook school mail'],'学校邮箱':['學校電郵','School email'],'同步完成':['同步完成','Synced'],'尚未连接 Outlook':['尚未連接 Outlook','Outlook is not connected'],'重新连接':['重新連接','Reconnect'],'连接 Outlook':['連接 Outlook','Connect Outlook'],'账号安全':['帳號安全','Account security'],'当前密码':['目前密碼','Current password'],'新密码':['新密碼','New password'],'修改密码':['修改密碼','Change password'],'自定义问题':['自訂問題','Custom question'],'答案':['答案','Answer'],'保存密保':['儲存密保','Save security question'],'个人资料已保存':['個人資料已儲存','Profile saved'],'密码已更新':['密碼已更新','Password updated'],'密保问题已保存':['密保問題已儲存','Security question saved'],'头像必须是 PNG、JPEG、WEBP 或 GIF':['頭像必須是 PNG、JPEG、WEBP 或 GIF','Avatar must be PNG, JPEG, WEBP, or GIF'],'头像预览':['頭像預覽','Avatar preview'],'关联邮箱':['關聯電郵','Linked email'],'界面语言':['介面語言','Interface language'],'昵称':['暱稱','Nickname'],'头像':['頭像','Avatar'],'保存':['儲存','Save'],'退出登录':['登出','Sign out'],'关闭':['關閉','Close'],'添加待办':['新增待辦','Add task'],'编辑待办':['編輯待辦','Edit task'],'任务名称':['任務名稱','Task title'],'自定义间隔（分钟）':['自訂間隔（分鐘）','Custom interval (minutes)'],'总提醒次数（0 表示不限制）':['總提醒次數（0 表示不限制）','Total reminders (0 means unlimited)'],'手机系统通知':['手機系統通知','System notification'],'邮件':['郵件','Email'],'开始':['開始','Start'],'结束':['結束','End'],'星期一':['星期一','Monday'],'星期二':['星期二','Tuesday'],'星期三':['星期三','Wednesday'],'星期四':['星期四','Thursday'],'星期五':['星期五','Friday'],'星期六':['星期六','Saturday'],'星期日':['星期日','Sunday']
+  '设置':['設定','Settings'],'管理你的账号与连接':['管理你的帳號與連接','Manage your account and connections'],'Outlook 学校邮件':['Outlook 學校郵件','Outlook school mail'],'学校邮箱':['學校電郵','School email'],'同步完成':['同步完成','Synced'],'尚未连接邮箱':['尚未連接電郵','Email is not connected'],'重新连接':['重新連接','Reconnect'],'连接邮箱':['連接電郵','Connect email'],'账号安全':['帳號安全','Account security'],'当前密码':['目前密碼','Current password'],'新密码':['新密碼','New password'],'修改密码':['修改密碼','Change password'],'自定义问题':['自訂問題','Custom question'],'答案':['答案','Answer'],'保存密保':['儲存密保','Save security question'],'个人资料已保存':['個人資料已儲存','Profile saved'],'密码已更新':['密碼已更新','Password updated'],'密保问题已保存':['密保問題已儲存','Security question saved'],'头像必须是 PNG、JPEG、WEBP 或 GIF':['頭像必須是 PNG、JPEG、WEBP 或 GIF','Avatar must be PNG, JPEG, WEBP, or GIF'],'头像预览':['頭像預覽','Avatar preview'],'关联邮箱':['關聯電郵','Linked email'],'界面语言':['介面語言','Interface language'],'昵称':['暱稱','Nickname'],'头像':['頭像','Avatar'],'保存':['儲存','Save'],'退出登录':['登出','Sign out'],'关闭':['關閉','Close'],'添加待办':['新增待辦','Add task'],'编辑待办':['編輯待辦','Edit task'],'任务名称':['任務名稱','Task title'],'自定义间隔（分钟）':['自訂間隔（分鐘）','Custom interval (minutes)'],'总提醒次数（0 表示不限制）':['總提醒次數（0 表示不限制）','Total reminders (0 means unlimited)'],'手机系统通知':['手機系統通知','System notification'],'邮件':['郵件','Email'],'开始':['開始','Start'],'结束':['結束','End'],'星期一':['星期一','Monday'],'星期二':['星期二','Tuesday'],'星期三':['星期三','Wednesday'],'星期四':['星期四','Thursday'],'星期五':['星期五','Friday'],'星期六':['星期六','Saturday'],'星期日':['星期日','Sunday']
 });
 Object.assign(TEXTS,{
   '把要紧的事':['把重要的事','Keep important things in front of you.'],'放在眼前。':['放在眼前。',''],
@@ -90,11 +94,11 @@ Object.assign(TEXTS,{
 Object.assign(TEXTS,{'来自已确认的小组会议':['來自已確認的小組會議','From a confirmed group meeting']});
 
 const PLACEHOLDERS={}; // inputs have no example placeholders any more
-Object.assign(TEXTS,{"邮件提醒暂不可用": ["電郵提醒暫不可用", "Email reminders unavailable"], "用注册邮箱邀请成员": ["以註冊電郵邀請成員", "Invite by registered email"], "邀请成员": ["邀請成員", "Invite member"], "从一个真实的小组项目开始": ["從一個真實的小組專案開始", "Start with a group project"], "创建小组后，可以确认每个人的分工，并收集共同空闲时间。": ["建立小組後，可以確認每個人的分工，並收集共同空閒時間。", "Create a group to agree on responsibilities and find a shared meeting time."], "选择一个小组，查看分工与会议时间。": ["選擇一個小組，查看分工與會議時間。", "Choose a group to view responsibilities and meeting times."], "可审核分工与确认会议": ["可審核分工與確認會議", "Review assignments and confirm meetings"], "可提交建议、接受分工与参与投票": ["可提交建議、接受分工與參與投票", "Suggest tasks, accept assignments and vote"], "还没有候选分工。候选不会自动变成正式任务。": ["還沒有候選分工。候選不會自動變成正式任務。", "No candidates yet. Suggestions only become tasks after review."], "暂无正式分工。组长审核候选后，负责人会在这里接受或拒绝。": ["暫無正式分工。組長審核候選後，負責人會在這裡接受或拒絕。", "No assignments yet. After owner review, assignees accept or decline here."], "还没有会议时间收集。": ["還沒有會議時間收集。", "No meeting polls yet."], "所有成员提交后，组长可以开启投票。": ["所有成員提交後，組長可以開始投票。", "The owner can open voting after everyone submits availability."], "候选分工已提交，等待审核": ["候選分工已提交，等待審核", "Candidate submitted for review"], "分工已发送，等待负责人接受": ["分工已傳送，等待負責人接受", "Assignment sent; waiting for acceptance"], "小组已创建": ["小組已建立", "Group created"], "密码已重置，请使用新密码登录": ["密碼已重設，請使用新密碼登入", "Password reset. Sign in with your new password."], "会议已更新，请刷新后重试": ["會議已更新，請重新整理後再試", "Meeting changed. Refresh and try again."], "请先让组长取消小组会议，再变更成员": ["請先讓組長取消小組會議，再變更成員", "Ask the owner to cancel active meetings before changing membership."], "请先完成或拒绝该成员的未完成分工": ["請先完成或拒絕該成員的未完成分工", "Complete or decline this member’s outstanding assignments first."], "请先转让组长，再退出小组": ["請先轉讓組長，再退出小組", "Transfer ownership before leaving the group."], "请选择另一位成员接任组长": ["請選擇另一位成員接任組長", "Choose another member as the new owner."], "邀请不存在或已经处理": ["邀請不存在或已經處理", "Invitation not found or already handled."], "建议不存在或已经处理": ["建議不存在或已經處理", "Suggestion not found or already handled."], "操作无效": ["操作無效", "Invalid action"], "45 分钟": ["45 分鐘", "45 minutes"], "60 分钟": ["60 分鐘", "60 minutes"], "90 分钟": ["90 分鐘", "90 minutes"], "15 分钟": ["15 分鐘", "15 minutes"], "待办已删除": ["待辦已刪除", "Task deleted"], "确定删除这条待办吗？": ["確定刪除這項待辦嗎？", "Delete this task?"]});
+Object.assign(TEXTS,{"邮件提醒暂不可用": ["電郵提醒暫不可用", "Email reminders unavailable"], "用注册邮箱邀请成员": ["以註冊電郵邀請成員", "Invite by registered email"], "邀请成员": ["邀請成員", "Invite member"], "从一个真实的小组项目开始": ["從一個真實的小組專案開始", "Start with a group project"], "创建小组后，可以确认每个人的分工，并收集共同空闲时间。": ["建立小組後，可以確認每個人的分工，並收集共同空閒時間。", "Create a group to agree on responsibilities and find a shared meeting time."], "选择一个小组，查看分工与会议时间。": ["選擇一個小組，查看分工與會議時間。", "Choose a group to view responsibilities and meeting times."], "可审核分工与确认会议": ["可審核分工與確認會議", "Review assignments and confirm meetings"], "可提交建议、接受分工与参与投票": ["可提交建議、接受分工與參與投票", "Suggest tasks, accept assignments and vote"], "暂无候选任务。": ["還沒有候選分工。候選不會自動變成正式任務。", "No candidates yet. Suggestions only become tasks after review."], "暂无分工。": ["暫無正式分工。組長審核候選後，負責人會在這裡接受或拒絕。", "No assignments yet. After owner review, assignees accept or decline here."], "还没有会议时间收集。": ["還沒有會議時間收集。", "No meeting polls yet."], "所有成员提交后，组长可以开启投票。": ["所有成員提交後，組長可以開始投票。", "The owner can open voting after everyone submits availability."], "候选分工已提交，等待审核": ["候選分工已提交，等待審核", "Candidate submitted for review"], "分工已发送，等待负责人接受": ["分工已傳送，等待負責人接受", "Assignment sent; waiting for acceptance"], "小组已创建": ["小組已建立", "Group created"], "密码已重置，请使用新密码登录": ["密碼已重設，請使用新密碼登入", "Password reset. Sign in with your new password."], "会议已更新，请刷新后重试": ["會議已更新，請重新整理後再試", "Meeting changed. Refresh and try again."], "请先让组长取消小组会议，再变更成员": ["請先讓組長取消小組會議，再變更成員", "Ask the owner to cancel active meetings before changing membership."], "请先完成或拒绝该成员的未完成分工": ["請先完成或拒絕該成員的未完成分工", "Complete or decline this member’s outstanding assignments first."], "请先转让组长，再退出小组": ["請先轉讓組長，再退出小組", "Transfer ownership before leaving the group."], "请选择另一位成员接任组长": ["請選擇另一位成員接任組長", "Choose another member as the new owner."], "邀请不存在或已经处理": ["邀請不存在或已經處理", "Invitation not found or already handled."], "建议不存在或已经处理": ["建議不存在或已經處理", "Suggestion not found or already handled."], "操作无效": ["操作無效", "Invalid action"], "45 分钟": ["45 分鐘", "45 minutes"], "60 分钟": ["60 分鐘", "60 minutes"], "90 分钟": ["90 分鐘", "90 minutes"], "15 分钟": ["15 分鐘", "15 minutes"], "待办已删除": ["待辦已刪除", "Task deleted"], "确定删除这条待办吗？": ["確定刪除這項待辦嗎？", "Delete this task?"]});
 Object.assign(TEXTS,{"已完成，后续提醒已取消": ["已完成，後續提醒已取消", "Completed; future reminders cancelled"], "已重新打开待办": ["已重新開啟待辦", "Task reopened"], "已删除任务": ["已刪除任務", "Task deleted"], "账号已创建": ["帳號已建立", "Account created"], "候选已标记为不采用": ["候選已標記為不採用", "Candidate dismissed"], "可用时间已保存，成员提交状态与推荐已更新": ["可用時間已儲存，成員提交狀態與推薦已更新", "Availability saved; recommendations updated"], "候选时间已锁定，投票开始": ["候選時間已鎖定，投票開始", "Options locked; voting is open"], "投票已保存，可在结束前修改": ["投票已儲存，可在結束前修改", "Vote saved; you can change it before voting closes"], "会议时间已确认": ["會議時間已確認", "Meeting confirmed"], "至少保留一个可用时段": ["至少保留一個可用時段", "Keep at least one available interval"], "此设备已启用通知": ["此裝置已啟用通知", "Notifications enabled on this device"], "请从 iPhone 主屏幕打开，或使用支持通知的浏览器": ["請從 iPhone 主畫面開啟，或使用支援通知的瀏覽器", "Open from your iPhone Home Screen or use a browser that supports notifications"], "通知权限尚未允许，请在系统设置中启用": ["通知權限尚未允許，請在系統設定中啟用", "Allow notifications in your device settings"], "已导出日历副本；它不会自动同步": ["已匯出日曆副本；它不會自動同步", "Calendar copy exported; it does not sync automatically"], "确定永久删除这项已完成任务吗？": ["確定永久刪除此已完成任務嗎？", "Permanently delete this completed task?"], "已接受分工，提醒已生效": ["已接受分工，提醒已生效", "Assignment accepted; reminders enabled"], "已拒绝分工": ["已拒絕分工", "Assignment declined"], "会议时间收集已创建": ["會議時間收集已建立", "Meeting poll created"]});
 for(const [key,cn] of Object.entries(I18N['zh-CN']))if(I18N.en[key]&&I18N['zh-TW'][key])TEXTS[cn]=[I18N['zh-TW'][key],I18N.en[key]];
 Object.assign(TEXTS,{'来自已确认的邮件建议':['來自已確認的郵件建議','From a reviewed mail suggestion'],'来自小组分工':['來自小組分工','From a group assignment'],'还没有已完成任务':['還沒有已完成任務','No completed tasks yet'],'清单里，留一点从容':['清單裡，留一點從容','Make room for what matters'],'完成的任务会显示在这里，并可随时删除。':['完成的任務會顯示在這裡，並可隨時刪除。','Completed tasks appear here and can be deleted.'],'先添加一项待办，或在小组中接受一项已经确认的分工。':['先新增一項待辦，或在小組中接受一項已經確認的分工。','Add a task or accept a reviewed group assignment.']});
-Object.assign(TEXTS,{'中文':['中文','Chinese'],'同步中':['同步中','Syncing'],'已连接，等待首次同步':['已連接，等待首次同步','Connected; waiting for first sync'],'转发接收正常':['轉發接收正常','Forwarding ingestion OK'],'iPhone 自动转交正常':['iPhone 自動轉交正常','iPhone shortcut ingestion OK'],'成员与提交身份':['成員與提交身份','Members and submission identity'],'邮件分析只提供摘要和建议，不会自动创建待办。小组分工需经审核，并由负责人接受。':['郵件分析只提供摘要和建議，不會自動建立待辦。小組分工需經審核，並由負責人接受。','Mail analysis only offers summaries and suggestions; it never creates tasks automatically. Group assignments require review and acceptance by the assignee.']});
+Object.assign(TEXTS,{'中文':['中文','Chinese'],'同步中':['同步中','Syncing'],'已连接，等待首次同步':['已連接，等待首次同步','Connected; waiting for first sync'],'转发接收正常':['轉發接收正常','Forwarding ingestion OK'],'iPhone 自动转交正常':['iPhone 自動轉交正常','iPhone shortcut ingestion OK'],'成员与提交身份':['成員與提交身份','Members and submission identity'],'邮件分析只提供摘要和建议；确认“加入我的待办”后才会创建任务。小组分工需经审核，并由负责人接受。':['郵件分析只提供摘要和建議；確認「加入我的待辦」後才會建立待辦。小組分工需經審核，並由負責人接受。','Mail summaries are suggestions; a task is created only after you choose “Add to My Tasks”. Group assignments require review and acceptance by the assignee.']});
 const textSources=new WeakMap();
 function translateCopy(value){
  const raw=String(value??''),key=raw.trim();if(!key)return raw;
@@ -125,26 +129,37 @@ const dateLocale=()=>locale==='zh-TW'?'zh-TW':locale==='en'?'en-GB':'zh-CN';
 const local=(cn,tw,en)=>locale==='zh-TW'?tw:locale==='en'?en:cn;
 const fmt=n=>n?new Date(Number(n)).toLocaleString(dateLocale(),{timeZone:'Asia/Hong_Kong',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}):locale==='en'?'Deadline to confirm':locale==='zh-TW'?'截止時間待確認':'截止时间待确认';
 const localDate=n=>n?new Date(Number(n)+8*3600000).toISOString().slice(0,16):'';
-let tasks=[],status={},editing=null,showDone=false,activeView='tasks';
+let tasks=[],status={},editing=null,mailTaskDraft=null,showDone=false,progressPeriod='all',activeView='tasks';
 let toastTimer;
 function toast(s){$('#toast').textContent=translateCopy(s);$('#toast').classList.remove('hidden');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.add('hidden'),4500);}
 function accountLabel(account){const nickname=String(account?.nickname||'').trim();return nickname||`${tx('defaultNickname')} ${String(account?.userCode||'0000')}`;}
 function setAvatar(value,fallback='U'){const el=$('#avatar');el.textContent='';if(/^data:image\//.test(value||'')){const img=document.createElement('img');img.src=value;img.alt='';el.append(img);}else el.textContent=value||fallback;}
-async function api(path,options={}){const response=await fetch('/api/'+path,{...options,headers:{'Content-Type':'application/json','X-Locale':locale,...options.headers},body:options.body===undefined?undefined:JSON.stringify(options.body)});let data;try{data=await response.json();}catch{throw Error('服务暂时不可用，请稍后重试');}if(!response.ok){if(response.status===401&&!['login','register','recovery/question','recovery/reset'].includes(path))showLogin();throw Error(translateCopy(data.error||'操作失败'));}return data;}
+const sessionTab=sessionStorage.getItem('campus-session-tab')||crypto.randomUUID();sessionStorage.setItem('campus-session-tab',sessionTab);
+async function api(path,options={}){const response=await fetch('/api/'+path,{...options,headers:{'Content-Type':'application/json','X-Locale':locale,'X-Session-Tab':sessionTab,...options.headers},body:options.body===undefined?undefined:JSON.stringify(options.body)});let data;try{data=await response.json();}catch{throw Error('服务暂时不可用，请稍后重试');}if(!response.ok){if(response.status===401&&!['login','register','recovery/question','recovery/reset'].includes(path))showLogin();throw Error(translateCopy(data.error||'操作失败'));}return data;}
 function showLogin(){
-  $('#app').classList.add('hidden');$('#login').classList.remove('hidden');
+  $('#app').classList.add('hidden');$('#login').classList.remove('hidden');ensureHero();
   if(location.search)history.replaceState(null,'','/');
   applyLocale(localStorage.getItem('campus-locale')||detectLocale());
   $$('[data-login-locale]').forEach(b=>b.classList.toggle('selected',b.dataset.loginLocale===locale));
 }
 function view(name){activeView=name;for(const v of ['tasks','groups','mail','digests','settings'])$('#'+v+'-view').classList.toggle('hidden',v!==name);$$('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===name));history.replaceState(null,'','/?view='+name);if(name==='groups')loadGroups();if(name==='mail')loadMail().then(translateTextNodes);if(name==='digests')loadDigests().then(translateTextNodes);if(name==='settings')loadSettings();}
+function progressGroups(items,now=Date.now()){
+  const day=86400000,localNow=new Date(now+8*3600000);
+  const today=Date.UTC(localNow.getUTCFullYear(),localNow.getUTCMonth(),localNow.getUTCDate())-8*3600000;
+  const week=today-((localNow.getUTCDay()+6)%7)*day;
+  return {today:items.filter(t=>t.due>=today&&t.due<today+day),week:items.filter(t=>t.due>=week&&t.due<week+7*day),all:items};
+}
 function renderTasks(){
-  const now=Date.now(),pending=tasks.filter(t=>!t.completed);
-  $('#pending').textContent=pending.length;$('#soon').textContent=pending.filter(t=>t.due&&t.due>now&&t.due<=now+3*86400000).length;$('#completed').textContent=tasks.length-pending.length;$('#nav-count').textContent=pending.length;$('#heading-count').textContent=pending.length?' / '+pending.length:'';
-  updateProgress(tasks.length-pending.length,tasks.length);
-  const visible=tasks.filter(t=>t.completed===showDone);
-  $('#task-list').innerHTML=visible.length?visible.map(t=>{const overdue=t.due&&t.due<now&&!t.completed,soon=t.due&&t.due>=now&&t.due<=now+3*86400000&&!t.completed,source=t.source==='candidate'?'来自小组分工':t.source==='meeting'?'来自已确认的小组会议':t.source==='email'?'来自已确认的邮件建议':'自己添加';return `<article class="task ${t.completed?'done':''}"><input class="task-check" type="checkbox" aria-label="${esc(t.completed?local('重新打开','重新開啟','Reopen'):local('完成','完成','Complete'))} ${esc(t.title)}" data-check="${esc(t.id)}" ${t.completed?'checked':''}><div><h3 data-user-content>${esc(t.title)}</h3><div class="meta"><span class="${overdue||soon?'badge urgent':''}">${overdue?local('已逾期 · ','已逾期 · ','Overdue · '):soon?local('即将截止 · ','即將截止 · ','Due soon · '):''}${esc(fmt(t.due))}</span><span class="badge ${t.priority===1?'high':''}">${['','重要','普通','较低'][t.priority]}</span><span>${source}</span></div>${t.notes?`<details><summary class="task-note">查看备注</summary><p class="task-note">${esc(t.notes)}</p></details>`:''}</div><div class="task-actions"><button data-edit="${esc(t.id)}">编辑</button>${t.due?`<button data-calendar="${esc(t.id)}">日历</button>`:''}${t.completed?`<button class="danger-text" data-delete-task="${esc(t.id)}">删除</button>`:''}</div></article>`;}).join(''):`<div class="empty"><span class="empty-mark">✓</span><h2>${showDone?'还没有已完成任务':'清单里，留一点从容'}</h2><p>${showDone?'完成的任务会显示在这里，并可随时删除。':'先添加一项待办，或在小组中接受一项已经确认的分工。'}</p></div>`;
-  $$('[data-check]').forEach(c=>c.onchange=async()=>{const task=tasks.find(t=>t.id===c.dataset.check);c.disabled=true;try{const completed=c.checked;await api('tasks/'+task.id,{method:'PATCH',body:{version:task.version,completed}});if(completed){updateProgress(tasks.filter(t=>t.completed).length+1,tasks.length);await celebrateTask(c);}await loadTasks();toast(completed?'已完成，后续提醒已取消':'已重新打开待办');if(completed)offerUndo(task.id);}catch(e){c.checked=!c.checked;toast(e.message);c.disabled=false;}});
+  const now=Date.now(),pending=tasks.filter(t=>!t.completed),groups=progressGroups(tasks,now);
+  $('#nav-count').textContent=pending.length;
+  updateProgress(groups);
+  $$('[data-progress-period]').forEach(card=>card.onclick=()=>{progressPeriod=card.dataset.progressPeriod;renderTasks();});
+  $('.list-heading>span').textContent=progressPeriod==='today'?local('今日截止','今日截止','Due today'):progressPeriod==='week'?local('本周截止','本週截止','Due this week'):local('按截止时间排列','按截止時間排列','Sorted by due date');
+  const visible=groups[progressPeriod].filter(t=>t.completed===showDone);
+  if(showDone)visible.sort((a,b)=>(b.updated||0)-(a.updated||0));
+  else visible.sort((a,b)=>(a.due==null)-(b.due==null)||(a.due||0)-(b.due||0)||a.priority-b.priority);
+  $('#task-list').innerHTML=visible.length?visible.map(t=>{const overdue=t.due&&t.due<now&&!t.completed,soon=t.due&&t.due>=now&&t.due<=now+3*86400000&&!t.completed,source=t.source==='candidate'?'来自小组分工':t.source==='meeting'?'来自已确认的小组会议':t.source==='email'?local('来自邮件日程','來自郵件日程','From email schedule'):'自己添加';return `<article class="task ${t.completed?'done':''}"><input class="task-check" type="checkbox" aria-label="${esc(t.completed?local('重新打开','重新開啟','Reopen'):local('完成','完成','Complete'))} ${esc(t.title)}" data-check="${esc(t.id)}" ${t.completed?'checked':''}><div><h3 data-user-content>${esc(t.title)}</h3><div class="meta"><span class="${overdue||soon?'badge urgent':''}">${overdue?local('已逾期 · ','已逾期 · ','Overdue · '):soon?local('即将截止 · ','即將截止 · ','Due soon · '):''}${esc(fmt(t.due))}</span><span class="badge ${t.priority===1?'high':''}">${['','重要','普通','较低'][t.priority]}</span><span>${source}</span></div>${t.notes?`<details><summary class="task-note">查看备注</summary><p class="task-note">${esc(t.notes)}</p></details>`:''}</div><div class="task-actions"><button data-edit="${esc(t.id)}">编辑</button>${t.due?`<button data-calendar="${esc(t.id)}">${esc(local('导出到系统日历','匯出到系統日曆','Export to calendar'))}</button>`:''}${t.completed?`<button class="danger-text" data-delete-task="${esc(t.id)}">删除</button>`:''}</div></article>`;}).join(''):`<div class="empty"><span class="empty-mark">✓</span><h2>${progressPeriod!=='all'?local('这个时间段没有待办','這個時間段沒有待辦','No tasks in this period'):showDone?'还没有已完成任务':'清单里，留一点从容'}</h2><p>${progressPeriod!=='all'?local('选择其他时间段查看。','選擇其他時間段查看。','Choose another period.'):showDone?'完成的任务会显示在这里，并可随时删除。':'先添加一项待办，或在小组中接受一项已经确认的分工。'}</p></div>`;
+  $$('[data-check]').forEach(c=>c.onchange=async()=>{const task=tasks.find(t=>t.id===c.dataset.check);c.disabled=true;try{const completed=c.checked;const saved=await api('tasks/'+task.id,{method:'PATCH',body:{version:task.version,completed}});Object.assign(task,saved,{completed:!!saved.completed});updateProgress(progressGroups(tasks));await celebrateTask(c);renderTasks();toast(completed?'已完成，后续提醒已取消':'已重新打开待办');if(completed)offerUndo(task.id);}catch(e){c.checked=!c.checked;toast(e.message);c.disabled=false;}});
   $$('[data-edit]').forEach(b=>b.onclick=()=>openForm(tasks.find(t=>t.id===b.dataset.edit)));
   $$('[data-calendar]').forEach(b=>b.onclick=()=>exportCalendar(tasks.find(t=>t.id===b.dataset.calendar)));
   $$('[data-delete-task]').forEach(b=>b.onclick=async()=>{if(!confirm(translateCopy('确定永久删除这项已完成任务吗？')))return;b.disabled=true;try{await api('tasks/'+b.dataset.deleteTask,{method:'DELETE',body:{}});await loadTasks();toast('已删除任务');}catch(e){toast(e.message);b.disabled=false;}});
@@ -153,9 +168,9 @@ async function loadTasks(){tasks=await api('tasks');renderTasks();translateTextN
 // ES module imports are hoisted, so these work even though they are not at the very top.
 // (They sit here because test/localization.test.js evaluates the top of this file as a plain script.)
 import { TaskReminderPicker } from './task-reminders.js';
-import { playButtonSuccess, resetSuccessButton, circularTransition, progressColor, setupCardStack } from './motion.js';
+import { playButtonSuccess, resetSuccessButton, circularTransition, setupCardStack } from './motion.js';
 import { watchTimeInputs } from './native-pickers.js';
-import { digestOverview, daysUntil, digestTextForLocale, digestTitleForLocale } from './digest-insights.js';
+import { digestOverview, daysUntil, suggestedTaskDue, digestTextForLocale, digestTitleForLocale } from './digest-insights.js';
 
 // Every native date/time input (task form, groups, meetings, settings) becomes a wheel picker.
 watchTimeInputs();
@@ -169,12 +184,17 @@ const reminderPicker = new TaskReminderPicker({
   notify: text => toast(text),
 });
 
-function openForm(task=null){
+function openForm(task=null,mailDraft=null){
   editing=task;
+  mailTaskDraft=mailDraft;
   const f=$('#task-form');
   f.reset();
+  $('#task-dialog').classList.toggle('mail-task-review',!!mailDraft);
   $('#form-error').textContent='';
-  $('#form-heading').textContent=task?'编辑待办':'添加待办';
+  $('#form-heading').textContent=task?local('编辑待办','編輯待辦','Edit task'):mailDraft?local('确认邮件待办','確認郵件待辦','Review email task'):local('添加待办','新增待辦','Add task');
+  f.querySelector('[type=submit]').textContent=mailDraft?local('确认并加入待办','確認並加入待辦','Add to My Tasks'):local('保存待办','儲存待辦','Save task');
+  const mailHint=$('#mail-task-hint');
+  if(mailHint){mailHint.textContent=mailDraft?local('已根据邮件内容预填标题和时间；未注明具体时刻时，暂按当天 23:59 预填。请核对或修改后再保存。','已根據郵件內容預填標題和時間；未註明具體時刻時，暫按當天 23:59 預填。請核對或修改後再儲存。','Title and time were prefilled from the email. If no exact time was stated, 23:59 is suggested for that date. Review or edit before saving.'):'';mailHint.classList.toggle('hidden',!mailDraft);}
   const r=task?task.reminders:reminderDefaults;
   if(task){
     f.elements.title.value=task.title;
@@ -182,12 +202,14 @@ function openForm(task=null){
     f.elements.priority.value=task.priority;
     f.elements.push.checked=r.push;
   }
+  if(mailDraft){f.elements.title.value=mailDraft.title;f.elements.notes.value=mailDraft.notes;f.elements.priority.value=mailDraft.priority;}
   f.elements.maxCount.value=r.maxCount||0;
   f.elements.start.value=r.start||'08:00';
   f.elements.end.value=r.end||'23:00';
   if(Array.isArray(r.days)&&r.days.length)$$('[name=day]').forEach(c=>c.checked=r.days.includes(Number(c.value)));
   f.elements.email.checked=false;
   reminderPicker.load(task); // due time, offsets, exact times, repeat
+  if(mailDraft)reminderPicker.setDue(mailDraft.due);
   translateTextNodes();
   $('#task-dialog').showModal();
 }
@@ -195,18 +217,25 @@ $('#task-form').onsubmit=async event=>{
   event.preventDefault();
   const f=event.currentTarget,save=f.querySelector('[type=submit]');
   save.disabled=true;$('#form-error').textContent='';
+  const originalLabel=save.textContent;save.textContent=local('保存中…','儲存中…','Saving…');
   try{
     const picked=reminderPicker.collect(); // {due, offsets, exact, repeat} — same format as before
     const data={title:f.elements.title.value,notes:f.elements.notes.value,due:picked.due,priority:Number(f.elements.priority.value),
       reminders:{offsets:picked.offsets,exact:picked.exact,repeat:picked.repeat,maxCount:Number(f.elements.maxCount.value)||0,start:f.elements.start.value,end:f.elements.end.value,days:$$('[name=day]:checked').map(c=>Number(c.value)),push:f.elements.push.checked,email:f.elements.email.checked}};
     if(editing)data.version=editing.version;
-    await api(editing?'tasks/'+editing.id:'tasks',{method:editing?'PATCH':'POST',body:data});
-    await playButtonSuccess(save); // shrink → tick → particles (skipped with reduced motion)
+    const mailDraft=mailTaskDraft;
+    const result=mailDraft?await api('tasks/from-mail',{method:'POST',body:{messageId:mailDraft.messageId,title:data.title,notes:data.notes,due:data.due,priority:data.priority}}):await api(editing?'tasks/'+editing.id:'tasks',{method:editing?'PATCH':'POST',body:data});
+    const saved=result?.task||result;
+    const index=tasks.findIndex(task=>task.id===saved.id);
+    if(index<0)tasks.unshift(saved);else tasks[index]={...tasks[index],...saved};
+    save.textContent=local('已保存 ✓','已儲存 ✓','Saved ✓');
+    mailTaskDraft=null;
+    await new Promise(resolve=>setTimeout(resolve,180));
     $('#task-dialog').close();
-    resetSuccessButton(save);
-    await loadTasks();toast('待办已保存');
+    renderTasks();translateTextNodes();
+    toast(result?.alreadyAdded?local('这封邮件已在我的待办中','這封郵件已在我的待辦中','This email is already in My Tasks'):local('待办已保存','待辦已儲存','Task saved'));
   }catch(e){resetSuccessButton(save);$('#form-error').textContent=e.message;}
-  finally{save.disabled=false;}
+  finally{save.disabled=false;save.textContent=originalLabel;}
 };
 let mailNextBefore=null,mailLoadingMore=false;
 const categoryKey=c=>({1:'cat1',2:'cat2',3:'cat3',4:'cat4'}[c]||'cat3');
@@ -254,7 +283,7 @@ async function prepareBriefs(rows,onUpdate,isCurrent,opts={}){
         const result=await briefRequests.get(key),results=result.results||[];
         for(const row of batch){const item=results.find(r=>r.id===row.id);row.briefLoading=false;if(item?.brief)row.brief=item.brief;row.briefError=!item||!!item.error;}
         if(results.length&&results.every(r=>r.error)){
-          if(!warned){warned=true;toast(local('摘要暂不可用，请确认邮箱连接后重试。','摘要暫不可用，請確認電郵連接後重試。','Summaries are unavailable. Check your mailbox connection and retry.'));}
+          if(!warned){warned=true;toast(local('暂时无法生成详细摘要，已显示邮件速览。','暫時無法產生詳細摘要，已顯示郵件速覽。','Detailed summary is temporarily unavailable; showing a quick view.'));}
           batches.length=0; // do not hammer the service when everything fails
         }
       }catch{for(const row of batch){row.briefLoading=false;row.briefError=true;}batches.length=0;}
@@ -437,7 +466,7 @@ async function openMailDetail(id,{push=true}={}){
   const englishUi=locale==='en';
   page.querySelector('.mail-detail-tabs').classList.toggle('hidden',englishUi);
   summaryTab.hidden=englishUi;
-  summaryTab.textContent=local('中文','中文','Summary');originalTab.textContent=local('原文','原文','Original');
+  summaryTab.textContent=tx('mailChinese');originalTab.textContent=tx('mailEnglish');
   const selectPane=name=>{for(const tab of [summaryTab,originalTab]){const selected=tab.dataset.mailPane===name;tab.classList.toggle('selected',selected);tab.setAttribute('aria-selected',String(selected));}$('#mail-detail-zh').classList.toggle('hidden',name!=='zh');$('#mail-detail-en').classList.toggle('hidden',name!=='en');};
   selectPane(englishUi?'en':'zh');summaryTab.onclick=()=>selectPane('zh');originalTab.onclick=()=>selectPane('en');
   try{
@@ -454,7 +483,6 @@ async function openMailDetail(id,{push=true}={}){
     if(!englishUi&&detail.chinese?.fullBody){
       const translated=renderMailBody({body:detail.chinese.fullBody});
       $('#mail-detail-zh').replaceChildren(translated);
-      for(const img of original.querySelectorAll('img'))if(![...translated.querySelectorAll('img')].some(i=>i.src===img.src))$('#mail-detail-zh').append(img.cloneNode(true));
     }else if(!englishUi&&detail.translationEnabled){
       if(!display.brief){
         const summary=String(display.summary||'').trim();
@@ -467,6 +495,16 @@ async function openMailDetail(id,{push=true}={}){
         :local('全文翻译暂时无法生成，英文原文仍可在「原文」中查看，请稍后重试。','全文翻譯暫時無法生成，英文原文仍可在「原文」中查看，請稍後重試。','The full translation could not be generated. The original is available in “Original”; please try again later.');
       $('#mail-detail-zh').append(notice);
     }
+    if(!englishUi){
+      const shown=new Set([...$('#mail-detail-zh').querySelectorAll('img')].map(img=>img.src));
+      const copies=[];
+      for(const img of original.querySelectorAll('img'))if(!shown.has(img.src)){
+        const copy=img.cloneNode(true);copy.alt=img.alt||local('邮件原图','郵件原圖','Email image');
+        copy.addEventListener('error',()=>copy.remove(),{once:true});
+        copies.push(copy);shown.add(img.src);
+      }
+      $('#mail-detail-zh').prepend(...copies);
+    }
     if(!detail.translationEnabled)selectPane('en');
     const link=$('#mail-detail-outlook');
     if(/^https:\/\/(?:outlook\.live\.com|outlook\.office\.com|outlook\.office365\.com)\//.test(detail.url||'')){link.hidden=false;link.href=detail.url;link.textContent=tx('viewOriginal');}
@@ -474,9 +512,10 @@ async function openMailDetail(id,{push=true}={}){
 }
 let currentMailQuery='';
 async function loadMail(opts={}){
+  const finishLoading=opts.append?()=>{}:startLoading($('#mail-list'),'mail');
   try{
     const append=!!opts.append;
-    if(!append){mailNextBefore=null;$('#mail-list').innerHTML=`<div class="empty"><span class="empty-mark">▤</span><h2>${esc(local('加载中…','載入中…','Loading…'))}</h2></div>`;}
+    if(!append)mailNextBefore=null;
     await renderMailSuggestions().catch(()=>{});
     const q=String(opts.q===undefined?currentMailQuery:opts.q).trim();
     const params=new URLSearchParams({limit:'40'});if(mailNextBefore)params.set('before',String(mailNextBefore));if(q)params.set('q',q);
@@ -485,7 +524,7 @@ async function loadMail(opts={}){
     mailNextBefore=Array.isArray(payload)?null:payload.nextBefore;
     const html=messages.map(mailCard).join('');
     if(!append){
-      const mailEmptyCta=q?'':`<button type="button" class="primary" data-goto-settings style="margin-top:14px">${esc(local('去设置连接 Outlook','去設定連接 Outlook','Connect Outlook in Settings'))}</button>`;
+      const mailEmptyCta=q?'':`<button type="button" class="primary" data-goto-settings style="margin-top:14px">${esc(status.outlook?local('检查学校邮箱与同步状态','檢查學校電郵與同步狀態','Check school email and sync status'):local('去设置连接邮箱','去設定連接電郵','Connect email in Settings'))}</button>`;
       $('#mail-list').innerHTML=messages.length?html:`<div class="empty"><span class="empty-mark">▤</span><h2>${esc(tx('mailEmptyTitle'))}</h2><p>${esc(q?local('没有找到匹配「'+q+'」的邮件。','沒有找到符合「'+q+'」的郵件。','No mail matches “'+q+'”.'):tx('mailEmptyText'))}</p>${mailEmptyCta}</div>`;
       const gotoSettingsBtn=$('#mail-list [data-goto-settings]');if(gotoSettingsBtn)gotoSettingsBtn.onclick=()=>view('settings');
     }else if(html){
@@ -506,15 +545,17 @@ async function loadMail(opts={}){
 
     const focusId=new URLSearchParams(location.search).get('message');
 
-  }catch(e){$('#global-error').textContent=e.message;}
+  }catch(e){$('#global-error').textContent=e.message;}finally{finishLoading();}
 }
 function wireMailSearch(){
   const toggle=$('#mail-search-toggle'),input=$('#mail-search');
   if(!toggle||!input)return;
+  const box=toggle.closest('.mail-search');
+  input.hidden=false;input.disabled=true;toggle.setAttribute('aria-expanded','false');
   let timer=null;
   const setQuery=q=>{currentMailQuery=q;loadMail({q});};
-  const open=()=>{input.hidden=false;void input.offsetWidth;input.classList.add('open');input.focus();toggle.classList.add('active');};
-  const close=()=>{input.classList.remove('open');toggle.classList.remove('active');setTimeout(()=>{if(!input.classList.contains('open'))input.hidden=true;},320);};
+  const open=()=>{input.disabled=false;input.classList.add('open');box.classList.add('is-open');toggle.classList.add('active');toggle.setAttribute('aria-expanded','true');input.focus({preventScroll:true});};
+  const close=()=>{input.classList.remove('open');box.classList.remove('is-open');toggle.classList.remove('active');toggle.setAttribute('aria-expanded','false');input.disabled=true;};
   toggle.onclick=()=>{if(input.classList.contains('open')){if(input.value){input.value='';setQuery('');}close();}else open();};
   input.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(()=>setQuery(input.value.trim()),300);});
   input.addEventListener('focusout',()=>{setTimeout(()=>{if(!input.value)close();},150);});
@@ -550,11 +591,13 @@ function digestBody(r,key){
     // 没有 AI 摘要时，先展示已有的速览（extractive summary），而不是一直"正在整理"。
     // 这样用户总能看到内容，不会觉得卡住了。
     if(r.gist.text)html+=`<p class="dg-quick"><b>${esc(local('速览','速覽','Quick view'))}</b> <span data-user-content>${esc(r.gist.text)}</span></p>`;
-    if(it.briefError)html+=`<p class="dg-note is-error">${esc(local('详细要点暂未生成，可能是原文暂时不可用。','詳細重點暫未產生，可能是原文暫時不可用。','Detailed notes could not be prepared; the original mail may be unavailable.'))}</p>`;
+    if(it.briefError)html+=`<p class="dg-note is-error">${esc(local('详细要点暂不可用，以上速览根据邮件正文提取。','詳細重點暫不可用，以上速覽根據郵件正文擷取。','Detailed notes are unavailable; the quick view is extracted from the email body.'))}</p>`;
     else if(!r.gist.text)html+=`<p class="dg-note">${esc(local('暂无摘要，可点击下方按钮生成详细要点。','暫無摘要，可點擊下方按鈕產生詳細重點。','No summary yet. Tap the button below to generate detailed notes.'))}</p>`;
   }
   const buttons=[];
   if(it.id)buttons.push(`<button type="button" class="dg-btn primary" data-dg-open="${key}">${esc(local('查看邮件','查看郵件','Open email'))}<span aria-hidden="true"> ↗</span></button>`);
+  if(r.when!==null&&it.id&&!it.ignored){const added=tasks.some(t=>t.source==='email'&&t.source_id===`digest-mail:${it.id}`);buttons.push(`<button type="button" class="dg-btn" data-dg-add-task="${key}" ${added?'disabled':''}>${esc(local(added?'已加入我的待办':'加入我的待办',added?'已加入我的待辦':'加入我的待辦',added?'Added to my tasks':'Add to my tasks'))}</button>`);}
+  if(it.id&&(r.tier==='act'||it.ignored))buttons.push(`<button type="button" class="dg-btn" data-dg-ignore="${key}">${esc(local(it.ignored?'恢复提醒':'忽略',it.ignored?'恢復提醒':'忽略',it.ignored?'Restore reminders':'Ignore'))}</button>`);
   if(it.id&&!it.brief&&!it.briefLoading)buttons.push(`<button type="button" class="dg-btn" data-dg-brief="${key}">${esc(it.briefError?local('重试','重試','Retry'):local('生成详细要点','產生詳細重點','Prepare notes'))}</button>`);
   return html+(buttons.length?`<div class="dg-actions">${buttons.join('')}</div>`:'');
 }
@@ -629,30 +672,19 @@ function bindDigestEvents(){
   const root=$('#digest-list');
   addEventListener('resize',moveIndicators);
   root.addEventListener('click',()=>{const t=root.querySelector('.stack-toggle');if(t)digestStackOpen=t.getAttribute('aria-expanded')==='true';});
-  root.addEventListener('click',e=>{
+  root.addEventListener('click',async e=>{
     if(e.target.closest('.card-stack.is-collapsed'))return; // first click only unfolds the stack
     const find=sel=>e.target.closest(sel);
     const rowOf=key=>{const [di,n]=key.split(':').map(Number);return {row:root.querySelector(`[data-dg-row="${key}"]`),r:digestViews[di]?.rows[n]};};
     const head=find('.dg-head');
     if(head){
-      // 点击日报行直接跳转到邮件详情页（用户要求）
       try{
         const row=head.closest('.dg-row');
         if(!row)return;
-        const {r}=rowOf(row.dataset.dgRow);
-        const mailId=r?.item?.id;
-        if(mailId){
-          // 先切到邮件视图，再写 deep-link 参数：loadMail 加载完列表后会自动打开对应邮件；
-          // 同时立即打开详情（带加载中提示），dialog.open 守卫保证两次调用不冲突
-
-          openMailDetail(mailId).catch(e=>console.warn('openMailDetail failed',e));
-        }else{
-          // 旧日报条目没有关联邮件 id：展开行内摘要，保证点击一定有反馈
-          const open=!row.classList.contains('open');
-          row.classList.toggle('open',open);
-          head.setAttribute('aria-expanded',String(open));
-          syncToggleAll(row.closest('.dg-card'));
-        }
+        const open=!row.classList.contains('open');
+        row.classList.toggle('open',open);
+        head.setAttribute('aria-expanded',String(open));
+        syncToggleAll(row.closest('.dg-card'));
       }catch(e){console.warn('digest row click failed',e);}
       return;
     }
@@ -672,6 +704,26 @@ function bindDigestEvents(){
       syncToggleAll(row.closest('.dg-card'));row.scrollIntoView({behavior:motionOk()?'smooth':'auto',block:'center'});
       row.classList.remove('dg-flash');void row.offsetWidth;row.classList.add('dg-flash');return;
     }
+    const ignore=find('[data-dg-ignore]');
+    if(ignore){
+      const {row,r}=rowOf(ignore.dataset.dgIgnore);if(!r?.item.id)return;
+      ignore.disabled=true;
+      try{
+        const ignored=!r.item.ignored;
+        await api('digests/ignore',{method:ignored?'POST':'DELETE',body:{messageId:r.item.id}});
+        if(ignored&&row?.isConnected&&row.classList.contains('open')&&motionOk()){
+          const body=row.querySelector('.dg-body');
+          row.classList.remove('open');row.querySelector('.dg-head')?.setAttribute('aria-expanded','false');
+          if(body)await new Promise(resolve=>{let finished=false;const done=()=>{if(finished)return;finished=true;body.removeEventListener('transitionend',onEnd);clearTimeout(timer);resolve();};const onEnd=event=>{if(event.target===body&&event.propertyName==='grid-template-rows')done();};const timer=setTimeout(done,450);body.addEventListener('transitionend',onEnd);});
+        }
+        for(const digest of digestData)for(const item of digest.items||[])if(item.id===r.item.id)item.ignored=ignored;
+        if(ignored)digestOpen.delete(r.item.id);else digestOpen.add(r.item.id);
+        renderDigests(false);
+      }catch(error){ignore.disabled=false;$('#global-error').textContent=error.message;}
+      return;
+    }
+    const addTask=find('[data-dg-add-task]');
+    if(addTask){const {r}=rowOf(addTask.dataset.dgAddTask);if(!r||r.when===null||r.item.ignored||!r.item.id)return;openForm(null,{messageId:r.item.id,title:r.headline.slice(0,200),notes:[r.gist.text||r.item.summary||'',`${local('来源邮件：','來源郵件：','Source email: ')}${r.item.subject||r.headline}`].filter(Boolean).join('\n'),due:suggestedTaskDue(r.item,r.when),priority:r.tier==='act'?1:2});return;}
     const open=find('[data-dg-open]');
     if(open){const {r}=rowOf(open.dataset.dgOpen);if(r?.item.id){history.replaceState(null,'','/?view=mail&message='+encodeURIComponent(r.item.id));view('mail');openMailDetail(r.item.id);}return;}
     const brief=find('[data-dg-brief]');
@@ -687,15 +739,17 @@ function bindDigestEvents(){
   });
 }
 async function loadDigests(opts={}){
+  const finishLoading=startLoading($('#digest-list'),'digests');
   try{
     digestData=await api('digests');
+    digestData.sort((a,b)=>(Number(b.created)||0)-(Number(a.created)||0));
     bindDigestEvents();
-    renderDigests(true);
+    renderDigests(false);
     if(opts.generate!==false){
       const activeLocale=locale;
       void prepareBriefs(digestData.flatMap(d=>d.items||[]),()=>renderDigests(false),()=>locale===activeLocale&&!$('#digests-view').classList.contains('hidden'),{live:true,concurrency:2});
     }
-  }catch(e){$('#global-error').textContent=e.message;}
+  }catch(e){$('#global-error').textContent=e.message;}finally{finishLoading();}
 }
 
 let invitations=[],groups=[],selectedGroupId=null,groupState=null,activePoll=null;
@@ -714,14 +768,14 @@ function groupIndex(){return `<div class="group-index" aria-label="${local('小�
 
 function candidateCard(candidate,isOwner){
   const assignee=memberName(candidate.proposed_assignee_id),evidence=evidenceText(candidate.evidence);
-  if(candidate.status==='pending'&&isOwner)return `<article class="candidate-card"><span class="state-pill pending">待审核</span><form class="candidate-review" data-review-candidate="${esc(candidate.id)}"><label>任务标题<input name="title" required maxlength="200" value="${esc(candidate.title)}"></label><div class="form-row"><label>建议负责人<select name="assignee">${memberOptions(candidate.proposed_assignee_id)}</select></label><label>截止时间（可留空）<input name="due" type="datetime-local" value="${hkValue(candidate.due)}"></label></div><label>任务说明<textarea name="notes" rows="2">${esc(candidate.notes||'')}</textarea></label><label>依据<textarea name="evidence" rows="2" required>${esc(evidence)}</textarea></label><div class="inline-actions"><button class="primary" type="submit">确认并发送给负责人</button><button type="button" data-reject-candidate="${esc(candidate.id)}">不采用</button></div></form></article>`;
+  if(candidate.status==='pending'&&isOwner)return `<article class="candidate-card"><span class="state-pill pending">待审核</span><form class="candidate-review" data-review-candidate="${esc(candidate.id)}"><label>任务标题<input name="title" required maxlength="200" value="${esc(candidate.title)}"></label><div class="form-row"><label>建议负责人<select name="assignee">${memberOptions(candidate.proposed_assignee_id)}</select></label><label>截止时间（可留空）<input name="due" type="datetime-local" value="${hkValue(candidate.due)}"></label></div><label>任务说明<textarea name="notes" rows="2">${esc(candidate.notes||'')}</textarea></label><label>依据<textarea name="evidence" rows="2">${esc(evidence)}</textarea></label><div class="inline-actions"><button class="primary" type="submit">确认并发送给负责人</button><button type="button" data-reject-candidate="${esc(candidate.id)}">不采用</button></div></form></article>`;
   const next=candidate.next_action==='owner_review'?local(`等待组长 ${memberName(candidate.next_actor_user_id)} 审核`,`等待組長 ${memberName(candidate.next_actor_user_id)} 審核`,`Waiting for owner ${memberName(candidate.next_actor_user_id)} to review`):candidate.next_action==='assignee_accept'?local(`等待负责人 ${memberName(candidate.next_actor_user_id)} 接受`,`等待負責人 ${memberName(candidate.next_actor_user_id)} 接受`,`Waiting for ${memberName(candidate.next_actor_user_id)} to accept`):stateLabel(candidate.next_action);
   return `<article class="candidate-card"><span class="state-pill ${esc(candidate.status)}">${esc(stateLabel(candidate.status))}</span><h3 data-user-content>${esc(candidate.title)}</h3><p>${local('建议负责人：','建議負責人：','Proposed assignee: ')}${esc(assignee)} · ${esc(fmt(candidate.due))}</p><p class="next-action">${local('下一步：','下一步：','Next: ')}${next}</p>${candidate.notes?`<p>${esc(candidate.notes)}</p>`:''}${evidence?`<p class="evidence"><strong>依据</strong><br>${esc(evidence)}</p>`:''}</article>`;
 }
 
 function taskCard(task){
   const mine=task.user_id===status.account.id,pending=task.acceptance_status==='pending',next=pending?(mine?local('需要你决定是否接受','需要你決定是否接受','You need to accept or decline'):local('等待 ','等待 ','Waiting for ')+memberName(task.user_id)+local(' 接受',' 接受',' to accept')):task.acceptance_status==='accepted'?(task.completed?local('负责人已完成','負責人已完成','Completed by assignee'):local('负责人正在执行','負責人正在執行','In progress')):local('负责人已拒绝，组长需要重新分配','負責人已拒絕，組長需要重新分配','Declined; the owner needs to reassign it');
-  return `<article class="group-task ${mine&&pending?'needs-action':''}"><span class="state-pill ${esc(task.acceptance_status)}">${esc(stateLabel(task.acceptance_status))}</span><h3>${esc(task.title)}</h3><p>${local('负责人：','負責人：','Assignee: ')}${esc(memberName(task.user_id))} · ${esc(fmt(task.due))}</p><p class="next-action">${local('下一步：','下一步：','Next: ')}${esc(next)}</p>${task.notes?`<p>${esc(task.notes)}</p>`:''}${mine&&pending?`<div class="inline-actions"><button class="primary" data-assignment="accept" data-task-id="${esc(task.id)}">接受分工</button><button data-assignment="reject" data-task-id="${esc(task.id)}">拒绝分工</button></div>`:''}</article>`;
+  return `<article class="group-task ${mine&&pending?'needs-action':''}"><div class="task-heading"><h3>${esc(task.title)}</h3><span class="state-pill ${esc(task.acceptance_status)}">${esc(stateLabel(task.acceptance_status))}</span></div><p>${local('负责人：','負責人：','Assignee: ')}${esc(memberName(task.user_id))} · ${esc(fmt(task.due))}</p><p class="next-action">${local('下一步：','下一步：','Next: ')}${esc(next)}</p>${task.notes?`<p>${esc(task.notes)}</p>`:''}${mine&&pending?`<div class="inline-actions"><button class="primary" data-assignment="accept" data-task-id="${esc(task.id)}">接受分工</button><button data-assignment="reject" data-task-id="${esc(task.id)}">拒绝分工</button></div>`:''}</article>`;
 }
 
 function pollWorkspace(){
@@ -739,49 +793,110 @@ function pollWorkspace(){
 
 function availabilityRow(start='',end='',kind='available'){const required=kind==='available'?'required':'';return `<div class="availability-row"><label>开始<input name="${kind}Start" type="datetime-local" ${required} value="${hkValue(start)}"></label><label>结束<input name="${kind}End" type="datetime-local" ${required} value="${hkValue(end)}"></label><button type="button" data-remove-availability aria-label="删除这个时段">删除</button></div>`;}
 
+function memberAvatar(member,large=false){
+ const name=member.nickname||local('用户 ','用戶 ','User ')+member.user_id.slice(-4);
+ return /^data:image\/(png|jpeg|webp|gif);base64,/i.test(member.avatar||'')?`<img class="group-avatar ${large?'large':''}" src="${esc(member.avatar)}" alt="${esc(name)}">`:`<span class="group-avatar ${large?'large':''}" aria-label="${esc(name)}">${esc(name.slice(0,1))}</span>`;
+}
+function openGroupInfo(){
+ if(!groupState)return;
+ const {group,members,tasks}=groupState,root=$('#groups-content');
+ root.innerHTML=`<section class="group-info-page"><button type="button" id="back-group-info">← ${local('返回小组','返回小組','Back to group')}</button><div class="group-info-heading"><span class="state-pill">${local('小组基本信息','小組基本資訊','Group information')}</span><h2 data-user-content>${esc(group.name)}</h2><p>${esc(local('创建于','建立於','Created'))} ${esc(fmt(group.created))}</p></div>${group.role==='owner'?`<form id="edit-group-info" class="group-info-editor"><label>${local('小组名称','小組名稱','Group name')}<input name="name" required maxlength="80" value="${esc(group.name)}"></label><label>${local('小组描述','小組描述','Description')}<textarea name="description" rows="3" maxlength="1000">${esc(group.description||'')}</textarea></label><p class="error" id="group-info-error" role="alert"></p><button type="submit" class="primary">${local('保存修改','儲存修改','Save changes')}</button></form>`:`<p class="group-description" data-user-content>${esc(group.description||local('暂无小组描述','暫無小組描述','No description yet'))}</p>`}<div class="group-info-stats"><div><strong>${members.length}</strong><span>${local('成员','成員','Members')}</span></div><div><strong>${tasks.filter(t=>!t.completed).length}</strong><span>${local('进行中任务','進行中任務','Open tasks')}</span></div></div><div class="group-info-members">${members.map(member=>`<button type="button" class="group-info-member" data-avatar-member="${esc(member.user_id)}">${memberAvatar(member)}<span><strong data-user-content>${esc(member.nickname||local('用户 ','用戶 ','User ')+member.user_id.slice(-4))}</strong><small>${member.role==='owner'?local('组长','組長','Owner'):local('成员','成員','Member')} · ${local('加入于','加入於','Joined')} ${esc(fmt(member.joined))}</small></span></button>`).join('')}</div></section>`;
+ $('#back-group-info').onclick=renderGroups;
+ const editor=$('#edit-group-info');if(editor)editor.onsubmit=async event=>{event.preventDefault();const button=editor.querySelector('[type=submit]');button.disabled=true;try{await api(`groups/${group.id}`,{method:'PATCH',body:{name:editor.elements.name.value,description:editor.elements.description.value}});await loadGroups(true);openGroupInfo();toast(local('小组信息已保存','小組資訊已儲存','Group information saved'));}catch(error){$('#group-info-error').textContent=error.message;}finally{button.disabled=false;}};
+
+ root.querySelectorAll('[data-avatar-member]').forEach(button=>button.onclick=()=>{
+   const member=members.find(item=>item.user_id===button.dataset.avatarMember),dialog=document.createElement('dialog');
+   dialog.className='member-avatar-dialog';dialog.innerHTML=`<div class="dialog-heading"><h2 data-user-content>${esc(member.nickname||local('成员头像','成員頭像','Member avatar'))}</h2><button type="button" class="icon-button" aria-label="${local('关闭','關閉','Close')}">×</button></div>${memberAvatar(member,true)}`;
+   dialog.querySelector('button').onclick=()=>dialog.close();dialog.addEventListener('close',()=>dialog.remove());document.body.append(dialog);dialog.showModal();
+ });
+}
+
 function renderGroups(){
   const root=$('#groups-content');
-  $('#invitations').innerHTML=invitations.map(inv=>`<article class="setting-card"><h3>${esc(inv.name)}</h3><p>${local('邀请你加入小组','邀請你加入小組','You are invited to this group')}</p><button class="primary" data-invitation="${inv.id}" data-decision="accept">${local('接受邀请','接受邀請','Accept invitation')}</button> <button data-invitation="${inv.id}" data-decision="reject">${local('拒绝','拒絕','Decline')}</button></article>`).join('');
+  $('#invitations').innerHTML=invitations.map(inv=>`<article class="setting-card"><h3>${esc(inv.name)}</h3><p>${local('邀请你加入小组','邀請你加入小組','Group invitation')}</p><details class="invitation-preview"><summary>${local('查看小组简介和成员','查看小組簡介和成員','View description and members')}</summary><p class="group-description" data-user-content>${esc(inv.description||local('暂无简介','暫無簡介','No description yet'))}</p><div class="member-list">${(inv.members||[]).map(member=>`<span class="member-chip">${memberAvatar(member)}<b data-user-content>${esc(member.nickname||local('用户 ','用戶 ','User ')+member.user_id.slice(-4))}</b>${member.role==='owner'?local('组长','組長','Owner'):local('成员','成員','Member')}</span>`).join('')}</div></details><button class="primary" data-invitation="${inv.id}" data-decision="accept">${local('接受邀请','接受邀請','Accept invitation')}</button> <button data-invitation="${inv.id}" data-decision="reject">${local('拒绝','拒絕','Decline')}</button></article>`).join('');
   $$('[data-invitation]').forEach(b=>b.onclick=()=>runAction(b,()=>api('invitations/'+b.dataset.invitation,{method:'POST',body:{decision:b.dataset.decision}}),()=>loadGroups(true)));
   if(!groups.length){root.innerHTML='<div class="empty"><span class="empty-mark">◎</span><h2>从一个真实的小组项目开始</h2><p>创建小组后，可以确认每个人的分工，并收集共同空闲时间。</p></div>';translateTextNodes();return;}
   if(!groupState){root.innerHTML=`<div class="groups-layout">${groupIndex()}<div class="workspace-placeholder"><p>选择一个小组，查看分工与会议时间。</p></div></div>`;bindGroupIndex();translateTextNodes();return;}
   const {group,members,candidates,tasks,meetingPolls,announcements}=groupState,isOwner=group.role==='owner';
-  root.innerHTML=`<div class="groups-layout">${groupIndex()}<div class="group-panel"><div class="group-panel-head"><div><h2 data-user-content>${esc(group.name)}</h2><p>${members.length} ${local('位成员','位成員','members')} · ${esc(accountLabel(status.account))} · ${isOwner?local('组长','組長','Owner'):local('成员','成員','Member')}</p></div><span class="state-pill">${isOwner?'可审核分工与确认会议':'可提交建议、接受分工与参与投票'}</span></div>${announcements?.length?`<section class="group-section announcements"><div class="section-heading"><h2>小组公告</h2><p>未来可直接接入群聊置顶</p></div>${announcements.map(item=>`<article class="announcement"><strong>${esc(announcementText(item).title)}</strong><p>${esc(announcementText(item).body)}</p></article>`).join('')}</section>`:''}<section class="group-section"><div class="section-heading"><h2>成员与提交身份</h2><p>所有操作绑定登录账号，不绑定“关联邮箱”</p></div><div class="member-list">${members.map(member=>`<span class="member-chip ${member.user_id===status.account.id?'current':''}"><b>${esc(member.nickname||local('用户 ','用戶 ','User ')+member.user_id.slice(-4))}</b>${esc(member.role==='owner'?local('创建者','建立者','Owner'):local('成员','成員','Member'))}${member.user_id===status.account.id?local(' · 当前账号',' · 目前帳號',' · You'):''}</span>`).join('')}</div>${membershipControls(isOwner)}${isOwner?`<form id="member-form" class="compact-form"><label>用注册邮箱邀请成员<input name="email" type="email" required></label><button type="submit">邀请成员</button></form>`:''}</section><section class="group-section"><div class="section-heading"><h2>分工确认</h2><p>候选 → 组长审核 → 负责人接受 → 全组可见</p></div><form id="candidate-form" class="candidate-form"><label>候选任务<input name="title" maxlength="200" required></label><div class="form-row"><label>建议负责人<select name="assignee"><option value="">由组长审核时决定</option>${memberOptions()}</select></label><label>截止时间（可留空）<input name="due" type="datetime-local"></label></div><label>任务说明<textarea name="notes" rows="2"></textarea></label><label>依据<textarea name="evidence" rows="2" required></textarea></label><div class="form-actions"><button type="submit" class="primary">提交候选</button></div></form>${candidates.length?candidates.map(candidate=>candidateCard(candidate,isOwner)).join(''):'<p class="form-help">还没有候选分工。候选不会自动变成正式任务。</p>'}</section><section class="group-section"><div class="section-heading"><h2>全组分工看板</h2><p>每位成员都能看到负责人和当前状态</p></div>${tasks.length?tasks.map(taskCard).join(''):'<p class="form-help">暂无正式分工。组长审核候选后，负责人会在这里接受或拒绝。</p>'}</section><section class="group-section"><div class="section-heading"><h2>共同会议时间</h2><p>收集时间 → 推荐方案 → 全员投票 → 加入待办</p></div><form id="meeting-form" class="meeting-form"><label>会议名称<input name="name" maxlength="120" required></label><div class="form-row"><label>可选范围开始<input name="rangeStart" type="datetime-local" required></label><label>可选范围结束<input name="rangeEnd" type="datetime-local" required></label></div><div class="form-row"><label>会议时长<select name="duration"><option value="30">30 分钟</option><option value="45">45 分钟</option><option value="60" selected>60 分钟</option><option value="90">90 分钟</option></select></label><label>前后缓冲<select name="buffer"><option value="0">不需要</option><option value="15" selected>15 分钟</option><option value="30">30 分钟</option></select></label></div><div class="form-actions"><button class="primary" type="submit">发起时间收集</button></div></form>${meetingPolls.length?meetingPolls.map(poll=>`<article class="poll-card"><span class="state-pill ${esc(poll.phase||poll.status)}">${esc(stateLabel(poll.phase||poll.status))}</span><h3 data-user-content>${esc(poll.name)}</h3><p>${esc(fmt(poll.range_start))} – ${esc(fmt(poll.range_end))} · ${poll.duration_minutes} ${local('分钟','分鐘','minutes')}</p><button type="button" data-open-poll="${esc(poll.id)}">${poll.status==='confirmed'?'查看结果':poll.phase==='voting'?'参与投票':'提交时间 / 查看推荐'}</button></article>`).join(''):'<p class="form-help">还没有会议时间收集。</p>'}${pollWorkspace()}${meetingControls()}</section></div></div>`;
+  root.innerHTML=`<div class="groups-layout">${groupIndex()}<div class="group-panel"><div class="group-panel-head"><div><h2 data-user-content>${esc(group.name)}</h2><p>${members.length} ${local('位成员','位成員','members')} · ${esc(accountLabel(status.account))} · ${isOwner?local('组长','組長','Owner'):local('成员','成員','Member')}</p></div><button type="button" id="open-group-info">${local('小组信息','小組資訊','Group info')} ↗</button></div>${announcements?.length?`<section class="group-section announcements"><div class="section-heading"><h2>小组公告</h2></div>${announcements.map(item=>`<article class="announcement"><strong>${esc(announcementText(item).title)}</strong><p>${esc(announcementText(item).body)}</p></article>`).join('')}</section>`:''}<section class="group-section"><div class="section-heading"><h2>成员</h2></div><div class="member-list">${members.map(member=>{const selectable=isOwner&&member.user_id!==status.account.id,tag=selectable?'button':'span';return `<${tag} class="member-chip ${member.user_id===status.account.id?'current':''}" ${selectable?`type="button" data-select-member="${esc(member.user_id)}" aria-pressed="false"`:''}>${memberAvatar(member)}<b>${esc(member.nickname||local('用户 ','用戶 ','User ')+member.user_id.slice(-4))}</b>${esc(member.role==='owner'?local('创建者','建立者','Owner'):local('成员','成員','Member'))}${member.user_id===status.account.id?local(' · 当前账号',' · 目前帳號',' · You'):''}</${tag}>`;}).join('')}</div>${membershipControls(isOwner)}${isOwner?`<form id="member-form" class="compact-form"><label>用注册邮箱邀请成员<input name="email" type="email" required></label><button type="submit">邀请成员</button></form>`:''}</section>${projectBoard(isOwner)}<section class="group-section"><div class="section-heading"><h2>共同会议时间</h2></div><form id="meeting-form" class="meeting-form"><label>会议名称<input name="name" maxlength="120" required></label><div class="form-row"><label>可选范围开始<input name="rangeStart" type="datetime-local" required></label><label>可选范围结束<input name="rangeEnd" type="datetime-local" required></label></div><div class="form-row"><label>会议时长<select name="duration"><option value="30">30 分钟</option><option value="45">45 分钟</option><option value="60" selected>60 分钟</option><option value="90">90 分钟</option></select></label><label>前后缓冲<select name="buffer"><option value="0">不需要</option><option value="15" selected>15 分钟</option><option value="30">30 分钟</option></select></label></div><div class="form-actions"><button class="primary" type="submit">发起时间收集</button></div></form>${meetingPolls.length?meetingPolls.map(poll=>`<article class="poll-card"><span class="state-pill ${esc(poll.phase||poll.status)}">${esc(stateLabel(poll.phase||poll.status))}</span><h3 data-user-content>${esc(poll.name)}</h3><p>${esc(fmt(poll.range_start))} – ${esc(fmt(poll.range_end))} · ${poll.duration_minutes} ${local('分钟','分鐘','minutes')}</p><button type="button" data-open-poll="${esc(poll.id)}">${poll.status==='confirmed'?'查看结果':poll.phase==='voting'?'参与投票':'提交时间 / 查看推荐'}</button></article>`).join(''):'<p class="form-help">还没有会议时间收集。</p>'}${pollWorkspace()}${meetingControls()}</section></div></div>`;
   bindGroupActions();
   translateTextNodes();
   bindUpgradeControls();
+}
+
+function projectBoard(owner){
+ const projects=groupState.projects||[],candidates=groupState.candidates||[],tasks=groupState.tasks||[];
+ const form=(project)=>`<form class="candidate-form" data-project-form="${project||''}"><label>${project?local('子任务','子任務','Subtask'):local('总任务','總任務','Project')}<input name="title" required maxlength="200"></label><label>${local('任务说明','任務說明','Details')}<textarea name="notes" rows="2"></textarea></label>${project?`<div class="form-row"><label>${local('邀请负责人','邀請負責人','Invite assignee')}<select name="assignee"><option value="">${local('开放申请','開放申請','Open for applications')}</option>${memberOptions()}</select></label><label>${local('截止时间','截止時間','Deadline')}<input type="datetime-local" name="due"></label></div>`:''}<div class="form-actions"><button class="primary">${project?local('创建子任务','建立子任務','Create subtask'):local('创建总任务','建立總任務','Create project')}</button></div></form>`;
+ const item=c=>{const task=tasks.find(t=>t.candidate_id===c.id);if(task)return taskCard(task);
+ const applications=(groupState.applications||[]).filter(a=>a.candidate_id===c.id&&a.status==='pending');
+ return `<article class="candidate-card"><h3>${esc(c.title)}</h3><p>${esc(c.notes||'')}</p>${c.due?`<p>${esc(fmt(c.due))}</p>`:''}${c.status==='pending'?(owner?`${applications.map(a=>`<div class="inline-actions"><span>${esc(memberName(a.user_id))}</span><button data-approve-application="${esc(c.id)}" data-user-id="${esc(a.user_id)}">${local('批准申请','批准申請','Approve application')}</button></div>`).join('')}<details><summary>${local('指定负责人','指定負責人','Choose assignee')}</summary>${candidateCard(c,true)}</details>`:`<button data-apply-task="${esc(c.id)}">${local('申请接手','申請接手','Apply for task')}</button>`):`<span>${esc(stateLabel(c.status))}</span>`}</article>`;};
+ return `<section class="group-section"><div class="section-heading"><h2>${local('项目与分工','專案與分工','Projects & assignments')}</h2></div>${owner?`<details><summary>${local('创建总任务','建立總任務','Create project')}</summary>${form('')}</details>`:''}${projects.map(project=>`<section class="group-section"><h3>${esc(project.title)}</h3>${project.notes?`<p>${esc(project.notes)}</p>`:''}${candidates.filter(c=>c.project_id===project.id).map(item).join('')}${owner?`<details><summary>${local('添加子任务','新增子任務','Add subtask')}</summary>${form(esc(project.id))}</details>`:''}</section>`).join('')}${candidates.filter(c=>!c.project_id).map(item).join('')}${tasks.filter(t=>!t.candidate_id).map(taskCard).join('')}</section>`;
+}
+function groupFailure(message){const dialog=document.createElement('dialog');dialog.innerHTML=`<h2>${local('无法申请','無法申請','Unable to apply')}</h2><p>${esc(message)}</p><button>${local('知道了','知道了','OK')}</button>`;document.body.append(dialog);dialog.querySelector('button').onclick=()=>dialog.close();dialog.onclose=()=>dialog.remove();dialog.showModal();}
+function bindProjects(){
+ $$('[data-project-form]').forEach(form=>form.onsubmit=async event=>{event.preventDefault();const button=form.querySelector('button');button.disabled=true;try{await api(`groups/${selectedGroupId}/projects`,{method:'POST',body:{projectId:form.dataset.projectForm||null,title:form.elements.title.value,notes:form.elements.notes.value,proposedAssigneeId:form.elements.assignee?.value||null,due:hkTime(form.elements.due?.value||'')}});await loadGroups(true);}catch(error){toast(error.message);}finally{button.disabled=false;}});
+ $$('[data-apply-task]').forEach(button=>button.onclick=async()=>{button.disabled=true;try{await api(`task-candidates/${button.dataset.applyTask}/apply`,{method:'POST',body:{}});toast(local('申请已发送','申請已傳送','Application sent'));await loadGroups(true);}catch(error){groupFailure(error.message);}finally{button.disabled=false;}});
+ $$('[data-approve-application]').forEach(button=>button.onclick=()=>runAction(button,()=>api(`task-candidates/${button.dataset.approveApplication}/review`,{method:'POST',body:{decision:'confirm',changes:{proposedAssigneeId:button.dataset.userId}}}),()=>loadGroups(true)));
 }
 
 function bindGroupIndex(){$$('[data-group-id]').forEach(button=>button.onclick=async()=>{selectedGroupId=button.dataset.groupId;activePoll=null;await loadGroups(true);});}
 
 function bindGroupActions(){
   bindGroupIndex();
+  $$('.group-panel select[name=assignee]').forEach(select=>{
+    const picker=document.createElement('details');picker.className='assignee-picker';
+    const summary=document.createElement('summary');const menu=document.createElement('div');menu.className='assignee-menu';
+    let hasSelected=false;const show=()=>{const member=groupState.members.find(m=>m.user_id===select.value);summary.innerHTML=member?memberAvatar(member)+`<span>${esc(member.nickname||local('用户 ','用戶 ','User ')+member.user_id.slice(-4))}</span>`:(hasSelected?esc(select.selectedOptions[0]?.textContent||''):'<span></span>');summary.insertAdjacentHTML('beforeend','<span class="assignee-chevron" aria-hidden="true">⌄</span>');};
+    [...select.options].forEach(option=>{const member=groupState.members.find(m=>m.user_id===option.value),button=document.createElement('button');button.type='button';button.innerHTML=(member?memberAvatar(member):'')+`<span>${esc(option.textContent)}</span>`;button.onclick=()=>{select.value=option.value;hasSelected=true;show();picker.open=false;summary.focus();};menu.append(button);});
+    select.hidden=true;select.after(picker);picker.append(summary,menu);show();picker.addEventListener('keydown',event=>{if(event.key==='Escape'){picker.open=false;summary.focus();}});
+  });
+  const memberSelect=$('#member-target');
+  if(memberSelect){
+    const picker=document.createElement('details');picker.className='assignee-picker member-picker';
+    const summary=document.createElement('summary');summary.setAttribute('aria-label',local('选择成员','選擇成員','Choose member'));
+    const menu=document.createElement('div');menu.className='assignee-menu';
+    const show=()=>{const member=groupState.members.find(item=>item.user_id===memberSelect.value);summary.innerHTML=member?memberAvatar(member)+`<span>${esc(member.nickname||local('用户 ','用戶 ','User ')+member.user_id.slice(-4))}</span>`:`<span>${esc(local('选择成员','選擇成員','Choose member'))}</span>`;summary.insertAdjacentHTML('beforeend','<span class="assignee-chevron" aria-hidden="true">⌄</span>');};
+    const selectMember=id=>{memberSelect.value=id;show();picker.open=false;document.querySelectorAll('[data-select-member]').forEach(chip=>chip.setAttribute('aria-pressed',String(chip.dataset.selectMember===id)));};
+    document.querySelectorAll('[data-select-member]').forEach(chip=>chip.onclick=()=>selectMember(chip.dataset.selectMember));
+    [...memberSelect.options].forEach(option=>{const member=groupState.members.find(item=>item.user_id===option.value),choice=document.createElement('button');choice.type='button';choice.innerHTML=(member?memberAvatar(member):'')+`<span>${esc(option.textContent)}</span>`;choice.onclick=()=>{selectMember(option.value);summary.focus();};menu.append(choice);});
+    memberSelect.hidden=true;memberSelect.after(picker);picker.append(summary,menu);show();picker.addEventListener('keydown',event=>{if(event.key==='Escape'){picker.open=false;summary.focus();}});
+  }
+  if($('#open-group-info'))$('#open-group-info').onclick=openGroupInfo;
   const memberForm=$('#member-form');if(memberForm)memberForm.onsubmit=async event=>{event.preventDefault();const button=memberForm.querySelector('[type=submit]');button.disabled=true;try{await api(`groups/${selectedGroupId}/members`,{method:'POST',body:{email:memberForm.elements.email.value}});toast(local('邀请已发送，等待对方接受','邀請已發送，等待對方接受','Invitation sent; waiting for acceptance'));await loadGroups(true);}catch(error){toast(error.message);}finally{button.disabled=false;}};
-  $('#candidate-form').onsubmit=async event=>{event.preventDefault();const form=event.currentTarget,button=form.querySelector('[type=submit]');button.disabled=true;try{await api(`groups/${selectedGroupId}/candidates`,{method:'POST',body:{title:form.elements.title.value,notes:form.elements.notes.value,due:hkTime(form.elements.due.value),proposedAssigneeId:form.elements.assignee.value||null,evidence:{source:form.elements.evidence.value}}});toast('候选分工已提交，等待审核');await loadGroups(true);}catch(error){toast(error.message);}finally{button.disabled=false;}};
+  bindProjects();
   $$('[data-review-candidate]').forEach(form=>form.onsubmit=async event=>{event.preventDefault();const button=form.querySelector('[type=submit]');button.disabled=true;try{await api(`task-candidates/${form.dataset.reviewCandidate}/review`,{method:'POST',body:{decision:'confirm',changes:{title:form.elements.title.value,notes:form.elements.notes.value,due:hkTime(form.elements.due.value),proposedAssigneeId:form.elements.assignee.value,evidence:{source:form.elements.evidence.value}}}});toast('分工已发送，等待负责人接受');await loadGroups(true);await loadTasks();}catch(error){toast(error.message);}finally{button.disabled=false;}});
   $$('[data-reject-candidate]').forEach(button=>button.onclick=async()=>{button.disabled=true;try{await api(`task-candidates/${button.dataset.rejectCandidate}/review`,{method:'POST',body:{decision:'reject'}});toast('候选已标记为不采用');await loadGroups(true);}catch(error){toast(error.message);button.disabled=false;}});
   $$('[data-assignment]').forEach(button=>button.onclick=async()=>{button.disabled=true;try{await api(`tasks/${button.dataset.taskId}/assignment`,{method:'POST',body:{decision:button.dataset.assignment}});toast(button.dataset.assignment==='accept'?'已接受分工':'已拒绝分工');await loadGroups(true);await loadTasks();}catch(error){toast(error.message);button.disabled=false;}});
-  $('#meeting-form').onsubmit=async event=>{event.preventDefault();const form=event.currentTarget,button=form.querySelector('[type=submit]');button.disabled=true;try{const poll=await api(`groups/${selectedGroupId}/meeting-polls`,{method:'POST',body:{name:form.elements.name.value,rangeStart:hkTime(form.elements.rangeStart.value),rangeEnd:hkTime(form.elements.rangeEnd.value),durationMinutes:Number(form.elements.duration.value),slotMinutes:15,bufferMinutes:Number(form.elements.buffer.value)}});activePoll=await api(`meeting-polls/${poll.id}`);toast('会议时间收集已发起');await loadGroups(true,true);}catch(error){toast(error.message);}finally{button.disabled=false;}};
+  $('#meeting-form').noValidate=true;
+  $('#meeting-form').onsubmit=async event=>{event.preventDefault();const form=event.currentTarget,button=form.querySelector('[type=submit]');
+    form.querySelector('.meeting-error')?.remove();
+    const name=form.elements.name.value.trim(),start=form.elements.rangeStart.value,end=form.elements.rangeEnd.value;
+    const error=!name?local('请填写会议名称','請填寫會議名稱','Enter a meeting name'):!start||!end?local('请选择可选时间范围','請選擇可選時間範圍','Choose a time range'):hkTime(start)>=hkTime(end)?local('结束时间须晚于开始时间','結束時間須晚於開始時間','End time must be after start time'):'';
+    if(error){const note=document.createElement('p');note.className='meeting-error error';note.role='alert';note.textContent=error;form.querySelector('.form-actions').before(note);(!name?form.elements.name:!start?form.elements.rangeStart.nextElementSibling:form.elements.rangeEnd.nextElementSibling)?.focus();return;}
+    button.disabled=true;try{const poll=await api(`groups/${selectedGroupId}/meeting-polls`,{method:'POST',body:{name:form.elements.name.value,rangeStart:hkTime(form.elements.rangeStart.value),rangeEnd:hkTime(form.elements.rangeEnd.value),durationMinutes:Number(form.elements.duration.value),slotMinutes:15,bufferMinutes:Number(form.elements.buffer.value)}});activePoll=await api(`meeting-polls/${poll.id}`);toast('会议时间收集已发起');await loadGroups(true,true);}catch(error){toast(error.message);}finally{button.disabled=false;}};
   $$('[data-open-poll]').forEach(button=>button.onclick=async()=>{button.disabled=true;try{activePoll=await api(`meeting-polls/${button.dataset.openPoll}`);renderGroups();setTimeout(()=>$('#availability-form')?.scrollIntoView({behavior:'smooth',block:'center'}),0);}catch(error){toast(error.message);button.disabled=false;}});
   const addAvailability=$('#add-availability');if(addAvailability)addAvailability.onclick=()=>{$('[data-interval-kind=available]').insertAdjacentHTML('beforeend',availabilityRow('','','available'));bindAvailabilityRemove();};
   const addAvoid=$('#add-avoid');if(addAvoid)addAvoid.onclick=()=>{$('[data-interval-kind=avoid]').insertAdjacentHTML('beforeend',availabilityRow('','','avoid'));bindAvailabilityRemove();};
   bindAvailabilityRemove();
-  const availabilityForm=$('#availability-form');if(availabilityForm)availabilityForm.onsubmit=async event=>{event.preventDefault();const read=kind=>$$(`[name=${kind}Start]`,availabilityForm).map((input,index)=>[hkTime(input.value),hkTime($$(`[name=${kind}End]`,availabilityForm)[index].value)]),intervals=read('available'),avoidIntervals=read('avoid'),button=availabilityForm.querySelector('[type=submit]');button.disabled=true;try{await api(`meeting-polls/${activePoll.poll.id}/availability`,{method:'PUT',body:{intervals,avoidIntervals}});activePoll=await api(`meeting-polls/${activePoll.poll.id}`);toast('可用时间已保存，成员提交状态与推荐已更新');renderGroups();bindUpgradeControls();}catch(error){toast(error.message);button.disabled=false;}};
-  const openVote=$('#open-vote');if(openVote)openVote.onclick=async()=>{openVote.disabled=true;try{await api(`meeting-polls/${activePoll.poll.id}/voting`,{method:'POST',body:{}});activePoll=await api(`meeting-polls/${activePoll.poll.id}`);toast('候选时间已锁定，投票开始');renderGroups();bindUpgradeControls();}catch(error){toast(error.message);openVote.disabled=false;}};
-  $$('[data-vote-poll]').forEach(button=>button.onclick=async()=>{button.disabled=true;try{await api(`meeting-polls/${activePoll.poll.id}/vote`,{method:'POST',body:{start:Number(button.dataset.votePoll)}});activePoll=await api(`meeting-polls/${activePoll.poll.id}`);toast('投票已保存，可在结束前修改');renderGroups();bindUpgradeControls();}catch(error){toast(error.message);button.disabled=false;}});
+  const availabilityForm=$('#availability-form');if(availabilityForm)availabilityForm.onsubmit=async event=>{event.preventDefault();const read=kind=>$$(`[name=${kind}Start]`,availabilityForm).map((input,index)=>[hkTime(input.value),hkTime($$(`[name=${kind}End]`,availabilityForm)[index].value)]),intervals=read('available'),avoidIntervals=read('avoid'),button=availabilityForm.querySelector('[type=submit]');button.disabled=true;try{await api(`meeting-polls/${activePoll.poll.id}/availability`,{method:'PUT',body:{intervals,avoidIntervals}});activePoll=await api(`meeting-polls/${activePoll.poll.id}`);toast('可用时间已保存，成员提交状态与推荐已更新');renderGroups();bindUpgradeControls();const notices=await api('group-notifications');let panel=$('#group-notices');if(!panel){panel=document.createElement('details');panel.id='group-notices';panel.className='setting-card';root.before(panel);}panel.innerHTML=`<summary>${local('小组消息','小組訊息','Group messages')} · ${notices.length}</summary>${notices.map(n=>`<article><strong>${esc(n.title)}</strong><p>${esc(n.body)}</p><small>${esc(fmt(n.created))}</small></article>`).join('')}`;}catch(error){toast(error.message);button.disabled=false;}};
+  const openVote=$('#open-vote');if(openVote)openVote.onclick=async()=>{openVote.disabled=true;try{await api(`meeting-polls/${activePoll.poll.id}/voting`,{method:'POST',body:{}});activePoll=await api(`meeting-polls/${activePoll.poll.id}`);toast('候选时间已锁定，投票开始');renderGroups();bindUpgradeControls();const notices=await api('group-notifications');let panel=$('#group-notices');if(!panel){panel=document.createElement('details');panel.id='group-notices';panel.className='setting-card';root.before(panel);}panel.innerHTML=`<summary>${local('小组消息','小組訊息','Group messages')} · ${notices.length}</summary>${notices.map(n=>`<article><strong>${esc(n.title)}</strong><p>${esc(n.body)}</p><small>${esc(fmt(n.created))}</small></article>`).join('')}`;}catch(error){toast(error.message);openVote.disabled=false;}};
+  $$('[data-vote-poll]').forEach(button=>button.onclick=async()=>{button.disabled=true;try{await api(`meeting-polls/${activePoll.poll.id}/vote`,{method:'POST',body:{start:Number(button.dataset.votePoll)}});activePoll=await api(`meeting-polls/${activePoll.poll.id}`);toast('投票已保存，可在结束前修改');renderGroups();bindUpgradeControls();const notices=await api('group-notifications');let panel=$('#group-notices');if(!panel){panel=document.createElement('details');panel.id='group-notices';panel.className='setting-card';root.before(panel);}panel.innerHTML=`<summary>${local('小组消息','小組訊息','Group messages')} · ${notices.length}</summary>${notices.map(n=>`<article><strong>${esc(n.title)}</strong><p>${esc(n.body)}</p><small>${esc(fmt(n.created))}</small></article>`).join('')}`;}catch(error){toast(error.message);button.disabled=false;}});
   $$('[data-confirm-poll]').forEach(button=>button.onclick=async()=>{button.disabled=true;try{await api(`meeting-polls/${activePoll.poll.id}/confirm`,{method:'POST',body:{start:Number(button.dataset.confirmPoll)}});activePoll=await api(`meeting-polls/${activePoll.poll.id}`);toast('会议时间已确认');await loadGroups(true,true);}catch(error){toast(error.message);button.disabled=false;}});
 }
 
 function bindAvailabilityRemove(){$$('[data-remove-availability]').forEach(button=>button.onclick=()=>{const container=button.closest('.availability-rows');if(container.dataset.intervalKind==='available'&&container.children.length===1){toast('至少保留一个可用时段');return;}button.closest('.availability-row').remove();});}
 
 async function loadGroups(force=false,keepPoll=false){
-  const root=$('#groups-content');if(!force&&!groups.length)root.innerHTML='<div class="group-loading"><span></span><span></span></div>';
-  try{[groups,invitations]=await Promise.all([api('groups'),api('invitations')]);if(selectedGroupId&&!groups.some(group=>group.id===selectedGroupId))selectedGroupId=null;if(!selectedGroupId)selectedGroupId=groups[0]?.id||null;groupState=selectedGroupId?await api(`groups/${selectedGroupId}`):null;if(!keepPoll)activePoll=null;renderGroups();bindUpgradeControls();}catch(error){root.innerHTML=`<p class="error">${esc(error.message)}</p>`;}
+  const root=$('#groups-content');
+  let noticePanel=$('#group-notices');
+  if(!noticePanel){noticePanel=document.createElement('details');noticePanel.id='group-notices';noticePanel.className='setting-card';noticePanel.innerHTML=`<summary>${local('小组消息','小組訊息','Group messages')} · —</summary>`;root.before(noticePanel);}
+  const finishLoading=startLoading(root,'groups');
+  try{[groups,invitations]=await Promise.all([api('groups'),api('invitations')]);if(selectedGroupId&&!groups.some(group=>group.id===selectedGroupId))selectedGroupId=null;if(!selectedGroupId)selectedGroupId=groups[0]?.id||null;groupState=selectedGroupId?await api(`groups/${selectedGroupId}`):null;if(!keepPoll)activePoll=null;renderGroups();bindUpgradeControls();const notices=await api('group-notifications');let panel=$('#group-notices');if(!panel){panel=document.createElement('details');panel.id='group-notices';panel.className='setting-card';root.before(panel);}panel.innerHTML=`<summary>${local('小组消息','小組訊息','Group messages')} · ${notices.length}</summary>${notices.map(n=>`<article><strong>${esc(n.title)}</strong><p>${esc(n.body)}</p><small>${esc(fmt(n.created))}</small></article>`).join('')}`;}catch(error){root.innerHTML=`<p class="error">${esc(error.message)}</p>`;}finally{finishLoading();}
 }
 
 async function loadSettings(){return loadSettingsProfile();}
 async function enablePush(){try{if(!('serviceWorker'in navigator)||!('PushManager'in window))throw Error('请从 iPhone 主屏幕打开，或使用支持通知的浏览器');const permission=await Notification.requestPermission();if(permission!=='granted')throw Error('通知权限尚未允许，请在系统设置中启用');const registration=await navigator.serviceWorker.register('/sw.js');await navigator.serviceWorker.ready;const raw=atob(status.vapid.replace(/-/g,'+').replace(/_/g,'/'));const applicationServerKey=Uint8Array.from(raw,c=>c.charCodeAt(0));const sub=await registration.pushManager.getSubscription()||await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey});await api('subscriptions',{method:'POST',body:sub.toJSON()});toast('此设备已启用通知');}catch(e){toast(e.message);}}
-function exportCalendar(t){if(!t.due)return;const quote=s=>String(s).replace(/\\/g,'\\\\').replace(/\r?\n/g,'\\n').replace(/,/g,'\\,').replace(/;/g,'\\;');const stamp=n=>new Date(n).toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z/,'Z');const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Campus Companion//Tasks//ZH','BEGIN:VEVENT','UID:'+t.id+'@campus-companion','DTSTAMP:'+stamp(Date.now()),'DTSTART:'+stamp(t.due),'DTEND:'+stamp(t.due+1800000),'SUMMARY:'+quote('截止：'+t.title),'DESCRIPTION:'+quote(t.notes+'\n一次性日历副本，完成或改期请在校园清单操作。'),'END:VEVENT','END:VCALENDAR'];const blob=new Blob([lines.join('\r\n')+'\r\n'],{type:'text/calendar;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='待办截止日期.ics';a.click();setTimeout(()=>URL.revokeObjectURL(url),5000);toast('已导出日历副本；它不会自动同步');}
+function exportCalendar(t){if(!t.due)return;const quote=s=>String(s).replace(/\\/g,'\\\\').replace(/\r?\n/g,'\\n').replace(/,/g,'\\,').replace(/;/g,'\\;');const stamp=n=>new Date(n).toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z/,'Z');const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Campus Companion//Tasks//ZH','BEGIN:VEVENT','UID:'+t.id+'@campus-companion','DTSTAMP:'+stamp(Date.now()),'DTSTART:'+stamp(t.due),'DTEND:'+stamp(t.due+1800000),'SUMMARY:'+quote(local('截止：','截止：','Due: ')+t.title),'DESCRIPTION:'+quote(t.notes+'\n'+local('一次性日历副本，完成或改期请在校园清单操作。','一次性日曆副本，完成或改期請在校園清單操作。','One-time calendar copy. Update or complete the task in Campus Companion.')),'END:VEVENT','END:VCALENDAR'];const blob=new Blob([lines.join('\r\n')+'\r\n'],{type:'text/calendar;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=local('待办截止日期.ics','待辦截止日期.ics','task-deadline.ics');a.click();setTimeout(()=>URL.revokeObjectURL(url),5000);toast(local('日历文件已下载，可导入系统日历；不会自动同步','日曆檔案已下載，可匯入系統日曆；不會自動同步','Calendar file downloaded for import; it will not sync automatically'));}
 $('#login-form').onsubmit=async event=>{event.preventDefault();const form=event.currentTarget,b=form.querySelector('button');b.disabled=true;b.classList.add('pending');const original=b.textContent;b.textContent=local('提交中…','提交中…','Submitting…');try{await api('login',{method:'POST',body:{email:form.elements.email.value,password:form.elements.password.value}});form.reset();await boot();}catch(e){$('#login-error').textContent=e.message;}finally{b.disabled=false;b.classList.remove('pending');b.textContent=original;}};
 $('#register-form').onsubmit=async event=>{event.preventDefault();const form=event.currentTarget,b=form.querySelector('[type=submit]');b.disabled=true;b.classList.add('pending');const original=b.textContent;b.textContent=local('提交中…','提交中…','Submitting…');$('#register-error').textContent='';try{await api('register',{method:'POST',body:{email:form.elements.email.value,password:form.elements.password.value,question:form.elements.question.value,answer:form.elements.answer.value}});form.reset();await boot();toast('账号已创建');}catch(e){$('#register-error').textContent=e.message;}finally{b.disabled=false;b.classList.remove('pending');b.textContent=original;}};
 $$('[data-auth]').forEach(button=>button.onclick=()=>{$$('[data-auth]').forEach(b=>b.classList.toggle('selected',b===button));$('#login-form').classList.toggle('hidden',button.dataset.auth!=='login');$('#register-form').classList.toggle('hidden',button.dataset.auth!=='register');});
@@ -792,11 +907,23 @@ $('#recovery-form').onsubmit=async event=>{event.preventDefault();const f=event.
 async function logout(){try{await api('logout',{method:'POST',body:{}});}finally{tasks=[];location.replace('/');}}
 $('#logout').onclick=logout;
 $('#add-task').onclick=()=>openForm();$('#close-dialog').onclick=$('#cancel-task').onclick=()=>$('#task-dialog').close();
+$('#task-dialog').addEventListener('close',()=>{mailTaskDraft=null;$('#task-dialog').classList.remove('mail-task-review');$('#mail-task-hint')?.classList.add('hidden');});
 $('#new-group').onclick=()=>{$('#group-form').reset();$('#group-form-error').textContent='';$('#group-dialog').showModal();};$('#close-group-dialog').onclick=$('#cancel-group').onclick=()=>$('#group-dialog').close();
 $('#group-form').onsubmit=async event=>{event.preventDefault();const form=event.currentTarget,button=form.querySelector('[type=submit]');button.disabled=true;try{const group=await api('groups',{method:'POST',body:{name:form.elements.name.value}});selectedGroupId=group.id;$('#group-dialog').close();toast('小组已创建');await loadGroups(true);}catch(error){$('#group-form-error').textContent=error.message;}finally{button.disabled=false;}};
 $('#show-pending').onclick=()=>{showDone=false;$('#show-pending').classList.add('selected');$('#show-completed').classList.remove('selected');renderTasks();};
 $('#show-completed').onclick=()=>{showDone=true;$('#show-completed').classList.add('selected');$('#show-pending').classList.remove('selected');renderTasks();};
-$$('[data-view]').forEach(b=>b.onclick=event=>{if(b.dataset.view===activeView)view(b.dataset.view);else circularTransition(event,()=>view(b.dataset.view));});
+$$('[data-view]').forEach(b=>b.onclick=event=>{
+  const name=b.dataset.view;if(name===activeView)return;
+  if(matchMedia('(max-width: 700px)').matches){
+    view(name);window.scrollTo({top:0,left:0,behavior:'instant'});
+    const page=$('#'+name+'-view');
+    if(motionOk())page.animate([{opacity:.75},{opacity:1}],{duration:160,easing:'ease-out'});
+  }else circularTransition(event,()=>view(name));
+});
+// Mobile app gestures retain one-finger scrolling without page magnification.
+const mobileTouch=()=>matchMedia('(pointer: coarse)').matches;
+for(const eventName of ['gesturestart','gesturechange'])document.addEventListener(eventName,event=>{if(mobileTouch())event.preventDefault();},{passive:false});
+document.addEventListener('touchmove',event=>{if(mobileTouch()&&event.touches.length>1)event.preventDefault();},{passive:false});
 function wireMailDetail(){
   const dialog=$('#mail-detail-dialog');if(!dialog||dialog.dataset.wired)return;dialog.dataset.wired='1';
   const close=()=>{if(history.state?.mailReader)history.back();else{hideMailReader();view('mail');}};
@@ -810,7 +937,8 @@ function wireMailDetail(){
     $('#mail-detail-en').classList.toggle('hidden',btn.dataset.mailPane!=='en');
   });
 }
-async function boot(){wireMailDetail();wireMailSearch();try{status=await api('status');const profile=await api('profile');reminderDefaults=profile.reminders||reminderDefaults;applyLocale(status.account.locale||localStorage.getItem('campus-locale')||'zh-CN');localStorage.setItem('campus-locale',locale);$('#login').classList.add('hidden');$('#app').classList.remove('hidden');$('#account-label').textContent=accountLabel(status.account);setAvatar(status.account.avatar,accountLabel(status.account).slice(0,1).toUpperCase());$('#date-label').textContent=new Date().toLocaleDateString(dateLocale(),{timeZone:'Asia/Hong_Kong',year:'numeric',month:'long',day:'numeric',weekday:'long'});await loadTasks();const params=new URLSearchParams(location.search),v=params.get('view'),message=params.get('message');view(['groups','mail','digests','settings'].includes(v)?v:'tasks');if(message){history.replaceState(null,'','/?view=mail&message='+encodeURIComponent(message));openMailDetail(message,{push:false});}}catch(e){if(!$('#app').classList.contains('hidden'))$('#global-error').textContent=e.message;else showLogin();}}
+async function restorePush(){try{if(!('Notification'in window)||Notification.permission!=='granted'||!('serviceWorker'in navigator))return;const registration=await navigator.serviceWorker.register('/sw.js');const sub=await registration.pushManager.getSubscription();if(sub)await api('subscriptions',{method:'POST',body:sub.toJSON()});}catch(error){console.warn('Notification subscription refresh failed',error);}}
+async function boot(){wireMailDetail();wireMailSearch();try{await api('session/tab',{method:'POST',body:{}});status=await api('status');restorePush();const profile=await api('profile');reminderDefaults=profile.reminders||reminderDefaults;applyLocale(status.account.locale||localStorage.getItem('campus-locale')||'zh-CN');localStorage.setItem('campus-locale',locale);$('#login').classList.add('hidden');$('#app').classList.remove('hidden');ensureDock();$('#account-label').textContent=accountLabel(status.account);setAvatar(status.account.avatar,accountLabel(status.account).slice(0,1).toUpperCase());$('#date-label').textContent=new Date().toLocaleDateString(dateLocale(),{timeZone:'Asia/Hong_Kong',year:'numeric',month:'long',day:'numeric',weekday:'long'});await loadTasks();const params=new URLSearchParams(location.search),v=params.get('view'),message=params.get('message');view(['groups','mail','digests','settings'].includes(v)?v:'tasks');if(message){history.replaceState(null,'','/?view=mail&message='+encodeURIComponent(message));openMailDetail(message,{push:false});}}catch(e){if(!$('#app').classList.contains('hidden'))$('#global-error').textContent=e.message;else showLogin();}}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!$('#app').classList.contains('hidden'))loadTasks().catch(e=>toast(e.message));});
 
 function announcementText(item){if(item.kind==='meeting-change')return {title:item.title,body:item.body==='cancel'?local('会议已取消','會議已取消','Meeting cancelled'):local('会议已改期，请重新提交可用时间','會議已改期，請重新提交可用時間','Meeting rescheduled. Submit availability again.')};if(item.kind==='meeting'){const poll=groupState.meetingPolls.find(p=>p.id===item.source_id);if(poll)return {title:local('会议时间已确认：','會議時間已確認：','Meeting confirmed: ')+poll.name,body:fmt(poll.confirmed_start)+' · '+poll.duration_minutes+' '+local('分钟','分鐘','minutes')};}return item;}
@@ -866,7 +994,13 @@ async function loadSettingsProfile(){
         <div class="qq-profile-info">
           <div class="qq-name-row">
             <span class="qq-name" id="qq-name-display" data-user-content>${esc(displayName)}</span>
-            <button type="button" class="qq-edit-btn" id="qq-name-edit-btn" aria-label="${esc(local('修改昵称','修改暱稱','Edit nickname'))}">🖊️</button>
+            <button type="button" class="qq-edit-btn" id="qq-name-edit-btn" aria-label="${esc(local('修改昵称','修改暱稱','Edit nickname'))}">
+              <svg class="qq-edit-icon" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+                <path class="qq-edit-sparkle" d="M6 5.5 7.1 8.4 10 9.5 7.1 10.6 6 13.5 4.9 10.6 2 9.5l2.9-1.1L6 5.5Z"/>
+                <path class="qq-edit-pencil" d="m8.2 22.8 2-7.1L22.4 3.5a2.1 2.1 0 0 1 3 0l3.1 3.1a2.1 2.1 0 0 1 0 3L16.3 21.8l-8.1 1Z"/>
+                <path class="qq-edit-pencil-detail" d="m10.2 15.7 6.1 6.1M22.4 3.5l6.1 6.1M8.2 22.8l4.1-4.1"/>
+              </svg>
+            </button>
           </div>
         </div>
       </div>
@@ -901,7 +1035,9 @@ async function loadSettingsProfile(){
       </div>
     </div>
     `;
-    $('#settings-content').innerHTML=qqProfileCard+`${outlook}${mailPreferences}<div class="setting-card"><h2>${local('通知渠道','通知渠道','Notification channels')}</h2><p>${local('可以启用本机推送，或在网站查看待办与日报。','可以啟用本機推送，或在網站查看待辦與日報。','Enable push on this device or check tasks and digests here.')}</p><p>${local('iPhone：在 Safari 添加到主屏幕后，再开启通知。','iPhone：在 Safari 加入主畫面後，再開啟通知。','iPhone: add this site to your Home Screen in Safari before enabling notifications.')}</p><button id="enable-push" ${status.pushReady?'':'disabled'}>${local('在此设备启用通知','在此裝置啟用通知','Enable notifications on this device')}</button> <button id="test-push" ${status.pushReady?'':'disabled'}>${local('测试手机通知','測試手機通知','Test push notification')}</button></div><div class="setting-card"><h2>${tx('accountSecurity')}</h2><div class="settings-grid"><form id="password-form"><label>${tx('currentPassword')}<input name="current" type="password" required></label><label>${tx('newPassword')}<input name="next" type="password" minlength="12" required></label><button class="primary" type="submit">${tx('changePassword')}</button></form><form id="security-form"><label>${tx('currentPassword')}<input name="password" type="password" required></label><label>${tx('customQuestion')}<input name="question" required></label><label>${tx('answer')}<input name="answer" type="password" required></label><button type="submit">${tx('saveSecurity')}</button></form></div></div><div class="setting-card account-exit"><h2>${tx('signOutHere')}</h2><p>${tx('signOutHint')}</p><button type="button" id="settings-logout" class="danger-text">${tx('logout')}</button></div>`;
+    $('#settings-content').innerHTML=qqProfileCard+`${outlook}${mailPreferences}<div class="setting-card"><h2>${local('通知渠道','通知渠道','Notification channels')}</h2><p>${local('iPhone：在 Safari 添加到主屏幕后，再开启通知。','iPhone：在 Safari 加入主畫面後，再開啟通知。','iPhone: add this site to your Home Screen in Safari before enabling notifications.')}</p><button id="enable-push" ${status.pushReady?'':'disabled'}>${local('在此设备启用通知','在此裝置啟用通知','Enable notifications on this device')}</button> <button id="test-push" ${status.pushReady?'':'disabled'}>${local('测试手机通知','測試手機通知','Test push notification')}</button></div><div class="setting-card"><h2>${tx('accountSecurity')}</h2><div class="settings-grid"><form id="password-form"><label>${tx('currentPassword')}<input name="current" type="password" required></label><label>${tx('newPassword')}<input name="next" type="password" minlength="12" required></label><button class="primary" type="submit">${tx('changePassword')}</button></form><form id="security-form"><label>${tx('currentPassword')}<input name="password" type="password" required></label><label>${tx('customQuestion')}<input name="question" required></label><label>${tx('answer')}<input name="answer" type="password" required></label><button type="submit">${tx('saveSecurity')}</button></form></div></div><div class="setting-card account-exit"><h2>${tx('signOutHere')}</h2><button type="button" id="settings-logout" class="danger-text">${tx('logout')}</button></div>`;
+    const schoolForm=document.createElement('form');schoolForm.className='setting-card';schoolForm.innerHTML=`<label>${local('学校邮箱（用于识别转发邮件）','學校電郵（用於識別轉寄郵件）','School email (identifies forwarded mail)')}<input name="email" type="email" required value="${esc(status.schoolEmail||'')}"></label><button type="submit">${local('保存并重新同步','儲存並重新同步','Save and resync')}</button>`;$('#settings-content').children[1].after(schoolForm);
+    schoolForm.onsubmit=async event=>{event.preventDefault();const button=schoolForm.querySelector('button');button.disabled=true;try{await api('school-email',{method:'PUT',body:{email:schoolForm.elements.email.value}});await api('outlook/sync',{method:'POST',body:{}});toast(local('学校邮箱已保存','學校電郵已儲存','School email saved'));}catch(error){toast(error.message);}finally{button.disabled=false;}};
     const mailPreferencesForm=$('#mail-preferences-form');if(mailPreferencesForm)mailPreferencesForm.onsubmit=async e=>{e.preventDefault();const f=e.currentTarget,button=f.querySelector('[type=submit]');button.disabled=true;try{const mailPreferences={focusTerms:[...new Set(f.elements.focusTerms.value.split(/[\n,，]/).map(x=>x.trim()).filter(Boolean))],daily:{enabled:f.elements.dailyEnabled.checked,time:f.elements.dailyTime.value},late:{enabled:f.elements.lateEnabled.checked,time:f.elements.lateTime.value},translateZh:f.elements.translateZh?f.elements.translateZh.checked:true,englishSummary:f.elements.englishSummary?f.elements.englishSummary.checked:false};await api('profile',{method:'PATCH',body:{mailPreferences}});toast(tx('mailPreferencesSaved'));}catch(err){toast(err.message);}finally{button.disabled=false;}};
     const outlookForm=$('#outlook-connect-form');if(outlookForm)outlookForm.onsubmit=e=>{e.preventDefault();const input=outlookForm.elements.email;if(!input.reportValidity())return;location.assign('/api/outlook/start?email='+encodeURIComponent(input.value.trim()));};
     const syncOutlook=$('#sync-outlook');if(syncOutlook)syncOutlook.onclick=async()=>{syncOutlook.disabled=true;syncOutlook.textContent=tx('syncing');try{const r=await api('outlook/sync',{method:'POST',body:{}});toast(tx('syncFinished').replace('{count}',r.imported));await loadMail();await loadSettingsProfile();}catch(err){toast(err.message);}finally{syncOutlook.disabled=false;}};
@@ -909,17 +1045,20 @@ async function loadSettingsProfile(){
     // ---------- QQ 风格头像：点击进二级界面 ----------
     const qqAvatarBtn=$('#qq-avatar-btn'),avatarPage=$('#avatar-page');
     if(qqAvatarBtn&&avatarPage){
+      let avatarCloseTimer=0;
       // 打开头像二级页面（从右侧滑入）
       const openAvatarPage=()=>{
+        window.clearTimeout(avatarCloseTimer);
+        avatarCloseTimer=0;
         updateAvatarPagePreview();
         avatarPage.hidden=false;
         void avatarPage.offsetWidth;
         avatarPage.classList.add('open');
-        document.body.style.overflow='hidden';
       };
       const closeAvatarPage=()=>{
         avatarPage.classList.remove('open');
-        setTimeout(()=>{avatarPage.hidden=true;document.body.style.overflow='';},320);
+        window.clearTimeout(avatarCloseTimer);
+        avatarCloseTimer=window.setTimeout(()=>{avatarPage.hidden=true;avatarCloseTimer=0;},320);
       };
       qqAvatarBtn.onclick=openAvatarPage;
       $('#avatar-page-back').onclick=closeAvatarPage;
@@ -1051,20 +1190,48 @@ const renderSettingsLocalized=loadSettingsProfile;
 loadSettingsProfile=async()=>{await renderSettingsLocalized();translateTextNodes();};
 loadSettings=loadSettingsProfile;
 
-function updateProgress(done,total){
- const percent=total?Math.round(done/total*100):0,ring=$('.progress-ring');
- ring.setAttribute('aria-valuenow',String(percent));ring.setAttribute('aria-label',local('全部待办完成率','全部待辦完成率','All tasks completion rate'));
- ring.style.setProperty('--progress',percent);$('#progress-percent').textContent=percent+'%';
- $('#progress-fraction').textContent=`${done}/${total}`;
- $('.progress-panel').style.backgroundColor=progressColor(percent); // lavender → yellow → lime
- const counter=$('#completed');if(counter.dataset.previous!==String(done)&&!matchMedia('(prefers-reduced-motion: reduce)').matches)counter.animate([{transform:'translateY(8px)',opacity:.3},{transform:'translateY(0)',opacity:1}],{duration:280});counter.textContent=done;counter.dataset.previous=String(done);
+function updateProgress(groups){
+ const labels={today:local('今日截止','今日截止','Due today'),week:local('本周截止','本週截止','Due this week'),all:local('全部待办','全部待辦','All tasks')};
+ for(const card of $$('.progress-card')){
+   const key=card.dataset.progressPeriod,items=groups[key],done=items.filter(t=>t.completed).length,total=items.length;
+   const percent=total?Math.round(done/total*100):0,ring=card.querySelector('.progress-ring'),arc=ring.querySelector('.ring-value');
+   const previous=Number(ring.dataset.percent||0),complete=total>0&&done===total,wasComplete=ring.classList.contains('complete');
+   card.classList.toggle('selected',key===progressPeriod);card.setAttribute('aria-pressed',String(key===progressPeriod));
+   card.setAttribute('aria-label',`${labels[key]} ${done}/${total}`);card.querySelector('.progress-label').textContent=labels[key];card.querySelector('.progress-fraction').textContent=`${done}/${total}`;
+   ring.setAttribute('aria-valuenow',String(percent));ring.setAttribute('aria-label',labels[key]);
+   ring.style.setProperty('--progress',percent);ring.dataset.percent=String(percent);ring.querySelector('strong').textContent=percent+'%';
+   ring.classList.toggle('complete',complete);
+   if(previous!==percent){
+     const length=213.63,from=arc._displayedProgress??previous,target=percent;
+     cancelAnimationFrame(arc._progressFrame);
+     arc.getAnimations().forEach(animation=>animation.cancel());
+     const draw=value=>{arc._displayedProgress=value;arc.style.strokeDasharray=`${length*value/100} ${length}`;arc.style.strokeDashoffset='0';};
+     if(!motionOk())draw(target);
+     else{
+       draw(from);
+       const started=performance.now(),duration=1300;
+       const tick=now=>{
+         const t=Math.min(1,(now-started)/duration),ease=t*t*t*(t*(t*6-15)+10);
+         draw(from+(target-from)*ease);
+         if(t<1)arc._progressFrame=requestAnimationFrame(tick);
+       };
+       arc._progressFrame=requestAnimationFrame(tick);
+     }
+   }
+   if(complete&&!wasComplete&&ring.dataset.seen&&motionOk()){
+     ring.classList.remove('ring-celebrate');void ring.offsetWidth;ring.classList.add('ring-celebrate');
+     const sparks=document.createElement('span');sparks.className='ring-sparks';sparks.setAttribute('aria-hidden','true');
+     for(let i=0;i<6;i++){const dot=document.createElement('i');dot.style.setProperty('--angle',i*60+'deg');sparks.append(dot);}ring.append(sparks);setTimeout(()=>sparks.remove(),1600);
+   }
+   ring.dataset.seen='true';
+ }
 }
 async function celebrateTask(control){
  if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;
- const card=control.closest('.task');card.classList.add('just-completed');
- const burst=document.createElement('span');burst.className='completion-burst';burst.setAttribute('aria-hidden','true');
- for(let i=0;i<8;i++){const dot=document.createElement('i');dot.style.setProperty('--angle',i*45+'deg');burst.append(dot);}card.append(burst);
- await new Promise(resolve=>setTimeout(resolve,520));burst.remove();
+ const card=control.closest('.task'),height=card.offsetHeight;
+ card.classList.add('just-completed');
+ const animation=card.animate([{height:height+'px',opacity:1,transform:'translateY(0)',marginBottom:'12px'},{height:'0px',opacity:0,transform:'translateY(-12px)',paddingTop:'0px',paddingBottom:'0px',marginBottom:'0px'}],{duration:450,easing:'cubic-bezier(.22,1,.36,1)',fill:'forwards'});
+ await animation.finished.catch(()=>{});
 }
 
 function offerUndo(id){
@@ -1072,3 +1239,14 @@ function offerUndo(id){
  button.onclick=async()=>{button.disabled=true;try{const current=tasks.find(t=>t.id===id);if(!current)throw Error(local('任务不存在','任務不存在','Task not found'));await api('tasks/'+id,{method:'PATCH',body:{version:current.version,completed:false}});await loadTasks();toast('已重新打开待办');}catch(e){toast(e.message);}};
 }
 
+
+async function refreshGroupInvitations(){
+ if(activeView!=='groups'||document.hidden||$('#app').classList.contains('hidden'))return;
+ try{const next=await api('invitations');if(JSON.stringify(next)!==JSON.stringify(invitations))await loadGroups(true,true);}catch{}
+}
+setInterval(refreshGroupInvitations,10000);
+window.addEventListener('focus',refreshGroupInvitations);
+
+initTheme();
+
+initPullRefresh({canRefresh:()=>activeView==='tasks'&&!$('#app').classList.contains('hidden')&&!document.querySelector('dialog[open]'),refresh:loadTasks,label:state=>({pull:local('下拉刷新','下拉重新整理','Pull to refresh'),release:local('松手刷新','放開重新整理','Release to refresh'),refreshing:local('刷新中…','重新整理中…','Refreshing…')}[state]),onError:error=>toast(error.message)});

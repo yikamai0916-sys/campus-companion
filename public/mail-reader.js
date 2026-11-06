@@ -14,6 +14,7 @@ export function compactPlainBody(value){
 }
 export function renderMailBody({html,body,images={}},doc=document){
  const root=doc.createElement('div');root.className='original-mail-body';
+ const inlineImages=new Map(Object.entries(images).map(([cid,src])=>[cid.replace(/^<|>$/g,'').toLowerCase(),src]));
  if(!html){
    const text=compactPlainBody(body);let offset=0;
    for(const match of text.matchAll(/\[(https:\/\/[^\]\s]+\.(?:png|jpe?g|gif|webp)(?:\?[^\]\s]*)?)\]/gi)){
@@ -33,7 +34,7 @@ export function renderMailBody({html,body,images={}},doc=document){
   if(tag==='img'){
    const raw=node.getAttribute('src')||'';
    const cid=raw.replace(/^cid:/i,'').replace(/^<|>$/g,'');
-   const src=safeMailUrl(/^cid:/i.test(raw)?images[cid]||'':raw,true);
+   const src=safeMailUrl(/^cid:/i.test(raw)?inlineImages.get(cid.toLowerCase())||'':raw,true);
    // Skip known tracking pixels and invisible spacer images.
    if(!src||Number(node.getAttribute('width')||99)<=2||Number(node.getAttribute('height')||99)<=2)return;
    el.src=src;el.alt=node.getAttribute('alt')||'';el.loading='lazy';el.referrerPolicy='no-referrer';el.decoding='async';

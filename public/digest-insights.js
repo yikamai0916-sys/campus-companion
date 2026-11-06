@@ -79,8 +79,18 @@ export function digestTitleForLocale(title, locale) {
 }
 
 const norm = s => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+const isMailHeaderBlock = value => {
+  const text=String(value||'').replace(/^\s*[_-]{5,}\s*/,'').trim();
+  return [...text.matchAll(/(?:^|\s)(?:from|sent|date|to|cc|subject|发件人|发送|发送时间|收件人|抄送|主题|寄件者|寄件日期|收件者|主旨)\s*[:：]/gi)].length>=2;
+};
 const DEADLINE = /(deadline|due\b|apply by|register by|registration|rsvp|submit|submission|截止|逾期|報名|报名|申請|申请|提交|繳交|缴交|填寫|填写)/i;
 const GENERIC_ACTION = /^(请核对作业要求与截止时间|請核對作業要求與截止時間|请查看原邮件确认是否需要处理|請查看原郵件確認是否需要處理|无需操作|無需操作)$/;
+const BOOKING_SUCCESS = /\b(?:booking|reservation)\b.{0,24}\b(?:confirmed|accepted|successful|succeeded)\b|\b(?:confirmed|accepted)\s+(?:booking|reservation)\b|(?:预订|預訂|预约|預約).{0,12}(?:已接受|已确认|已確認|已预订|已預訂|成功)/i;
+const BOOKING_CANCELLED = /\b(?:cancel(?:led|ed|lation)?|failed|declined)\b|取消(?:预约|預約|预订|預訂)/i;
+const isBookingConfirmation = item => {
+  const subject = String(item.subject || item.brief?.title || '');
+  return !BOOKING_CANCELLED.test(subject) && BOOKING_SUCCESS.test(subject);
+};
 
 /** Text used for date detection: subject, brief title and point texts, stored summary. */
 function sourceText(item) {
@@ -94,6 +104,16 @@ export function nextDate(item, now = Date.now()) {
   return extractDates(sourceText(item), item.received || now).find(ts => ts >= today) ?? null;
 }
 
+/** Suggest the end of an explicitly mentioned time, or 23:59 for a date without a time. */
+export function suggestedTaskDue(item, day) {
+  if (day == null || day === '' || !Number.isFinite(Number(day))) return null;
+  const text = sourceText(item);
+  const times = [...text.matchAll(/\b(\d{1,2})(?::([0-5]\d))?\s*(AM|PM)\b/gi)];
+  if (!times.length) return Number(day) + 23 * 3600000 + 59 * 60000;
+  const match = times.at(-1), hour = Number(match[1]) % 12 + (match[3].toUpperCase() === 'PM' ? 12 : 0);
+  return Number(day) + hour * 3600000 + Number(match[2] || 0) * 60000;
+}
+
 /**
  * 'act'      – the email asks for something (AI-found request, or a deadline-type mail with a
  *              date in the next 14 days);
@@ -105,6 +125,7 @@ export function tierOf(item, now = Date.now()) {
   const hasRequest = !!item.brief?.actions?.length;
   const text = sourceText(item);
   const near = when !== null && daysUntil(when, now) <= 14;
+  if (item.ignored || isBookingConfirmation(item)) return 'info';
   if (hasRequest) return 'act';
   if (near && (DEADLINE.test(text) || item.category === 1 || item.category === 2)) return 'act';
   if (when !== null) return 'upcoming';
@@ -112,7 +133,11 @@ export function tierOf(item, now = Date.now()) {
 }
 
 /** One-line headline: the AI title when there is one, otherwise the cleaned subject. */
-export const headlineOf = item => cleanTitle(item.brief?.title || item.subject || '') || '—';
+export const headlineOf = item => {
+  const briefTitle=cleanTitle(item.brief?.title||'');
+  const subject=cleanTitle(item.subject||'');
+  return (briefTitle&&!isMailHeaderBlock(briefTitle)?briefTitle:!isMailHeaderBlock(subject)?subject:'邮件内容暂不可用')||'—';
+};
 
 /**
  * A short "what is this about" line that is not just the title repeated. Uses the first AI
@@ -122,9 +147,9 @@ export function gistOf(item) {
   const title = norm(headlineOf(item));
   const clean = s => String(s || '').replace(/https?:\/\/\S+/g, '').replace(/\s+/g, ' ').trim();
   const ai = clean(item.brief?.points?.[0]?.text);
-  if (ai && norm(ai) !== title) return { text: ai, provisional: false };
+  if (ai && !isMailHeaderBlock(ai) && norm(ai) !== title) return { text: ai, provisional: false };
   const stored = clean(item.summary);
-  if (stored && norm(stored) !== title && !norm(stored).startsWith(title)) return { text: stored, provisional: true };
+  if (stored && !isMailHeaderBlock(stored) && norm(stored) !== title && !norm(stored).startsWith(title)) return { text: stored, provisional: true };
   const action = clean(item.action);
   if (action && !GENERIC_ACTION.test(action) && norm(action) !== title) return { text: action, provisional: true };
   return { text: '', provisional: !item.brief };
@@ -141,7 +166,7 @@ export function digestOverview(items, now = Date.now()) {
   const rows = (Array.isArray(items) ? items : []).map(item => ({
     item,
     tier: tierOf(item, now),
-    when: nextDate(item, now),
+    when: item.ignored || isBookingConfirmation(item) ? null : nextDate(item, now),
     headline: headlineOf(item),
     gist: gistOf(item),
   }));

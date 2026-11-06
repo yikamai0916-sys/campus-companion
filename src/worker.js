@@ -1,3 +1,4 @@
+import { schoolAddress } from './mail.js';
 import {attachBriefs,generateBrief,readBrief,preGenerateBriefs} from './mail-briefs.js';
 import { meetingTask,wording } from './display.js';
 import { serverMessage,normalizeLocale } from './errors.js';
@@ -10,7 +11,7 @@ import { getKV,setKV,startOAuth,finishOAuth,syncMail,preGenerateMailTranslations
 import { applyNameAliases,applyPreferredNameToFields } from './names.js';
 import { normalizeDigestRecord } from './digest-format.js';
 import { scheduleTask,repeatTasks,deliver,makeDigest,enqueue } from './jobs.js';
-import { listInvitations,respondInvitation,manageMember,addGroupMember,createGroup,createTaskCandidate,groupSnapshot,listGroups,respondToAssignment,reviewTaskCandidate } from './collaboration.js';
+import { projectAction,applyForTask,updateGroup,listInvitations,respondInvitation,manageMember,addGroupMember,createGroup,createTaskCandidate,groupSnapshot,listGroups,respondToAssignment,reviewTaskCandidate } from './collaboration.js';
 import { changeMeeting,confirmMeetingProposal,createMeetingPoll,meetingPollSnapshot,openMeetingVote,submitAvailability,voteMeetingProposal } from './meetings.js';
 const json=(data,status=200)=>Response.json(data,{status});
 async function body(request){if(Number(request.headers.get('content-length'))>7*1024*1024)throw new Error('请求过大');const text=await request.text();if(text.length>7*1024*1024)throw new Error('请求过大');return JSON.parse(text);}
@@ -25,8 +26,10 @@ const parseReminder=value=>{try{return {...defaultReminder,...JSON.parse(value||
 const defaultMailPreferences={focusTerms:[],daily:{enabled:true,time:'20:00'},late:{enabled:true,time:'00:00'},translateZh:true,englishSummary:false};
 const validTime=value=>/^([01]\d|2[0-3]):[0-5]\d$/.test(String(value||''));
 const parseMailPreferences=value=>{try{const raw=typeof value==='string'?JSON.parse(value||'{}'):(value||{}),focusTerms=(Array.isArray(raw.focusTerms)?raw.focusTerms:[]).map(x=>String(x).trim()).filter(x=>x.length>0&&x.length<=80).filter((x,index,list)=>list.findIndex(other=>other.toLowerCase()===x.toLowerCase())===index).slice(0,30);return {focusTerms,daily:{enabled:raw.daily?.enabled!==false,time:validTime(raw.daily?.time)?raw.daily.time:'20:00'},late:{enabled:raw.late?.enabled!==false,time:validTime(raw.late?.time)?raw.late.time:'00:00'},translateZh:raw.translateZh!==false,englishSummary:raw.englishSummary===true};}catch{return structuredClone(defaultMailPreferences)}};
-async function session(request,env){const cookie=request.headers.get('Cookie')?.match(/(?:^|; )campus_session=([^;]+)/)?.[1];if(!cookie)return null;return env.DB.prepare('SELECT s.id,s.user_id,u.email,u.locale FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.expires>?').bind(await hash(cookie),Date.now()).first();}
-async function startSession(env,user,url){const token=random(),expires=Date.now()+30*86400000;await env.DB.prepare('INSERT INTO sessions(id,expires,user_id) VALUES(?,?,?)').bind(await hash(token),expires,user.id).run();return new Response('{}',{headers:{'Content-Type':'application/json','Set-Cookie':`campus_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000${url.protocol==='https:'?'; Secure':''}`}});}
+function tabCookieName(request){const tab=request.headers.get('X-Session-Tab')||'';return /^[a-f0-9-]{36}$/.test(tab)?'campus_session_'+tab:'campus_session';}
+async function session(request,env){const cookies=request.headers.get('Cookie')||'',name=tabCookieName(request);let cookie=cookies.split(';').map(v=>v.trim()).find(v=>v.startsWith(name+'='))?.slice(name.length+1);if(!cookie&&new URL(request.url).pathname==='/api/session/tab')cookie=cookies.match(/(?:^|; )campus_session=([^;]+)/)?.[1];if(!cookie)return null;return env.DB.prepare('SELECT s.id,s.user_id,u.email,u.locale FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=? AND s.expires>?').bind(await hash(cookie),Date.now()).first();}
+async function startSession(env,user,url,request){const token=random(),expires=Date.now()+30*86400000;await env.DB.prepare('INSERT INTO sessions(id,expires,user_id) VALUES(?,?,?)').bind(await hash(token),expires,user.id).run();const headers=new Headers({'Content-Type':'application/json'}),suffix=`; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000${url.protocol==='https:'?'; Secure':''}`;headers.append('Set-Cookie',`campus_session=${token}${suffix}`);const name=tabCookieName(request);if(name!=='campus_session')headers.append('Set-Cookie',`${name}=${token}${suffix}`);return new Response('{}',{headers});}
+
 async function ownerUser(env){return env.DB.prepare('SELECT id,email FROM users WHERE email=?').bind(emailOf(env.LOGIN_EMAIL)).first();}
 async function claimLegacy(env,userId){await env.DB.batch(['tasks','messages','subscriptions','jobs'].map(table=>env.DB.prepare(`UPDATE ${table} SET user_id=? WHERE user_id IS NULL`).bind(userId)));}
 async function legacyOwner(env,email,password){if(email!==emailOf(env.LOGIN_EMAIL))return null;const stored=await getKV(env,'password_hash')||env.PASSWORD_HASH;if(!stored||!await verifyPassword(password,stored))return null;const id=crypto.randomUUID();await env.DB.prepare('INSERT OR IGNORE INTO users(id,email,password_hash,created) VALUES(?,?,?,?)').bind(id,email,stored,Date.now()).run();const user=await env.DB.prepare('SELECT * FROM users WHERE email=?').bind(email).first();await claimLegacy(env,user.id);return user;}
@@ -57,7 +60,7 @@ async function routes(request,env,ctx){
     const passwordHash=await makePasswordHash(data.password),answerHash=await makeAnswerHash(data.answer),id=crypto.randomUUID();
     try{await env.DB.prepare('INSERT INTO users(id,email,password_hash,security_question,security_answer_hash,created) VALUES(?,?,?,?,?,?)').bind(id,email,passwordHash,question,answerHash,Date.now()).run();}
     catch(error){if(/UNIQUE|constraint/i.test(String(error)))return json({error:serverMessage('该邮箱已经注册，请直接登录',uiLocale)},409);throw error;}
-    return startSession(env,{id,email},url);
+    return startSession(env,{id,email},url,request);
   }
   if(path==='/api/recovery/question'&&method==='POST'){
     const user=await env.DB.prepare('SELECT security_question FROM users WHERE email=?').bind(emailOf((await body(request)).email)).first();
@@ -79,7 +82,7 @@ async function routes(request,env,ctx){
     if(!user)user=await legacyOwner(env,suppliedEmail,data.password);
     if(!user||!await verifyPassword(data.password,user.password_hash))return json({error:serverMessage('邮箱或密码不正确',uiLocale)},401);
     await setKV(env,key,'{"count":0,"until":0}');
-    return startSession(env,user,url);
+    return startSession(env,user,url,request);
   }
   if(!path.startsWith('/api/')){
     // A shared link must never reopen a previous person's private screen.
@@ -87,7 +90,8 @@ async function routes(request,env,ctx){
     return env.ASSETS.fetch(request);
   }
   const account=await session(request,env);if(!account)return json({error:serverMessage('请先登录',uiLocale)},401);
-  if(path==='/api/logout'&&method==='POST'){await env.DB.prepare('DELETE FROM sessions WHERE id=?').bind(account.id).run();return new Response('{}',{headers:{'Set-Cookie':'campus_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0','Content-Type':'application/json'}});}
+  if(path==='/api/session/tab'&&method==='POST'){const name=tabCookieName(request);if((request.headers.get('Cookie')||'').split(';').some(v=>v.trim().startsWith(name+'=')))return json({ok:true});return startSession(env,{id:account.user_id},url,request);}
+  if(path==='/api/logout'&&method==='POST'){await env.DB.prepare('DELETE FROM sessions WHERE id=?').bind(account.id).run();return new Response('{}',{headers:{'Set-Cookie':tabCookieName(request)+'=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0','Content-Type':'application/json'}});}
   if(path==='/api/password'&&method==='POST'){
     const data=await body(request),user=await env.DB.prepare('SELECT password_hash FROM users WHERE id=?').bind(account.user_id).first(),current=user.password_hash;
     if(!await verifyPassword(data.current,current))return json({error:serverMessage('当前密码不正确',uiLocale)},401);
@@ -155,9 +159,15 @@ async function routes(request,env,ctx){
   const suggestionId=path.match(/^\/api\/mail-suggestions\/([\w-]+)$/)?.[1];
   if(suggestionId&&method==='POST')return json(await reviewMailSuggestion(env,account.user_id,suggestionId,await body(request)));
 
+  const projectGroup=path.match(/^\/api\/groups\/([\w-]+)\/projects$/)?.[1];
+  if(projectGroup&&method==='POST')return json(await projectAction(env,account.user_id,projectGroup,await body(request)),201);
+  const applyCandidate=path.match(/^\/api\/task-candidates\/([\w-]+)\/apply$/)?.[1];
+  if(applyCandidate&&method==='POST')return json(await applyForTask(env,account.user_id,applyCandidate));
+  if(path==='/api/group-notifications'&&method==='GET')return json((await env.DB.prepare('SELECT * FROM group_notifications WHERE user_id=? ORDER BY created DESC LIMIT 30').bind(account.user_id).all()).results);
   if(path==='/api/groups'&&method==='GET')return json(await listGroups(env,account.user_id));
   if(path==='/api/groups'&&method==='POST')return json(await createGroup(env,account.user_id,await body(request)),201);
   const groupId=path.match(/^\/api\/groups\/([\w-]+)$/)?.[1];
+  if(groupId&&method==='PATCH')return json(await updateGroup(env,account.user_id,groupId,await body(request)));
   if(groupId&&method==='GET')return json(await groupSnapshot(env,account.user_id,groupId));
   const groupMembersId=path.match(/^\/api\/groups\/([\w-]+)\/members$/)?.[1];
   if(groupMembersId&&method==='POST')return json(await addGroupMember(env,account.user_id,groupMembersId,(await body(request)).email),201);
@@ -179,16 +189,28 @@ async function routes(request,env,ctx){
   if(candidateId&&method==='POST')return json(await reviewTaskCandidate(env,account.user_id,candidateId,await body(request)));
   const assignmentTaskId=path.match(/^\/api\/tasks\/([\w-]+)\/assignment$/)?.[1];
   if(assignmentTaskId&&method==='POST')return json(await respondToAssignment(env,account.user_id,assignmentTaskId,(await body(request)).decision));
+  if(path==='/api/school-email'&&method==='PUT'){
+    const email=emailOf((await body(request)).email);if(!email)return json({error:'请填写有效的学校邮箱'},400);
+    await setKV(env,'school_email:'+account.user_id,email);
+    await env.DB.prepare('UPDATE outlook_connections SET cursor=NULL,cutoff=NULL,since=NULL,status=? WHERE user_id=?').bind('学校邮箱已更新，等待同步',account.user_id).run();
+    return json({ok:true});
+  }
   if(path==='/api/status'){
     const profile=await env.DB.prepare('SELECT nickname,avatar,linked_email,locale,reminder_defaults FROM users WHERE id=?').bind(account.user_id).first();
     const outlook=await outlookConnection(env,account.user_id);
     const outlookMissingConfig=outlookConfigProblems(env,url.origin);
-    return json({account:{id:account.user_id,email:account.email,isOwner,userCode:String(account.user_id).replace(/-/g,'').slice(-4).toUpperCase(),nickname:profile?.nickname||'',avatar:profile?.avatar||'',locale:profile?.locale||'zh-CN'},outlook:!!outlook,outlookEmail:outlook?.email||'',outlookConfigured:outlookMissingConfig.length===0,outlookMissingConfig,mailStatus:outlook?.status||'尚未连接 Outlook',lastSync:outlook?.last_sync||null,emailReady:false,pushReady:!!(env.VAPID_PUBLIC_KEY&&env.VAPID_PRIVATE_KEY),vapid:env.VAPID_PUBLIC_KEY||null,ai:env.ENABLE_AI==='true',appleSync:false,cronLast:await getKV(env,'cron_last'),jobErrors:(await env.DB.prepare("SELECT error,channel,at FROM jobs WHERE user_id=? AND error IS NOT NULL ORDER BY at DESC LIMIT 5").bind(account.user_id).all()).results});
+    return json({account:{id:account.user_id,email:account.email,isOwner,userCode:String(account.user_id).replace(/-/g,'').slice(-4).toUpperCase(),nickname:profile?.nickname||'',avatar:profile?.avatar||'',locale:profile?.locale||'zh-CN'},schoolEmail:await schoolAddress(env,account.user_id),outlook:!!outlook,outlookEmail:outlook?.email||'',outlookConfigured:outlookMissingConfig.length===0,outlookMissingConfig,mailStatus:outlook?.status||'尚未连接 Outlook',lastSync:outlook?.last_sync||null,emailReady:false,pushReady:!!(env.VAPID_PUBLIC_KEY&&env.VAPID_PRIVATE_KEY),vapid:env.VAPID_PUBLIC_KEY||null,ai:env.ENABLE_AI==='true',appleSync:false,cronLast:await getKV(env,'cron_last'),jobErrors:(await env.DB.prepare("SELECT error,channel,at FROM jobs WHERE user_id=? AND error IS NOT NULL ORDER BY at DESC LIMIT 5").bind(account.user_id).all()).results});
   }
   if(path==='/api/tasks'&&method==='GET'){
  const rows=(await env.DB.prepare("SELECT * FROM tasks WHERE user_id=? AND (group_id IS NULL OR acceptance_status='accepted') ORDER BY completed, due IS NULL, due, priority").bind(account.user_id).all()).results;
  return json(await Promise.all(rows.map(async row=>{const task=mapTask(row);return task.source==='meeting'?meetingTask(task,await env.DB.prepare('SELECT name FROM meeting_polls WHERE id=?').bind(task.source_id).first(),account.locale):task;})));
  }
+  if(path==='/api/tasks/from-mail'&&method==='POST'){
+    const data=await body(request),messageId=String(data.messageId||'').trim();if(!messageId||messageId.length>2048)return json({error:serverMessage('邮件标识无效',uiLocale)},400);
+    const sourceId='digest-mail:'+messageId,existing=await env.DB.prepare('SELECT * FROM tasks WHERE user_id=? AND source_id=?').bind(account.user_id,sourceId).first();
+    if(existing)return json({task:mapTask(existing),alreadyAdded:true});
+    const task=await createTask(env,data,'email',sourceId,account.user_id);return json({task,alreadyAdded:false},201);
+  }
   if(path==='/api/tasks'&&method==='POST')return json(await createTask(env,await body(request),'manual',null,account.user_id),201);
   const taskId=path.match(/^\/api\/tasks\/([\w-]+)$/)?.[1];
   if(taskId&&method==='PATCH'){
@@ -282,14 +304,26 @@ async function routes(request,env,ctx){
     const summary=await summarizeLink(env,profile?.locale||'zh-CN',url);
     return json({summary:summary||null});
   }
+  if(path==='/api/digests/ignore'&&(method==='POST'||method==='DELETE')){
+    const id=String((await body(request)).messageId||'');
+    if(!id||id.length>1024)return json({error:serverMessage('操作无效',uiLocale)},400);
+    if(!await env.DB.prepare('SELECT id FROM messages WHERE id=? AND user_id=?').bind(id,account.user_id).first())return json({error:serverMessage('邮件不存在',uiLocale)},404);
+    const key=`digest_ignore:${account.user_id}:${id}`;
+    if(method==='POST')await setKV(env,key,'1');
+    else await env.DB.prepare('DELETE FROM kv WHERE key=?').bind(key).run();
+    return json({ok:true,ignored:method==='POST'});
+  }
   if(path==='/api/digests'){
+    const ignoredPrefix=`digest_ignore:${account.user_id}:`;
+    const ignoredRows=(await env.DB.prepare('SELECT key FROM kv WHERE substr(key,1,?)=?').bind(ignoredPrefix.length,ignoredPrefix).all()).results;
+    const ignoredIds=new Set(ignoredRows.map(row=>row.key.slice(ignoredPrefix.length)));
     const prefix='digest:'+account.user_id+':%';
-    const rows=(await env.DB.prepare("SELECT value FROM kv WHERE key LIKE ? AND value!='quiet' ORDER BY key DESC LIMIT 30").bind(prefix).all()).results;
+    const rows=(await env.DB.prepare("SELECT value FROM kv WHERE key LIKE ? AND value!='quiet' ORDER BY CAST(json_extract(value,'$.created') AS INTEGER) DESC, key DESC LIMIT 30").bind(prefix).all()).results;
     const aliasRules=await nameAliasRules(env,account.user_id,(await env.DB.prepare('SELECT preferred_zh_name FROM users WHERE id=?').bind(account.user_id).first())?.preferred_zh_name||'');
     const records=rows.flatMap(row=>{try{
       const normalized=normalizeDigestRecord(JSON.parse(row.value));
       if(!normalized)return [];
-      if(aliasRules.length&&normalized.items)normalized.items=normalized.items.map(item=>applyPreferredNameToFields(item,aliasRules));
+      if(normalized.items)normalized.items=normalized.items.map(item=>({...(aliasRules.length?applyPreferredNameToFields(item,aliasRules):item),ignored:ignoredIds.has(String(item.id||''))}));
       if(aliasRules.length)normalized.body=applyPreferredNameToFields({body:normalized.body},aliasRules).body;
       return [normalized];
     }catch{return []}});
@@ -302,7 +336,10 @@ async function routes(request,env,ctx){
     return Response.redirect(await startOAuth(env,account,requestedEmail,url.origin));
   }
   if(path==='/api/outlook/callback'&&method==='GET'){
-    await finishOAuth(env,url,account);
+    try{await finishOAuth(env,url,account);}catch(error){
+      const message=error.oauthFailure?error.message:'本次 Outlook 连接未完成，请返回设置重新发起连接。';
+      return new Response(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Outlook 连接未完成</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/theme.css"></head><body><main style="max-width:600px;margin:12vh auto;padding:24px"><section class="setting-card"><h1>Outlook 连接未完成</h1><p>${message}</p><p><a class="primary" href="/api/outlook/start">重新连接 Microsoft ↗</a></p><a href="/?view=settings">返回设置</a></section></main></body></html>`,{status:400,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
+    }
     try{const result=await syncMail(env,account.user_id);if(result.importedIds?.length){const translations=preGenerateMailTranslations(env,account.user_id,result.importedIds).catch(()=>{});if(ctx?.waitUntil)ctx.waitUntil(translations);else await translations;}}catch(error){await env.DB.prepare('UPDATE outlook_connections SET status=? WHERE user_id=?').bind(String(error.message).slice(0,300),account.user_id).run();}
     // 后台预生成新邮件的 AI 摘要（不阻塞跳转）
     try{const briefs=preGenerateBriefs(env,account.user_id).catch(()=>{});if(ctx?.waitUntil)ctx.waitUntil(briefs);}catch{}

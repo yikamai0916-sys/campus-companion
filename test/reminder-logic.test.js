@@ -88,10 +88,10 @@ test('wheel rows fade and shrink with distance from the centre', () => {
   assert.ok(half.opacity < 1 && half.opacity > 0.5 && half.scale < 1 && half.scale > 0.85);
 });
 
-test('progress card colour goes lavender -> yellow -> lime', () => {
-  assert.equal(progressColor(0), 'rgb(232, 227, 255)');
-  assert.equal(progressColor(50), 'rgb(255, 214, 10)');
-  assert.equal(progressColor(100), 'rgb(212, 255, 0)');
+test('progress card colour stays soft aqua as progress increases', () => {
+  assert.equal(progressColor(0), 'rgb(239, 245, 243)');
+  assert.equal(progressColor(50), 'rgb(231, 242, 238)');
+  assert.equal(progressColor(100), 'rgb(220, 239, 235)');
   assert.equal(progressColor(-10), progressColor(0));
   assert.equal(progressColor(250), progressColor(100));
   assert.equal(progressColor('x'), progressColor(0));

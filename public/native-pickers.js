@@ -84,6 +84,7 @@ export function watchTimeInputs() {
 
   // Capture phase: runs before the form's own onsubmit handler.
   document.addEventListener('submit', event => {
+    if (event.target.noValidate) return;
     const missing = [...event.target.querySelectorAll('input[data-wheel][required]')].filter(input => !input.value);
     if (!missing.length) return;
     event.preventDefault();

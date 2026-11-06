@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { applyPreferredName, nameAliases, applyPreferredNameToFields } from '../src/names.js';
-import { extractiveSummary, shapeDigestItem, shapeDigestRecord, normalizeDigestRecord, stripUrls } from '../src/digest-format.js';
+import { extractiveSummary, shapeDigestItem, shapeDigestRecord, normalizeDigestRecord, stripUrls, stripMailHeaders } from '../src/digest-format.js';
 
 test('preferred name replaces known wrong transliterations', () => {
   assert.equal(applyPreferredName('用户马毅凯参与交流项目', '马艺恺'), '用户马艺恺参与交流项目');
@@ -29,6 +29,20 @@ test('extractive summary stays short and drops URLs', () => {
   assert.ok(!summary.includes('http'));
   assert.ok(summary.length <= 140);
   assert.match(summary, /讲座/);
+});
+
+test('extractive summary removes forwarded mail headers before showing quick view', () => {
+  const body='________________________________\nFrom: Finance Office <finance@example.edu>\nSent: Wednesday, October 21, 2026 9:22 AM\nTo: Student <student@example.edu>\nSubject: Reminder\n\nPlease submit the form by 5 November.';
+  const summary=extractiveSummary('Reminder',body);
+  assert.match(summary,/Please submit the form/);
+  assert.doesNotMatch(summary,/From:|Sent:|Subject:|finance@example/);
+  assert.equal(stripMailHeaders(body),'Please submit the form by 5 November.');
+  const legacyHeader='________________________ From: Career News <career@example.edu> Sent: Thursday, October 29, 2026 8:06 PM';
+  assert.equal(stripMailHeaders(legacyHeader),'');
+  assert.equal(extractiveSummary('Career news',legacyHeader), 'Career news');
+  const legacy=normalizeDigestRecord({title:'2026-10-29 晚间补充',created:1,items:[{subject:legacyHeader,summary:legacyHeader}]});
+  assert.equal(legacy.items[0].subject,'邮件内容暂不可用');
+  assert.equal(legacy.items[0].summary,'邮件内容暂不可用');
 });
 
 test('digest items never include raw outlook URLs', () => {

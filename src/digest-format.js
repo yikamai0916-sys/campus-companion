@@ -6,10 +6,30 @@ export function stripUrls(text=''){
   return String(text||'').replace(URL_RE,'').replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
 }
 
+export function stripMailHeaders(value=''){
+  let text=String(value||'').replace(/\r/g,'').trim();
+  text=text.replace(/^\s*[_-]{5,}\s*\n?/,'');
+  const header=/^(?:from|sent|date|to|cc|subject|发件人|发送|发送时间|收件人|抄送|主题|寄件者|寄件日期|收件者|主旨)\s*[:：]/i;
+  const lines=text.split('\n');
+  let index=0,seenHeader=false;
+  while(index<lines.length&&(!lines[index].trim()||header.test(lines[index].trim()))){
+    if(header.test(lines[index].trim()))seenHeader=true;
+    index++;
+  }
+  if(seenHeader)text=index<lines.length?lines.slice(index).join('\n').trim():'';
+  text=text.replace(/^\s*[_-]{5,}\s*/,'').trim();
+  const fields=[...text.matchAll(/(?:^|\s)(?:from|sent|date|to|cc|subject|发件人|发送|发送时间|收件人|抄送|主题|寄件者|寄件日期|收件者|主旨)\s*[:：]/gi)];
+  if(fields.length>=2){
+    const bodyStart=text.indexOf('\n\n');
+    text=bodyStart>=0?text.slice(bodyStart+2).trim():'';
+  }
+  return text;
+}
+
 /** Short actionable blurb from subject + summary when AI is off. */
 export function extractiveSummary(subject='',summary='',max=140){
-  let text=stripUrls(summary||'');
-  if(!text)text=stripUrls(subject||'');
+  let text=stripMailHeaders(stripUrls(summary||''));
+  if(!text)text=stripMailHeaders(stripUrls(subject||''));
   text=text.replace(/\s+/g,' ').trim();
   if(!text)return '';
   const sentence=text.match(/^[\s\S]{1,140}?[。！？.!?](?=\s|$)/);
@@ -21,7 +41,7 @@ export function shapeDigestItem(message){
   const summary=extractiveSummary(message.subject,message.summary);
   return {
     id:String(message.id||''),
-    subject:String(message.subject||'无主题').slice(0,300),
+    subject:(stripMailHeaders(message.subject)||'邮件内容暂不可用').slice(0,300),
     sender:String(message.sender||'').slice(0,320),
     origin:String(message.origin||'').slice(0,180),
     summary,
@@ -54,10 +74,10 @@ export function normalizeDigestRecord(raw){
   if(Array.isArray(raw.items)&&raw.items.length){
     const items=raw.items.map(item=>({
       id:String(item.id||''),
-      subject:String(item.subject||'').slice(0,300),
+      subject:(stripMailHeaders(item.subject)||'邮件内容暂不可用').slice(0,300),
       sender:String(item.sender||'').slice(0,320),
       origin:String(item.origin||'').slice(0,180),
-      summary:extractiveSummary(item.subject,item.summary||item.body||''),
+      summary:extractiveSummary(item.subject,item.summary||item.body||'')|| (stripMailHeaders(item.subject)||'邮件内容暂不可用'),
       action:stripUrls(String(item.action||'')).slice(0,220),
       category:Number(item.category)||0,
       received:Number(item.received)||0
