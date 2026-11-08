@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {cleanSubject,validateBrief,attachBriefs,parseBriefResponse,isEnglishBrief,fallbackBrief} from '../src/mail-briefs.js';
+import {cleanSubject,validateBrief,attachBriefs,parseBriefResponse,isEnglishBrief,fallbackBrief,correctLingnanBrief,readBrief} from '../src/mail-briefs.js';
 test('forward and reply chains are removed, internal colons preserved',()=>{
  assert.equal(cleanSubject('FW: Re: Fwd: Budget: update'),'Budget: update');
 });
@@ -35,4 +35,22 @@ test('brief fallback uses localized stored summary and removes forwarded headers
  assert.match(brief.points[0].text,/疫苗接种活动/);
  assert.doesNotMatch(brief.points[0].text,/From:|Sent:/);
  assert.ok(isEnglishBrief(fallbackBrief({englishSubject:'Reminder',englishBody:'Please submit the form by Friday.'},'en')));
+});
+
+
+test('Lingnan brief names are corrected only with original-source context',()=>{
+ const brief={title:'凌云大学图书馆安排',topic:'凌雲大學',points:[{text:'凌云大学师生可预约',evidence:'Lingnan University Library'}],actions:[{text:'联系凌雲大學',evidence:'Contact the library'}]};
+ const cn=correctLingnanBrief(brief,'zh-CN');
+ assert.equal(cn.title,'岭南大学图书馆安排');assert.equal(cn.points[0].text,'岭南大学师生可预约');assert.equal(cn.actions[0].text,'联系岭南大学');assert.equal(cn.points[0].evidence,'Lingnan University Library');
+ assert.equal(correctLingnanBrief(brief,'zh-TW').title,'嶺南大學图书馆安排');
+ const unrelated={...brief,points:[{text:'凌云大学师生',evidence:'A different university'}]};
+ assert.equal(correctLingnanBrief(unrelated,'zh-CN').title,unrelated.title);
+ assert.equal(correctLingnanBrief(brief,'en').title,brief.title);
+ assert.equal(correctLingnanBrief(brief,'zh-CN','原文提到凌云大学').title,brief.title);
+});
+
+test('cached brief corrects a school name using account-scoped original metadata',async()=>{
+ const brief={title:'凌云大学图书馆安排',topic:'通知',points:[{text:'凌云大学师生',evidence:'Library access during examinations'}],actions:[]};let metadataArgs=[];
+ const env={DB:{prepare(sql){return {bind(...args){this.args=args;return this},async all(){return {results:[]}},async first(){if(sql.includes('FROM kv'))return {value:JSON.stringify(brief)};if(sql.includes('FROM users'))return {};if(sql.includes('FROM messages')){metadataArgs=this.args;return {sender:'Lingnan University Library',subject:'Library access',origin:''}}return null}}}}};
+ const result=await readBrief(env,'user1','zh-CN','mail1');assert.equal(result.title,'岭南大学图书馆安排');assert.deepEqual(metadataArgs,['mail1','user1']);
 });
