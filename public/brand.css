@@ -53,3 +53,6 @@ aside .brand .bi-dock{width:44px;height:44px;border-radius:26%;box-shadow:0 2px 
 .bi-home{position:absolute;width:168px;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none;box-shadow:0 12px 30px rgba(23,111,104,.08)}
 @media(min-width:701px) and (max-width:1100px){#tasks-view>.page-heading{padding-top:158px}.bi-home{width:132px;top:8px;transform:translateX(-50%)}}
 @media(max-width:700px){#tasks-view>.page-heading{padding-top:140px;min-height:0}.bi-home{width:120px;top:8px;transform:translateX(-50%)}}
+
+/* Keep the English name on one line while fitting narrow screens. */
+html[lang="en"] .login h1{font-size:clamp(24px,6.2vw,42px);white-space:nowrap;letter-spacing:-.035em}
